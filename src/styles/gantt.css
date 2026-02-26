@@ -1,0 +1,733 @@
+/* ===== TIMELINE VIEW STYLES ===== */
+
+.gantt-container {
+  width: 100%;
+  height: 100%;
+  background: hsl(var(--card));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.gantt-header {
+  flex-shrink: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+}
+
+.gantt-timeline-row {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+}
+
+.gantt-header-label {
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  border-right: 1px solid hsl(var(--border));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: hsl(var(--foreground));
+}
+
+.gantt-timeline-header {
+  display: flex;
+  overflow-x: hidden;
+}
+
+.gantt-quarter {
+  min-width: 160px;
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  border-right: 1px solid hsl(var(--border));
+}
+
+/* Rows */
+.gantt-rows {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.gantt-row {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  border-bottom: 1px solid hsl(var(--border));
+  min-height: 96px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.gantt-row:hover {
+  background: hsl(var(--secondary));
+}
+
+.gantt-row.highlighted {
+  background: hsl(var(--primary) / 0.15);
+  border-left: 4px solid hsl(var(--primary));
+}
+
+.gantt-row-label {
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid hsl(var(--border));
+  gap: 2px;
+  position: relative;
+}
+
+.gantt-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.gantt-row-name:hover {
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--primary));
+  text-underline-offset: 2px;
+}
+
+.gantt-row-team {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-row-costs {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.gantt-cost-total {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.gantt-cost-period {
+  font-size: 11px;
+  color: hsl(var(--primary));
+  font-weight: 500;
+}
+
+.gantt-row-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 8px 0;
+  min-width: fit-content;
+  gap: 4px;
+}
+
+/* Segment row with bar + details */
+.gantt-segment-row {
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Segments */
+.gantt-segment {
+  position: absolute;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.gantt-segment:hover {
+  filter: brightness(1.1);
+}
+
+/* Development - Royal Blue */
+.gantt-segment.development {
+  background: hsl(var(--development));
+}
+
+/* Support - Grey */
+.gantt-segment.support {
+  background: hsl(var(--support-color));
+}
+
+/* Off-track overlay - hatching */
+.gantt-segment.off-track {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    rgba(139, 0, 0, 0.4) 3px,
+    rgba(139, 0, 0, 0.4) 6px
+  );
+}
+
+.gantt-segment.development.off-track {
+  background-color: hsl(var(--development));
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    rgba(139, 0, 0, 0.4) 3px,
+    rgba(139, 0, 0, 0.4) 6px
+  );
+}
+
+.gantt-segment.support.off-track {
+  background-color: hsl(var(--support-color));
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    rgba(139, 0, 0, 0.4) 3px,
+    rgba(139, 0, 0, 0.4) 6px
+  );
+}
+
+/* Quarter details below segment */
+.gantt-quarter-details {
+  display: flex;
+  min-width: fit-content;
+  padding-top: 4px;
+}
+
+.gantt-quarter-detail {
+  min-width: 160px;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+
+.gantt-quarter-detail-content {
+  font-size: 9px;
+  line-height: 1.3;
+  color: hsl(var(--muted-foreground));
+  max-height: 40px;
+  overflow: hidden;
+}
+
+.gantt-quarter-detail-content .detail-label {
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.gantt-quarter-detail-content .detail-value {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* Legend */
+.gantt-legend {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  flex-wrap: wrap;
+}
+
+.gantt-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.gantt-legend-color.development {
+  background: hsl(var(--development));
+}
+
+.gantt-legend-color.support {
+  background: hsl(var(--support-color));
+}
+
+.gantt-legend-color.hatched {
+  background: white;
+  border: 1px solid hsl(var(--border));
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 2px,
+    rgba(139, 0, 0, 0.5) 2px,
+    rgba(139, 0, 0, 0.5) 4px
+  );
+}
+
+.gantt-legend-divider {
+  width: 1px;
+  height: 20px;
+  background: hsl(var(--border));
+  margin: 0 8px;
+}
+
+.gantt-legend-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.gantt-legend-stats-total {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.gantt-legend-stats-development {
+  color: hsl(var(--development));
+  font-weight: 500;
+}
+
+.gantt-legend-stats-support {
+  color: hsl(var(--support-color));
+  font-weight: 500;
+}
+
+/* Empty State */
+.gantt-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  text-align: center;
+}
+
+.gantt-empty-icon {
+  width: 64px;
+  height: 64px;
+  background: hsl(var(--secondary));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-empty-text {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 16px;
+}
+
+.gantt-empty-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.gantt-empty-btn:hover {
+  background: hsl(var(--primary) / 0.9);
+}
+
+/* Tooltip for initiative name hover */
+.gantt-name-tooltip {
+  position: fixed;
+  z-index: 100;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.gantt-name-tooltip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+}
+
+.gantt-name-tooltip-description {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 10px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.gantt-name-tooltip-stakeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gantt-name-tooltip-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: hsl(var(--secondary));
+  border-radius: 4px;
+  color: hsl(var(--foreground));
+}
+
+/* Quarter detail card popup */
+.gantt-quarter-popup {
+  position: fixed;
+  z-index: 200;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  max-width: 360px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.gantt-quarter-popup.pinned {
+  pointer-events: auto;
+}
+
+.gantt-quarter-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.gantt-quarter-popup-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  flex: 1;
+}
+
+.gantt-quarter-popup-quarter {
+  font-size: 11px;
+  color: hsl(var(--primary));
+  font-weight: 500;
+  padding: 2px 8px;
+  background: hsl(var(--primary) / 0.1);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.gantt-quarter-popup-status {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.gantt-quarter-popup-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.gantt-quarter-popup-badge.development {
+  background: hsl(var(--development) / 0.2);
+  color: hsl(var(--development));
+}
+
+.gantt-quarter-popup-badge.support {
+  background: hsl(var(--support-color) / 0.2);
+  color: hsl(var(--support-color));
+}
+
+.gantt-quarter-popup-badge.off-track {
+  background: hsl(var(--destructive) / 0.2);
+  color: hsl(var(--destructive));
+}
+
+.gantt-quarter-popup-budget {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: hsl(var(--secondary));
+  border-radius: 6px;
+}
+
+.gantt-quarter-popup-section {
+  margin-bottom: 12px;
+}
+
+.gantt-quarter-popup-section:last-child {
+  margin-bottom: 0;
+}
+
+.gantt-quarter-popup-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.gantt-quarter-popup-label.expandable-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gantt-quarter-popup.pinned .gantt-quarter-popup-label.expandable-header {
+  cursor: pointer;
+}
+
+.gantt-quarter-popup.pinned .gantt-quarter-popup-label.expandable-header:hover {
+  color: hsl(var(--primary));
+}
+
+.gantt-quarter-popup-label .expand-icon {
+  opacity: 0.7;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.gantt-quarter-popup.pinned .gantt-quarter-popup-label:hover .expand-icon {
+  opacity: 1;
+}
+
+.gantt-quarter-popup-text {
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.gantt-quarter-popup-text.truncated {
+  max-height: 60px;
+  overflow: hidden;
+  position: relative;
+}
+
+.gantt-quarter-popup-text.truncated::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  background: linear-gradient(to bottom, transparent, hsl(var(--popover)));
+  pointer-events: none;
+}
+
+.gantt-quarter-popup-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  padding: 4px 8px;
+  background: hsl(var(--primary) / 0.1);
+  border-radius: 4px;
+  border: none;
+}
+
+.gantt-quarter-popup-expand:hover {
+  background: hsl(var(--primary) / 0.2);
+}
+
+.gantt-quarter-popup-stakeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.gantt-quarter-popup-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: hsl(var(--secondary));
+  border-radius: 4px;
+  color: hsl(var(--foreground));
+}
+
+/* ===== NAME POPUP - PINNABLE ===== */
+.gantt-name-popup {
+  position: fixed;
+  z-index: 200;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  max-width: 420px;
+  max-height: 520px;
+  overflow: visible;
+}
+
+.gantt-name-popup.pinned {
+  pointer-events: auto;
+}
+
+.gantt-name-popup-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 4px;
+}
+
+.gantt-name-popup-unit {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 12px;
+}
+
+.gantt-name-popup-costs {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: hsl(var(--secondary));
+  border-radius: 6px;
+}
+
+.gantt-name-popup-costs .period-cost {
+  color: hsl(var(--primary));
+}
+
+.gantt-name-popup-section {
+  margin-bottom: 12px;
+}
+
+.gantt-name-popup-section:last-child {
+  margin-bottom: 0;
+}
+
+.gantt-name-popup-section.clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-radius: 6px;
+  margin: -4px -8px;
+  padding: 4px 8px;
+}
+
+.gantt-name-popup-section.clickable:hover {
+  background-color: hsl(var(--secondary));
+}
+
+.gantt-name-popup-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.gantt-name-popup-label.expandable-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gantt-name-popup.pinned .gantt-name-popup-label.expandable-header {
+  cursor: pointer;
+}
+
+.gantt-name-popup.pinned .gantt-name-popup-label.expandable-header:hover {
+  color: hsl(var(--primary));
+}
+
+.gantt-name-popup-label .expand-icon {
+  opacity: 0.7;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+}
+
+.gantt-name-popup.pinned .gantt-name-popup-label:hover .expand-icon {
+  opacity: 1;
+}
+
+.gantt-name-popup-text {
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.gantt-name-popup-text.truncated {
+  max-height: 180px;
+  overflow: hidden;
+  position: relative;
+}
+
+.gantt-name-popup-text.expanded {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.gantt-name-popup-text.truncated::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  background: linear-gradient(to bottom, transparent, hsl(var(--popover)));
+  pointer-events: none;
+}
+
+.gantt-name-popup-stakeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.gantt-name-popup-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: hsl(var(--secondary));
+  border-radius: 4px;
+  color: hsl(var(--foreground));
+}
+
+.gantt-name-popup-hint {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  margin-top: 8px;
+  text-align: center;
+}
