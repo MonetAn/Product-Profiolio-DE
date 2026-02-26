@@ -30,9 +30,7 @@ const Header = ({
     <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
       {/* Logo */}
       <div className="flex items-center gap-2 font-semibold text-foreground">
-        <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-sm font-bold">
-          P
-        </div>
+        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain" />
         <span>Product Portfolio</span>
       </div>
 

@@ -135,9 +135,7 @@ const AdminHeader = ({
 
       {/* Logo & Title */}
       <div className="flex items-center gap-2 font-semibold text-foreground ml-4">
-        <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-sm font-bold">
-          A
-        </div>
+        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain" />
         <span>Управление</span>
       </div>
 
