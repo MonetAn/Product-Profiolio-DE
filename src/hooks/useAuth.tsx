@@ -42,9 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
+    // Полный URL приложения (на GitHub Pages — с путём /Product-Profiolio-DE/)
+    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/$/, '') || window.location.origin;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo },
     });
 
     if (error) return { error: error as Error };
