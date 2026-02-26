@@ -35,6 +35,28 @@ export interface TreeNode {
   isStakeholder?: boolean;
 }
 
+/** Sum of values in a node's subtree (node.value if set, else sum of children recursively). */
+function sumNodeSubtree(node: TreeNode): number {
+  const direct = node.value ?? 0;
+  if (direct > 0) return direct;
+  const children = node.children ?? [];
+  return children.reduce((sum, c) => sum + sumNodeSubtree(c), 0);
+}
+
+/** Sum of values for the subtree at path. path=[] => sum of root's children; else walk by name and return that node's subtree sum. */
+export function getSubtreeValue(root: TreeNode, path: string[]): number {
+  if (path.length === 0) {
+    const children = root.children ?? [];
+    return children.reduce((sum, c) => sum + sumNodeSubtree(c), 0);
+  }
+  let node: TreeNode | undefined = root;
+  for (const name of path) {
+    node = node?.children?.find((c) => c.name === name);
+    if (!node) return 0;
+  }
+  return sumNodeSubtree(node);
+}
+
 // ===== CONVERT FROM DATABASE =====
 // Convert AdminDataRow (from Supabase) to RawDataRow (for Dashboard)
 export function convertFromDB(dbRows: AdminDataRow[]): {

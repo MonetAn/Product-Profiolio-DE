@@ -1,73 +1,80 @@
-# Welcome to your Lovable project
+# Product Portfolio (Budget Treemap Explorer)
 
-## Project info
+Дашборд для просмотра портфолио инициатив по юнитам/командам: тримап бюджета, стейкхолдеры, таймлайн (Gantt). Есть админка для инициатив и людей.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## Стек
 
-There are several ways of editing your application.
+- **Vite** + **React 18** + **TypeScript**
+- **Tailwind CSS** + **shadcn/ui** (Radix)
+- **React Router**, **TanStack Query**, **Framer Motion**
+- **Supabase** — БД и Auth (вход через Google OAuth)
+- **D3** — расчёт layout тримапа
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Запуск
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
+```bash
 npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Приложение: **http://localhost:8080** (порт в `vite.config.ts`).
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Другие команды: `npm run build`, `npm run preview`, `npm run lint`, `npm run test`.
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Структура проекта
 
-## What technologies are used for this project?
+- **`src/pages/`** — страницы: `Index` (тримап + фильтры), `Admin` (инициативы), `AdminPeople` (люди и назначения), `Auth` (вход через Google).
+- **`src/components/`** — UI: `BudgetTreemap`, `StakeholdersTreemap`, `GanttView`, `FilterBar`, `Header`; папки `admin/`, `admin/people/`, `treemap/`, `ui/` (shadcn).
+- **`src/hooks/`** — `useAuth`, `useInitiatives`, `usePeople`, `usePeopleAssignments`, `useTeamSnapshots`, `useCSVImport`, и др.
+- **`src/lib/`** — `dataManager`, `adminDataManager`, `peopleDataManager` (работа с данными/агрегациями для тримапа и админки).
+- **`src/integrations/`** — `supabase/client.ts`, `supabase/types.ts` (типы БД); `lovable/index.ts` (legacy, не используется для входа).
+- **`.env`** — `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` (не коммитить).
 
-This project is built with:
+Роуты: `/` — главная (тримап), `/admin` — инициативы, `/admin/people` — люди, `/auth` — вход.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## Авторизация
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+- Вход через **Google** (Supabase Auth). Настройка в Supabase: Authentication → Providers → Google; Redirect URLs включают `http://localhost:8080`.
+- Логика в **`src/hooks/useAuth.tsx`**: `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })`.
+- Доступ только для пользователей с email **@dodobrands.io** (проверка `isDodoEmployee` в коде). Остальных редиректит на `/auth`.
 
-## Can I connect a custom domain to my Lovable project?
+---
 
-Yes, you can!
+## Данные (Supabase)
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- Таблицы: `initiatives`, `people`, `person_initiative_assignments`, `initiative_history`, `person_assignment_history`, `profiles`, `team_quarter_snapshots`.
+- Схема и RLS: **`supabase-schema.sql`**. Подробности по новому проекту — **`SUPABASE_SETUP.md`**.
+- Типы TypeScript для БД: **`src/integrations/supabase/types.ts`**.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+---
+
+## Тримап
+
+- Три вкладки на главной: **Budget**, **Stakeholders**, **Timeline** (Gantt).
+- Компоненты тримапа: **`TreemapContainer`**, **`TreemapNode`**, **`TreemapTooltip`**, layout в **`useTreemapLayout.ts`** (D3).
+- На квадратах показывается **процент** от текущего итога по видимым нодам (не абсолютная сумма). Итог считается в `TreemapContainer` (`totalValue`), передаётся в каждый `TreemapNode`.
+- Фильтры (юниты, команды, стейкхолдеры, период, чекбоксы) задают, какие ноды попадают в данные; зум по клику — через `focusedPath` внутри контейнера.
+
+---
+
+## Репозиторий
+
+**GitHub:** https://github.com/MonetAn/Product-Profiolio-DE  
+
+Ветка по умолчанию — `main`. Push по SSH (ключ в `~/.ssh/`).
+
+---
+
+## Для следующего чата
+
+- Проект живой: ожидаются частые правки в UI, фильтрах, админке, тримапе.
+- Важные места: страница главной и фильтры — `Index.tsx` + `FilterBar`; данные для тримапа — `dataManager` и хуки инициатив/людей; отображение ячеек тримапа — `TreemapNode.tsx` и `TreemapContainer.tsx`; админка — `Admin.tsx`, `AdminPeople.tsx` и компоненты в `admin/`.
+- Локально всегда проверять через `npm run dev` и http://localhost:8080; перед коммитом — `npm run lint` при необходимости.

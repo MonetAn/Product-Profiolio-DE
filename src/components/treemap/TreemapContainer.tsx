@@ -7,7 +7,7 @@ import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
 import { TreemapLayoutNode, AnimationType, ColorGetter } from './types';
-import { TreeNode } from '@/lib/dataManager';
+import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
 interface TreemapContainerProps {
@@ -296,6 +296,15 @@ const TreemapContainer = ({
 
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
+
+  // Total value of currently visible area (for % on squares and tooltip). When zoomed, use focused subtree; else sum of top-level nodes.
+  const totalValue = useMemo(
+    () =>
+      focusedPath.length > 0
+        ? getSubtreeValue(data, focusedPath)
+        : layoutNodes.reduce((sum, n) => sum + n.value, 0),
+    [data, focusedPath, layoutNodes]
+  );
   
   // Tooltip handlers
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
@@ -405,7 +414,7 @@ const TreemapContainer = ({
         data={tooltipData}
         lastQuarter={lastQuarter}
         selectedUnitsCount={selectedUnitsCount}
-        totalValue={layoutNodes.reduce((sum, n) => sum + n.value, 0)}
+        totalValue={totalValue}
       />
       
       {/* Framer Motion treemap rendering */}
@@ -423,6 +432,8 @@ const TreemapContainer = ({
                 onMouseLeave={handleMouseLeave}
                 showChildren={true}
                 renderDepth={renderDepth}
+                totalValue={totalValue}
+                selectedUnitsCount={selectedUnitsCount}
               />
             ))}
           </AnimatePresence>

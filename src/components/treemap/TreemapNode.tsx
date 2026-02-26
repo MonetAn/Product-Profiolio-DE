@@ -33,15 +33,19 @@ interface TreemapNodeProps {
   onMouseLeave?: (node?: TreemapLayoutNode) => void;
   showChildren?: boolean;
   renderDepth?: number;
+  totalValue?: number;
+  selectedUnitsCount?: number;
 }
 
 interface TreemapNodeContentProps {
   node: TreemapLayoutNode;
   showValue: boolean;
   textColorClass: string;
+  totalValue?: number;
+  selectedUnitsCount?: number;
 }
 
-const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNodeContentProps) => {
+const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue = 0, selectedUnitsCount = 0 }: TreemapNodeContentProps) => {
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   const hasChildren = node.children && node.children.length > 0;
@@ -84,7 +88,9 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNod
             className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
             style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
           >
-            {formatBudget(node.value)}
+            {totalValue > 0
+              ? `${((node.value / totalValue) * 100).toFixed(1)}%`
+              : formatBudget(node.value)}
           </div>
         )}
       </div>
@@ -105,6 +111,8 @@ const TreemapNode = memo(({
   onMouseLeave,
   showChildren = true,
   renderDepth = 3,
+  totalValue = 0,
+  selectedUnitsCount = 0,
 }: TreemapNodeProps) => {
   const duration = animationType === 'initial' ? 0 : ANIMATION_DURATIONS[animationType] / 1000;
   const hasChildren = node.children && node.children.length > 0;
@@ -179,7 +187,7 @@ const TreemapNode = memo(({
         onMouseLeave?.(node);
       }}
     >
-      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
+      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} totalValue={totalValue} selectedUnitsCount={selectedUnitsCount} />
       
       <AnimatePresence mode="sync">
         {shouldRenderChildren && showChildren &&
@@ -196,6 +204,8 @@ const TreemapNode = memo(({
               onMouseLeave={onMouseLeave}
               showChildren={showChildren}
               renderDepth={renderDepth}
+              totalValue={totalValue}
+              selectedUnitsCount={selectedUnitsCount}
             />
           ))
         }

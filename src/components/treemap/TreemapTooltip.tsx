@@ -77,9 +77,8 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
       // Note: for proper % of unit, we'd need parent value from context
     }
     
-    // Percent of total (skip if only one unit selected)
-    const showPercentOfTotal = selectedUnitsCount === 0 || selectedUnitsCount > 1;
-    if (showPercentOfTotal && totalValue > 0) {
+    // Percent of total (visible on screen — filter or zoom)
+    if (totalValue > 0) {
       const percentOfTotal = ((node.value / totalValue) * 100).toFixed(1);
       html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
     }

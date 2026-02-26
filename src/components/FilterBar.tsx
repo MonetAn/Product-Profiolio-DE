@@ -213,6 +213,19 @@ const FilterBar = ({
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return acc;
 
+      // Restrict to zoom path when on treemap and zoom is active for this tab
+      const zoomActive = (currentView === 'budget' || currentView === 'stakeholders') && zoomPath.length > 0 && zoomActiveTab === currentView;
+      if (zoomActive) {
+        if (zoomActiveTab === 'budget') {
+          if (row.unit !== zoomPath[0]) return acc;
+          if (zoomPath.length >= 2 && row.team !== zoomPath[1]) return acc;
+        } else {
+          if (row.stakeholders !== zoomPath[0]) return acc;
+          if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
+          if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
+        }
+      }
+
       acc.count++;
       acc.budget += budget;
       if (isOffTrack) acc.offtrack++;
