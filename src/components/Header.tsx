@@ -15,13 +15,15 @@ interface HeaderProps {
   onViewChange: (view: ViewType) => void;
   onSearchClick: () => void;
   onShortcutsClick: () => void;
+  isAdmin?: boolean;
 }
 
 const Header = ({
   currentView,
   onViewChange,
   onSearchClick,
-  onShortcutsClick
+  onShortcutsClick,
+  isAdmin = false
 }: HeaderProps) => {
   const navigate = useNavigate();
   return (
@@ -96,24 +98,26 @@ const Header = ({
           <Keyboard size={20} />
         </button>
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => navigate('/admin')}
-              >
-                <Sliders size={16} />
-                <span className="hidden sm:inline">Управление</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Редактировать инициативы, людей и настройки
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {isAdmin && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => navigate('/admin')}
+                >
+                  <Sliders size={16} />
+                  <span className="hidden sm:inline">Управление</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Редактировать инициативы, людей и настройки
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </header>
   );

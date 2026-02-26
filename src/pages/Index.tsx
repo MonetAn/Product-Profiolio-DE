@@ -17,9 +17,11 @@ import {
   isInitiativeOffTrack,
 } from '@/lib/dataManager';
 import { useInitiatives } from '@/hooks/useInitiatives';
+import { useAccess } from '@/hooks/useAccess';
 import { toast } from 'sonner';
 
 const Index = () => {
+  const { isAdmin } = useAccess();
   // Fetch data from database
   const { data: dbData, isLoading, error } = useInitiatives();
   
@@ -462,6 +464,7 @@ const Index = () => {
         onViewChange={handleViewChange}
         onSearchClick={() => setShowSearch(true)}
         onShortcutsClick={() => setShowShortcuts(true)}
+        isAdmin={isAdmin}
       />
 
       {/* Filter Bar - 2 rows now */}

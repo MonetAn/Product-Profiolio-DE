@@ -36,22 +36,23 @@ npm run dev
 - **`src/integrations/`** — `supabase/client.ts`, `supabase/types.ts` (типы БД); `lovable/index.ts` (legacy, не используется для входа).
 - **`.env`** — `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` (не коммитить).
 
-Роуты: `/` — главная (тримап), `/admin` — инициативы, `/admin/people` — люди, `/auth` — вход.
+Роуты: `/` — главная (тримап), `/admin` — инициативы, `/admin/people` — люди, `/admin/access` — управление доступом (только админы), `/auth` — вход.
 
 ---
 
-## Авторизация
+## Авторизация и доступ
 
 - Вход через **Google** (Supabase Auth). Настройка в Supabase: Authentication → Providers → Google; Redirect URLs включают `http://localhost:8080`.
 - Логика в **`src/hooks/useAuth.tsx`**: `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })`.
 - Доступ только для пользователей с email **@dodobrands.io** (проверка `isDodoEmployee` в коде). Остальных редиректит на `/auth`.
+- **Вайтлист и роли:** доступ к приложению даётся только пользователям из таблицы `allowed_users`. Роли: **Админ** (доступ к дашборду и разделу «Управление», в т.ч. управление доступом) и **Пользователь** (только просмотр дашборда, без кнопки «Управление»). Миграция: **`supabase-migration-access-control.sql`** — выполнить в Supabase SQL Editor после базовой схемы. После миграции вручную добавить первого админа: `INSERT INTO public.allowed_users (email, role) VALUES ('a.monetov@dodobrands.io', 'admin');`. Дальше управление доступом — в разделе Управление → Доступ.
 
 ---
 
 ## Данные (Supabase)
 
-- Таблицы: `initiatives`, `people`, `person_initiative_assignments`, `initiative_history`, `person_assignment_history`, `profiles`, `team_quarter_snapshots`.
-- Схема и RLS: **`supabase-schema.sql`**. Подробности по новому проекту — **`SUPABASE_SETUP.md`**.
+- Таблицы: `initiatives`, `people`, `person_initiative_assignments`, `initiative_history`, `person_assignment_history`, `profiles`, `team_quarter_snapshots`, `allowed_users` (вайтлист и роли).
+- Схема и RLS: **`supabase-schema.sql`**, затем **`supabase-migration-access-control.sql`** для доступа. Подробности — **`SUPABASE_SETUP.md`**.
 - Типы TypeScript для БД: **`src/integrations/supabase/types.ts`**.
 
 ---

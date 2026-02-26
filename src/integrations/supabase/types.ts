@@ -315,12 +315,34 @@ export type Database = {
         }
         Relationships: []
       }
+      allowed_users: {
+        Row: {
+          id: string
+          email: string
+          role: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          role: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          role?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       is_dodo_employee: { Args: never; Returns: boolean }
+      get_my_access: { Args: Record<string, never>; Returns: Json }
     }
     Enums: {
       [_ in never]: never

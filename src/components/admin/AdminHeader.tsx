@@ -1,4 +1,4 @@
-import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList, Shield } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { SyncStatus } from '@/hooks/useInitiativeMutations';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
-type ViewMode = 'initiatives' | 'people';
+export type ViewMode = 'initiatives' | 'people' | 'access';
 
 interface AdminHeaderProps {
   currentView: ViewMode;
@@ -57,6 +57,8 @@ const AdminHeader = ({
     const queryString = searchParams.toString();
     return queryString ? `/admin/people?${queryString}` : '/admin/people';
   }, [searchParams]);
+
+  const accessUrl = '/admin/access';
 
   // Sync status indicator
   const renderSyncStatus = () => {
@@ -164,6 +166,15 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Люди</span>
             </ToggleGroupItem>
           </Link>
+          <Link to={accessUrl}>
+            <ToggleGroupItem 
+              value="access" 
+              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Доступ</span>
+            </ToggleGroupItem>
+          </Link>
         </ToggleGroup>
       </div>
 
@@ -187,13 +198,14 @@ const AdminHeader = ({
               <span>{peopleCount} чел.</span>
             </div>
           )}
-          {renderSyncStatus()}
+          {currentView === 'access' && null}
+          {currentView !== 'access' && renderSyncStatus()}
         </div>
       )}
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
-        {currentView === 'initiatives' ? (
+        {currentView === 'initiatives' && (
           <UnifiedSettingsMenu
             onImportInitiatives={onImportClick}
             onExportAllInitiatives={onDownloadAll}
@@ -203,7 +215,8 @@ const AdminHeader = ({
             hasInitiativeFilters={hasFilters}
             hasData={hasData}
           />
-        ) : (
+        )}
+        {currentView === 'people' && (
           <UnifiedSettingsMenu
             onImportPeople={onImportPeople}
           />
