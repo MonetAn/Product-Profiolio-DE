@@ -64,23 +64,47 @@ export function useAccess(): AccessState {
     }
     if (fetchedRef.current) return;
     fetchedRef.current = true;
+    let cancelled = false;
+    let retryCount = 0;
+    const maxRetries = 1;
 
-    const setFailed = () =>
-      setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+    const setFailed = () => {
+      if (!cancelled) setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+    };
 
-    const timeoutId = setTimeout(setFailed, 8000);
+    const run = () => {
+      const timeoutId = setTimeout(setFailed, 10000);
 
-    supabase
-      .rpc('get_my_access')
-      .then(({ data, error }) => {
-        if (error) {
-          setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
-          return;
-        }
-        setAccess(parseAccessResponse(data));
-      })
-      .catch(setFailed)
-      .finally(() => clearTimeout(timeoutId));
+      supabase
+        .rpc('get_my_access')
+        .then(({ data, error }) => {
+          if (cancelled) return;
+          clearTimeout(timeoutId);
+          if (error) {
+            if (retryCount < maxRetries) {
+              retryCount++;
+              setTimeout(run, 1500);
+              return;
+            }
+            setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+            return;
+          }
+          setAccess(parseAccessResponse(data));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          clearTimeout(timeoutId);
+          if (retryCount < maxRetries) {
+            retryCount++;
+            setTimeout(run, 1500);
+            return;
+          }
+          setFailed();
+        });
+    };
+
+    run();
+    return () => { cancelled = true; };
   }, [shouldFetch, user?.id, isDodoEmployee]);
 
   useEffect(() => {

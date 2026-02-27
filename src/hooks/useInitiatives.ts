@@ -95,24 +95,28 @@ export function extractQuartersFromData(data: AdminDataRow[]): string[] {
   return Array.from(quarterSet).sort();
 }
 
+export const INITIATIVES_QUERY_KEY = ['initiatives'] as const;
+
+export async function fetchInitiatives(): Promise<AdminDataRow[]> {
+  const { data, error } = await supabase
+    .from('initiatives')
+    .select('*')
+    .order('unit')
+    .order('team')
+    .order('initiative');
+
+  if (error) throw error;
+  const rows = (data || []).map(dbToAdminRow);
+  const quarters = extractQuartersFromData(rows);
+  return rows.map(row => normalizeSupportCascade(row, quarters));
+}
+
 export function useInitiatives() {
   return useQuery({
-    queryKey: ['initiatives'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('initiatives')
-        .select('*')
-        .order('unit')
-        .order('team')
-        .order('initiative');
-      
-      if (error) throw error;
-      const rows = (data || []).map(dbToAdminRow);
-      const quarters = extractQuartersFromData(rows);
-      return rows.map(row => normalizeSupportCascade(row, quarters));
-    },
-    staleTime: 1000 * 60, // Consider data fresh for 1 minute
-    gcTime: 1000 * 60 * 5, // Keep in cache for 5 minutes
+    queryKey: INITIATIVES_QUERY_KEY,
+    queryFn: fetchInitiatives,
+    staleTime: 1000 * 60 * 3, // 3 minutes — меньше повторных запросов при переходах
+    gcTime: 1000 * 60 * 10, // 10 minutes in cache
   });
 }
 
