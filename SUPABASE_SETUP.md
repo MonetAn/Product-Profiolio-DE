@@ -13,7 +13,7 @@
 1. В том же проекте: **Authentication** → **Providers** → **Google**.
 2. Включите Google и укажите **Client ID** и **Client secret** из вашего Google Cloud (проект Product Portfolio или тот, что уже настраивали).
 3. **Authentication** → **URL Configuration**:
-   - в **Redirect URLs** добавьте: `http://localhost:8080`, `http://localhost:8080/**` и ваш прод-домен (например `https://product-porfolio-de.lovable.app`);
+   - в **Redirect URLs** добавьте: `http://localhost:8080`, `http://localhost:8080/**` и ваш прод-домен (например для GitHub Pages — `https://<user>.github.io/Product-Profiolio-DE/`);
    - при необходимости задайте **Site URL** (для прода — ваш домен приложения).
 
 После этого запустите приложение (`npm run dev`) и проверьте вход через Google на localhost.

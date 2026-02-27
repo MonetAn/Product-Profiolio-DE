@@ -33,7 +33,7 @@ npm run dev
 - **`src/components/`** — UI: `BudgetTreemap`, `StakeholdersTreemap`, `GanttView`, `FilterBar`, `Header`; папки `admin/`, `admin/people/`, `treemap/`, `ui/` (shadcn).
 - **`src/hooks/`** — `useAuth`, `useInitiatives`, `usePeople`, `usePeopleAssignments`, `useTeamSnapshots`, `useCSVImport`, и др.
 - **`src/lib/`** — `dataManager`, `adminDataManager`, `peopleDataManager` (работа с данными/агрегациями для тримапа и админки).
-- **`src/integrations/`** — `supabase/client.ts`, `supabase/types.ts` (типы БД); `lovable/index.ts` (legacy, не используется для входа).
+- **`src/integrations/`** — `supabase/client.ts`, `supabase/types.ts` (типы БД).
 - **`.env`** — `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` (не коммитить).
 
 Роуты: `/` — главная (тримап), `/admin` — инициативы, `/admin/people` — люди, `/admin/access` — управление доступом (только админы), `/auth` — вход.

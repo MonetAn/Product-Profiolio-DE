@@ -31,14 +31,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // Safeguard: stop loading after timeout (e.g. Supabase unreachable or missing .env)
+    const timeoutId = setTimeout(() => setLoading(false), 8000);
 
-    return () => subscription.unsubscribe();
+    // THEN check for existing session
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false))
+      .finally(() => clearTimeout(timeoutId));
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const signInWithGoogle = async () => {

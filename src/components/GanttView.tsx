@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { Upload, FileText, Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import {
   RawDataRow,
   calculateBudget,
@@ -580,6 +580,22 @@ const GanttView = ({
                 ? row.description 
                 : row.description.slice(0, 450) + '…'}
             </div>
+          </div>
+        )}
+
+        {row.documentationLink?.trim() && (
+          <div className="gantt-name-popup-section">
+            <div className="gantt-name-popup-label">Документация</div>
+            <a
+              href={row.documentationLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="gantt-name-popup-doc-link"
+              aria-label="Открыть документацию в новой вкладке"
+            >
+              <ExternalLink size={14} aria-hidden />
+              <span>Открыть документацию</span>
+            </a>
           </div>
         )}
 

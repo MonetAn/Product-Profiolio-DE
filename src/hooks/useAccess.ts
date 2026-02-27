@@ -35,13 +35,21 @@ export function useAccess(): AccessState {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
 
-    supabase.rpc('get_my_access').then(({ data, error }) => {
-      if (error) {
-        setAccess({ canAccess: false, isAdmin: false });
-        return;
-      }
-      setAccess(parseAccessResponse(data));
-    });
+    const setFailed = () => setAccess({ canAccess: false, isAdmin: false });
+
+    const timeoutId = setTimeout(setFailed, 8000);
+
+    supabase
+      .rpc('get_my_access')
+      .then(({ data, error }) => {
+        if (error) {
+          setAccess({ canAccess: false, isAdmin: false });
+          return;
+        }
+        setAccess(parseAccessResponse(data));
+      })
+      .catch(setFailed)
+      .finally(() => clearTimeout(timeoutId));
   }, [shouldFetch, user?.id, isDodoEmployee]);
 
   useEffect(() => {
