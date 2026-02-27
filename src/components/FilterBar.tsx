@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown } from 'lucide-react';
-import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, type SupportFilter } from '@/lib/dataManager';
+import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -210,7 +210,10 @@ const FilterBar = ({
       if (supportFilter === 'exclude' && isSupport) return acc;
       if (supportFilter === 'only' && !isSupport) return acc;
       if (showOnlyOfftrack && !isOffTrack) return acc;
-      if (selectedStakeholders.length > 0 && !selectedStakeholders.includes(row.stakeholders)) return acc;
+      if (selectedStakeholders.length > 0) {
+        const rowParts = parseStakeholderParts(row.stakeholders);
+        if (!rowParts.some(p => selectedStakeholders.includes(p))) return acc;
+      }
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return acc;
 
@@ -528,17 +531,17 @@ const FilterBar = ({
                       const matchesUnit = selectedUnits.length === 0 || selectedUnits.includes(row.unit);
                       const matchesTeam = selectedTeams.length === 0 || selectedTeams.includes(row.team);
                       if (matchesUnit && matchesTeam && row.stakeholders) {
-                        relevantStakeholders.add(row.stakeholders);
+                        parseStakeholderParts(row.stakeholders).forEach(part => relevantStakeholders.add(part));
                       }
                     });
                     
-                    // Sort: relevant first, then irrelevant
+                    // Sort: relevant first, then by display order
                     const sortedStakeholders = [...allStakeholders].sort((a, b) => {
                       const aRelevant = relevantStakeholders.has(a);
                       const bRelevant = relevantStakeholders.has(b);
                       if (aRelevant && !bRelevant) return -1;
                       if (!aRelevant && bRelevant) return 1;
-                      return a.localeCompare(b);
+                      return compareStakeholderOrder(a, b);
                     });
                     
                     return sortedStakeholders.map(s => {

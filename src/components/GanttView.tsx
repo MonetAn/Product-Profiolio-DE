@@ -9,6 +9,7 @@ import {
   isInitiativeOffTrack,
   formatBudgetShort,
   formatBudget,
+  parseStakeholderParts,
   type SupportFilter
 } from '@/lib/dataManager';
 import '@/styles/gantt.css';
@@ -107,7 +108,10 @@ const GanttView = ({
       if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return false;
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
-      if (selectedStakeholders.length > 0 && !selectedStakeholders.includes(row.stakeholders)) return false;
+      if (selectedStakeholders.length > 0) {
+        const rowParts = parseStakeholderParts(row.stakeholders);
+        if (!rowParts.some(p => selectedStakeholders.includes(p))) return false;
+      }
 
       // Cost filter
       const costValue = costType === 'period' 

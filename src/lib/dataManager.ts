@@ -78,15 +78,15 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
       if (year) yearSet.add(year);
     });
     
-    // Collect stakeholder combinations
+    // Collect stakeholder base entities (unique parts from all rows)
     if (row.stakeholders) {
-      stakeholderSet.add(row.stakeholders);
+      parseStakeholderParts(row.stakeholders).forEach(part => stakeholderSet.add(part));
     }
   });
 
   const availableQuarters = Array.from(quarterSet).sort();
   const availableYears = Array.from(yearSet).sort();
-  const stakeholderCombinations = Array.from(stakeholderSet).sort();
+  const stakeholderCombinations = sortStakeholderEntities(Array.from(stakeholderSet));
 
   // Convert rows
   const rawData: RawDataRow[] = dbRows.map(row => {
@@ -194,6 +194,41 @@ export function normalizeStakeholders(value: string): string {
   return parts.join(', ');
 }
 
+/** Split stakeholders string into base entities (e.g. "Russia, Central Asia" -> ["Russia", "Central Asia"]). */
+export function parseStakeholderParts(stakeholdersStr: string): string[] {
+  if (!stakeholdersStr) return [];
+  return stakeholdersStr.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/** Display order for stakeholder filter options. Unknown entities sort after these, alphabetically. */
+export const STAKEHOLDER_DISPLAY_ORDER = [
+  'Russia',
+  'Central Asia',
+  'Europe',
+  'MENA',
+  'Turkey+',
+  'Drinkit',
+  'IT'
+] as const;
+
+function getStakeholderOrderIndex(name: string): number {
+  const i = STAKEHOLDER_DISPLAY_ORDER.indexOf(name as typeof STAKEHOLDER_DISPLAY_ORDER[number]);
+  return i >= 0 ? i : STAKEHOLDER_DISPLAY_ORDER.length;
+}
+
+/** Compare two stakeholder names by display order (for sorting). */
+export function compareStakeholderOrder(a: string, b: string): number {
+  const iA = getStakeholderOrderIndex(a);
+  const iB = getStakeholderOrderIndex(b);
+  if (iA !== iB) return iA - iB;
+  return a.localeCompare(b);
+}
+
+/** Sort array of stakeholder entity names by display order. */
+export function sortStakeholderEntities(arr: string[]): string[] {
+  return [...arr].sort(compareStakeholderOrder);
+}
+
 export function detectPeriodsFromHeaders(headers: string[]): { years: string[]; quarters: string[] } {
   const yearSet = new Set<string>();
   const quarterSet = new Set<string>();
@@ -273,11 +308,11 @@ export function parseCSV(text: string): {
     rawData.push(row);
   }
 
-  // Collect unique stakeholder combinations
+  // Collect unique stakeholder base entities (not full combinations)
   const combos = new Set<string>();
   rawData.forEach(row => {
     if (row.stakeholders) {
-      combos.add(row.stakeholders);
+      parseStakeholderParts(row.stakeholders).forEach(part => combos.add(part));
     }
   });
 
@@ -285,7 +320,7 @@ export function parseCSV(text: string): {
     rawData,
     availableYears,
     availableQuarters,
-    stakeholderCombinations: Array.from(combos).sort()
+    stakeholderCombinations: sortStakeholderEntities(Array.from(combos))
   };
 }
 
@@ -380,7 +415,11 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions, budget: nu
   if (options.supportFilter === 'exclude' && isSupport) return false;
   if (options.supportFilter === 'only' && !isSupport) return false;
   if (options.showOnlyOfftrack && !isOffTrack) return false;
-  if (options.selectedStakeholders.length > 0 && !options.selectedStakeholders.includes(row.stakeholders)) return false;
+  if (options.selectedStakeholders.length > 0) {
+    const rowParts = parseStakeholderParts(row.stakeholders);
+    const hasMatch = rowParts.some(p => options.selectedStakeholders.includes(p));
+    if (!hasMatch) return false;
+  }
   if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit)) return false;
   if (options.unitFilter && row.unit !== options.unitFilter) return false;
   if (options.selectedTeams && options.selectedTeams.length > 0 && !options.selectedTeams.includes(row.team)) return false;
