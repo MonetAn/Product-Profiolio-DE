@@ -84,14 +84,22 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue =
           {node.name}
         </div>
         {showValue && node.height > 40 && !isTiny && (
-          <div 
-            className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
-            style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
-          >
-            {totalValue > 0
-              ? `${((node.value / totalValue) * 100).toFixed(1)}%`
-              : formatBudget(node.value)}
-          </div>
+          <>
+            {totalValue > 0 && (
+              <div 
+                className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
+                style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
+              >
+                {`${((node.value / totalValue) * 100).toFixed(1)}%`}
+              </div>
+            )}
+            <div 
+              className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
+              style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
+            >
+              {formatBudget(node.value)}
+            </div>
+          </>
         )}
       </div>
     </div>
