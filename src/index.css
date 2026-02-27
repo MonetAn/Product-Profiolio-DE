@@ -121,24 +121,24 @@
 }
 
 @keyframes slideInFromTop {
-  from { 
-    opacity: 0; 
-    transform: translateY(-10px); 
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
   }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 @keyframes dropdownIn {
-  from { 
-    opacity: 0; 
-    transform: translateY(-4px); 
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -156,4 +156,15 @@
 
 .slide-in-from-top-2 {
   animation: slideInFromTop 0.2s ease-out;
+}
+
+/* Маскот: покачивание влево-вправо (только char1) */
+@keyframes mascot-wiggle {
+  0%, 100% { transform: rotate(-5deg); }
+  50%      { transform: rotate(5deg); }
+}
+
+.mascot-wiggle {
+  animation: mascot-wiggle 1.5s ease-in-out infinite;
+  will-change: transform;
 }

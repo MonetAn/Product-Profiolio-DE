@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { Upload, ClipboardList, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { useToast } from '@/hooks/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
 import ScopeSelector from '@/components/admin/ScopeSelector';
@@ -176,19 +177,16 @@ const Admin = () => {
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 max-w-md text-center">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <h2 className="text-xl font-semibold">Ошибка загрузки данных</h2>
-          <p className="text-muted-foreground">
-            {error instanceof Error ? error.message : 'Не удалось загрузить инициативы'}
-          </p>
+      <MascotMessageScreen
+        title="Упс, не удалось загрузить данные"
+        description={error instanceof Error ? error.message : 'Не удалось загрузить инициативы'}
+        action={
           <Button onClick={() => refetch()} variant="outline" className="gap-2">
             <RefreshCw size={16} />
             Попробовать снова
           </Button>
-        </div>
-      </div>
+        }
+      />
     );
   }
 

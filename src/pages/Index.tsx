@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback, DragEvent } from 'react';
-import { Upload, Loader2 } from 'lucide-react';
+import { Upload, RefreshCw } from 'lucide-react';
+import { MascotMessageScreen } from '@/components/MascotMessageScreen';
+import { Button } from '@/components/ui/button';
 import Header, { ViewType } from '@/components/Header';
 import FilterBar from '@/components/FilterBar';
 import BudgetTreemap from '@/components/BudgetTreemap';
@@ -24,7 +26,7 @@ import { toast } from 'sonner';
 const Index = () => {
   const { isAdmin, canAccess, scope } = useAccess();
   // Fetch data from database
-  const { data: dbData, isLoading, error } = useInitiatives();
+  const { data: dbData, isLoading, error, refetch } = useInitiatives();
   
   // Data state (derived from DB or CSV fallback)
   const [rawData, setRawData] = useState<RawDataRow[]>([]);
@@ -407,50 +409,32 @@ const Index = () => {
     return budget > 0 && isInitiativeOffTrack(row, selectedQuarters);
   });
 
-  // Show loading state
-  if (isLoading && rawData.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="text-muted-foreground">Загрузка данных...</span>
-        </div>
-      </div>
-    );
-  }
+  // Show loading state — не полноэкранный лоадер: shell уже ниже, в main покажем «Загрузка…»
+  // (блок ниже удалён: return <MascotsLoadingScreen />)
 
   // Show error state
   if (error && rawData.length === 0) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <span className="text-destructive">Ошибка загрузки данных</span>
-          <span className="text-sm text-muted-foreground">{error.message}</span>
-        </div>
-      </div>
+      <MascotMessageScreen
+        title="Упс, не удалось загрузить данные"
+        description={error.message}
+        action={
+          <Button variant="outline" onClick={() => refetch()} className="gap-2">
+            <RefreshCw size={16} />
+            Попробовать снова
+          </Button>
+        }
+      />
     );
   }
 
   // Empty state: user has access but no data in their scope
   if (canAccess && rawData.length === 0 && !isLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header
-          currentView={currentView}
-          onViewChange={setCurrentView}
-          onSearchClick={() => setShowSearch(true)}
-          onShortcutsClick={() => setShowShortcuts(true)}
-          isAdmin={isAdmin}
-        />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4 text-center max-w-md px-4">
-            <span className="text-muted-foreground">По вашему доступу данных нет.</span>
-            <span className="text-sm text-muted-foreground">
-              Если считаете, что должны видеть часть портфеля, обратитесь к администратору.
-            </span>
-          </div>
-        </div>
-      </div>
+      <MascotMessageScreen
+        title="Упс, по вашему доступу данных нет"
+        description="Если считаете, что должны видеть часть портфеля, обратитесь к администратору."
+      />
     );
   }
 
@@ -569,6 +553,12 @@ const Index = () => {
       <main
         className={showScopeHint ? 'mt-[148px] h-[calc(100vh-148px)] overflow-hidden' : 'mt-[116px] h-[calc(100vh-116px)] overflow-hidden'}
       >
+        {isLoading && rawData.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            Загрузка…
+          </div>
+        ) : (
+          <>
         {currentView === 'budget' && (
           <BudgetTreemap
             data={currentRoot}
@@ -643,6 +633,8 @@ const Index = () => {
             costFilterMax={costFilterMax}
             costType={costType}
           />
+        )}
+          </>
         )}
       </main>
 

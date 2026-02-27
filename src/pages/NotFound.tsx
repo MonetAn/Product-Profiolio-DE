@@ -1,5 +1,7 @@
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { useEffect } from "react";
+import { MascotMessageScreen } from "@/components/MascotMessageScreen";
+import { Button } from "@/components/ui/button";
 
 const NotFound = () => {
   const location = useLocation();
@@ -9,15 +11,15 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">Oops! Page not found</p>
-        <a href="/" className="text-primary underline hover:text-primary/90">
-          Return to Home
-        </a>
-      </div>
-    </div>
+    <MascotMessageScreen
+      title="Упс, такой страницы нет"
+      description="Возможно, ссылка устарела или вы перешли по неверному адресу."
+      action={
+        <Button variant="outline" asChild>
+          <Link to="/">На главную</Link>
+        </Button>
+      }
+    />
   );
 };
 
