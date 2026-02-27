@@ -17,7 +17,7 @@ interface TreemapContainerProps {
   onNodeClick?: (node: TreeNode) => void;
   onNavigateBack?: () => void;
   canNavigateBack?: boolean;
-  onInitiativeClick?: (initiativeName: string) => void;
+  onInitiativeClick?: (initiativeName: string, path: string) => void;
   selectedQuarters?: string[];
   hasData?: boolean;
   onResetFilters?: () => void;
@@ -231,9 +231,9 @@ const TreemapContainer = ({
       return;
     }
     
-    // Initiative click → navigate to Gantt
+    // Initiative click → open peek modal (parent may navigate to Gantt from there)
     if (node.data.isInitiative && onInitiativeClick) {
-      onInitiativeClick(node.data.name);
+      onInitiativeClick(node.data.name, node.path);
       return;
     }
     

@@ -7,6 +7,7 @@ import FilterBar from '@/components/FilterBar';
 import BudgetTreemap from '@/components/BudgetTreemap';
 import StakeholdersTreemap from '@/components/StakeholdersTreemap';
 import GanttView from '@/components/GanttView';
+import { InitiativePeekModal } from '@/components/InitiativePeekModal';
 import {
   parseCSV,
   convertFromDB,
@@ -64,6 +65,7 @@ const Index = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showOfftrackModal, setShowOfftrackModal] = useState(false);
+  const [initiativePeekPath, setInitiativePeekPath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragging, setIsDragging] = useState(false);
 
@@ -348,6 +350,22 @@ const Index = () => {
     setHighlightedInitiative(null);
   };
 
+  // Resolve initiative row from treemap path (Unit/Team/Initiative or Stakeholder/Unit/Team/Initiative)
+  const initiativePeekRow = (() => {
+    if (!initiativePeekPath || rawData.length === 0) return null;
+    const parts = initiativePeekPath.split('/');
+    const unit = parts.length >= 3 ? parts[parts.length - 3] : '';
+    const teamRaw = parts.length >= 3 ? parts[parts.length - 2] : '';
+    const initiative = parts.length >= 3 ? parts[parts.length - 1] : '';
+    const team = teamRaw === 'Без команды' ? '' : teamRaw;
+    return rawData.find(
+      (r) =>
+        r.unit === unit &&
+        (r.team || 'Без команды') === (team || 'Без команды') &&
+        r.initiative === initiative
+    ) ?? null;
+  })();
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -556,9 +574,8 @@ const Index = () => {
             selectedQuarters={selectedQuarters}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
-            onInitiativeClick={(name) => {
-              setHighlightedInitiative(name);
-              setCurrentView('timeline');
+            onInitiativeClick={(name, path) => {
+              setInitiativePeekPath(path);
             }}
             onFileDrop={processCSVFile}
             hasData={rawData.length > 0}
@@ -582,9 +599,8 @@ const Index = () => {
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
             selectedQuarters={selectedQuarters}
             hasData={rawData.length > 0}
-            onInitiativeClick={(name) => {
-              setHighlightedInitiative(name);
-              setCurrentView('timeline');
+            onInitiativeClick={(name, path) => {
+              setInitiativePeekPath(path);
             }}
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
@@ -622,6 +638,19 @@ const Index = () => {
           </>
         )}
       </main>
+
+      {/* Initiative peek modal (from treemap click) */}
+      <InitiativePeekModal
+        open={initiativePeekPath !== null}
+        onOpenChange={(open) => !open && setInitiativePeekPath(null)}
+        row={initiativePeekRow}
+        selectedQuarters={selectedQuarters}
+        onGoToTimeline={(initiativeName) => {
+          setHighlightedInitiative(initiativeName);
+          setCurrentView('timeline');
+          setInitiativePeekPath(null);
+        }}
+      />
 
       {/* Search Overlay */}
       {showSearch && (
