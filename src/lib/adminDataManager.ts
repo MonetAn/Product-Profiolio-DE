@@ -141,19 +141,20 @@ export function parseAdminCSV(text: string): {
   const teamIdx = headers.findIndex(h => h.toLowerCase().includes('team') || h.toLowerCase() === 'команда');
   const initiativeIdx = headers.findIndex(h => h.toLowerCase().includes('initiative') || h.toLowerCase() === 'инициатива');
   const typeIdx = headers.findIndex(h => h.toLowerCase() === 'type' || h.toLowerCase() === 'тип');
-  const stakeholdersListIdx = headers.findIndex(h => h.toLowerCase() === 'stakeholders list' || h.toLowerCase() === 'список стейкхолдеров');
+  // Single source of truth: column "Stakeholders" (exact name to avoid matching "Stakeholders List")
+  const stakeholdersIdx = headers.findIndex(h => h.trim().toLowerCase() === 'stakeholders' || h.trim().toLowerCase() === 'стейкхолдеры');
   const descriptionIdx = headers.findIndex(h => h.toLowerCase().includes('description') || h.toLowerCase() === 'описание');
   const docLinkIdx = headers.findIndex(h => h.toLowerCase().includes('documentation') || h.toLowerCase().includes('doc link'));
-  const stakeholdersIdx = headers.findIndex(h => h.toLowerCase().includes('stakeholder') || h.toLowerCase() === 'стейкхолдеры');
 
   for (let i = 1; i < rows.length; i++) {
     const values = rows[i];
     if (values.length < 4) continue;
 
-    // Parse stakeholders list from CSV (comma-separated)
-    const stakeholdersListRaw = stakeholdersListIdx >= 0 ? values[stakeholdersListIdx]?.trim() || '' : '';
-    const parsedStakeholdersList = stakeholdersListRaw
-      ? stakeholdersListRaw.split(',').map(s => s.trim()).filter(Boolean)
+    // Single source: "Stakeholders" column → both stakeholders (string) and stakeholdersList (array)
+    const stakeholdersRaw = stakeholdersIdx >= 0 ? values[stakeholdersIdx]?.trim() || '' : '';
+    const stakeholdersStr = stakeholdersRaw;
+    const parsedStakeholdersList = stakeholdersRaw
+      ? stakeholdersRaw.split(',').map(s => s.trim()).filter(Boolean)
       : [];
 
     const row: AdminDataRow = {
@@ -165,7 +166,7 @@ export function parseAdminCSV(text: string): {
       stakeholdersList: parsedStakeholdersList,
       description: values[descriptionIdx >= 0 ? descriptionIdx : 3]?.trim() || '',
       documentationLink: docLinkIdx >= 0 ? values[docLinkIdx]?.trim() || '' : '',
-      stakeholders: values[stakeholdersIdx >= 0 ? stakeholdersIdx : 4]?.trim() || '',
+      stakeholders: stakeholdersStr,
       quarterlyData: {}
     };
 
@@ -242,7 +243,7 @@ export function exportAdminCSV(
       escapeCSVValue(row.team),
       escapeCSVValue(row.initiative),
       escapeCSVValue(row.initiativeType || ''),
-      escapeCSVValue(row.stakeholdersList?.join(', ') || ''),
+      escapeCSVValue(row.stakeholders),
       escapeCSVValue(row.description),
       escapeCSVValue(row.documentationLink),
       escapeCSVValue(row.stakeholders)
@@ -430,4 +431,22 @@ export function getInheritedSupportInfo(
   }
   
   return { isInherited: false, fromQuarter: null };
+}
+
+// Normalize support cascade: if any quarter has support = true, that quarter and all
+// subsequent quarters (by order) are set to support = true. Used on load to fix inconsistent data.
+export function normalizeSupportCascade(
+  row: AdminDataRow,
+  quarters: string[]
+): AdminDataRow {
+  const firstSupportIndex = quarters.findIndex(q => row.quarterlyData[q]?.support === true);
+  if (firstSupportIndex === -1) return row;
+
+  const updatedQuarterlyData = { ...row.quarterlyData };
+  for (let i = firstSupportIndex; i < quarters.length; i++) {
+    const q = quarters[i];
+    const existing = updatedQuarterlyData[q] || createEmptyQuarterData();
+    updatedQuarterlyData[q] = { ...existing, support: true };
+  }
+  return { ...row, quarterlyData: updatedQuarterlyData };
 }

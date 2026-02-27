@@ -31,7 +31,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, createEmptyQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
@@ -41,6 +41,7 @@ interface InitiativeTableProps {
   selectedTeams: string[];
   onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
+  onQuarterlyDataBulkChange?: (id: string, quarterlyData: Record<string, AdminQuarterData>) => void;
   onAddInitiative: () => void;
   onDeleteInitiative: (id: string) => Promise<void>;
   modifiedIds: Set<string>;
@@ -74,6 +75,7 @@ const InitiativeTable = ({
   selectedTeams,
   onDataChange,
   onQuarterDataChange,
+  onQuarterlyDataBulkChange,
   onAddInitiative,
   onDeleteInitiative,
   modifiedIds,
@@ -365,19 +367,20 @@ const InitiativeTable = ({
                     const teamEffort = validateTeamQuarterEffort(allData, row.unit, row.team, q);
                     const supportInfo = getInheritedSupportInfo(row.quarterlyData, q, quarters);
                     
-                    // Handle cascading support change
+                    // Handle cascading support change — one bulk update so all quarters persist
                     const handleSupportChange = (value: boolean) => {
-                      if (value) {
-                        // Enable support for this and all subsequent quarters
-                        const quarterIndex = quarters.indexOf(q);
+                      const quarterIndex = quarters.indexOf(q);
+                      if (onQuarterlyDataBulkChange) {
+                        const newQuarterlyData = { ...row.quarterlyData };
                         for (let i = quarterIndex; i < quarters.length; i++) {
-                          onQuarterDataChange(row.id, quarters[i], 'support', true);
+                          const qKey = quarters[i];
+                          const existing = newQuarterlyData[qKey] || createEmptyQuarterData();
+                          newQuarterlyData[qKey] = { ...existing, support: value };
                         }
+                        onQuarterlyDataBulkChange(row.id, newQuarterlyData);
                       } else {
-                        // Disable support - also disable for all subsequent quarters
-                        const quarterIndex = quarters.indexOf(q);
                         for (let i = quarterIndex; i < quarters.length; i++) {
-                          onQuarterDataChange(row.id, quarters[i], 'support', false);
+                          onQuarterDataChange(row.id, quarters[i], 'support', value);
                         }
                       }
                     };

@@ -9,6 +9,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Upload, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { useCSVImport } from '@/hooks/useCSVImport';
 
@@ -21,6 +23,7 @@ const CSVImportDialog = ({ open, onOpenChange }: CSVImportDialogProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [updateExisting, setUpdateExisting] = useState(false);
   const { importCSV, isImporting, progress } = useCSVImport();
 
   const handleFileSelect = useCallback((file: File) => {
@@ -49,10 +52,10 @@ const CSVImportDialog = ({ open, onOpenChange }: CSVImportDialogProps) => {
   const handleImport = useCallback(async () => {
     if (!selectedFile) return;
     
-    await importCSV(selectedFile, { skipDuplicates: true });
+    await importCSV(selectedFile, { skipDuplicates: true, updateExisting });
     setSelectedFile(null);
     onOpenChange(false);
-  }, [selectedFile, importCSV, onOpenChange]);
+  }, [selectedFile, importCSV, onOpenChange, updateExisting]);
 
   const handleClose = useCallback(() => {
     if (!isImporting) {
@@ -67,8 +70,7 @@ const CSVImportDialog = ({ open, onOpenChange }: CSVImportDialogProps) => {
         <DialogHeader>
           <DialogTitle>Импорт из CSV</DialogTitle>
           <DialogDescription>
-            Загрузите файл portfolio.csv для импорта инициатив в базу данных.
-            Дублирующиеся записи (по Unit + Team + Initiative) будут пропущены.
+            Загрузите CSV для импорта инициатив. Дубликаты (Unit + Team + Initiative) по умолчанию пропускаются. Включите «Обновлять существующие», чтобы перезаписать стейкхолдеры и квартальные данные (в т.ч. поддержку) из файла.
           </DialogDescription>
         </DialogHeader>
 
@@ -105,8 +107,20 @@ const CSVImportDialog = ({ open, onOpenChange }: CSVImportDialogProps) => {
             <div className="flex items-start gap-2 mt-4 p-3 bg-accent border border-border rounded-lg">
               <AlertTriangle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
               <p className="text-sm text-muted-foreground">
-                Это действие добавит новые инициативы в базу данных. Существующие записи не будут перезаписаны.
+                {updateExisting
+                  ? 'Существующие инициативы будут обновлены (стейкхолдеры, квартальные данные, поддержка). Новые — добавлены.'
+                  : 'Будут добавлены только новые инициативы. Существующие записи не перезаписываются.'}
               </p>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <Checkbox
+                id="update-existing"
+                checked={updateExisting}
+                onCheckedChange={(v) => setUpdateExisting(v === true)}
+              />
+              <Label htmlFor="update-existing" className="text-sm cursor-pointer">
+                Обновлять существующие инициативы по данным из CSV
+              </Label>
             </div>
           </div>
         ) : (

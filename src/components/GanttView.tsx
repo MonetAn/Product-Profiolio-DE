@@ -8,7 +8,8 @@ import {
   isInitiativeSupport,
   isInitiativeOffTrack,
   formatBudgetShort,
-  formatBudget
+  formatBudget,
+  type SupportFilter
 } from '@/lib/dataManager';
 import '@/styles/gantt.css';
 
@@ -30,7 +31,7 @@ interface NamePopupData {
 interface GanttViewProps {
   rawData: RawDataRow[];
   selectedQuarters: string[];
-  hideSupport: boolean;
+  supportFilter: SupportFilter;
   showOnlyOfftrack: boolean;
   selectedUnits: string[];
   selectedTeams: string[];
@@ -48,7 +49,7 @@ interface GanttViewProps {
 const GanttView = ({
   rawData,
   selectedQuarters,
-  hideSupport,
+  supportFilter,
   showOnlyOfftrack,
   selectedUnits,
   selectedTeams,
@@ -100,7 +101,9 @@ const GanttView = ({
       const periodBudget = calculateBudget(row, selectedQuarters);
       if (periodBudget === 0) return false;
 
-      if (hideSupport && isInitiativeSupport(row, selectedQuarters)) return false;
+      const isSupport = isInitiativeSupport(row, selectedQuarters);
+      if (supportFilter === 'exclude' && isSupport) return false;
+      if (supportFilter === 'only' && !isSupport) return false;
       if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return false;
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
@@ -132,7 +135,7 @@ const GanttView = ({
     }
 
     return result;
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
 
   // Calculate Support/Development budget breakdown
   const { supportTotal, developmentTotal, grandTotal, supportPercent } = useMemo(() => {

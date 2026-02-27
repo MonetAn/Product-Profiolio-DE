@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, normalizeSupportCascade } from '@/lib/adminDataManager';
 import { Tables, Json } from '@/integrations/supabase/types';
 
 type DBInitiative = Tables<'initiatives'>;
@@ -105,7 +105,9 @@ export function useInitiatives() {
         .order('initiative');
       
       if (error) throw error;
-      return (data || []).map(dbToAdminRow);
+      const rows = (data || []).map(dbToAdminRow);
+      const quarters = extractQuartersFromData(rows);
+      return rows.map(row => normalizeSupportCascade(row, quarters));
     },
     staleTime: 1000 * 60, // Consider data fresh for 1 minute
     gcTime: 1000 * 60 * 5, // Keep in cache for 5 minutes

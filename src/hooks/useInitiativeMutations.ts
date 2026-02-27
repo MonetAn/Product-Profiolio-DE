@@ -351,6 +351,25 @@ export function useInitiativeMutations() {
     setPendingCount(debounceTimers.current.size);
   }, [updateMutation, queryClient, syncAssignments]);
 
+  // Bulk update quarterly data (e.g. support cascade) — one optimistic update, one API call
+  const updateQuarterDataBulk = useCallback((
+    id: string,
+    quarterlyData: Record<string, AdminQuarterData>
+  ) => {
+    setSyncStatus('saving');
+    setLastError(null);
+    queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) =>
+      (old || []).map(row =>
+        row.id === id ? { ...row, quarterlyData } : row
+      )
+    );
+    updateMutation.mutate({
+      id,
+      field: 'quarterlyData',
+      value: quarterlyDataToJson(quarterlyData),
+    });
+  }, [updateMutation, queryClient]);
+
   // Immediate update (no debounce)
   const immediateUpdate = useCallback((
     id: string,
@@ -380,6 +399,7 @@ export function useInitiativeMutations() {
     // Update methods
     updateInitiative: debouncedUpdate,
     updateQuarterData,
+    updateQuarterDataBulk,
     immediateUpdate,
     
     // CRUD operations

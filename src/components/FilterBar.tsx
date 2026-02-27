@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown } from 'lucide-react';
-import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport } from '@/lib/dataManager';
+import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -17,9 +17,9 @@ interface FilterBarProps {
   onUnitsChange: (units: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
   
-  // Support/Offtrack toggles
-  hideSupport: boolean;
-  onHideSupportChange: (val: boolean) => void;
+  // Support filter: all | exclude support | only support
+  supportFilter: SupportFilter;
+  onSupportFilterChange: (val: SupportFilter) => void;
   showOnlyOfftrack: boolean;
   onShowOnlyOfftrackChange: (val: boolean) => void;
   
@@ -77,8 +77,8 @@ const FilterBar = ({
   selectedTeams,
   onUnitsChange,
   onTeamsChange,
-  hideSupport,
-  onHideSupportChange,
+  supportFilter,
+  onSupportFilterChange,
   showOnlyOfftrack,
   onShowOnlyOfftrackChange,
   allStakeholders,
@@ -207,7 +207,8 @@ const FilterBar = ({
       const isSupport = isInitiativeSupport(row, selectedQuarters);
       const isOffTrack = isInitiativeOffTrack(row, selectedQuarters);
       
-      if (hideSupport && isSupport) return acc;
+      if (supportFilter === 'exclude' && isSupport) return acc;
+      if (supportFilter === 'only' && !isSupport) return acc;
       if (showOnlyOfftrack && !isOffTrack) return acc;
       if (selectedStakeholders.length > 0 && !selectedStakeholders.includes(row.stakeholders)) return acc;
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
@@ -748,26 +749,30 @@ const FilterBar = ({
 
         {/* Toggles Group */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Hide support toggle with tooltip */}
+          {/* Support filter: All | Exclude | Only */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary max-w-[130px]">
-                  <input
-                    type="checkbox"
-                    checked={hideSupport}
-                    onChange={(e) => onHideSupportChange(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className={`w-3.5 h-3.5 flex-shrink-0 border rounded flex items-center justify-center ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                    {hideSupport && <Check size={10} />}
-                  </span>
-                  <span className="truncate" title="Выключить саппорт">Выкл. саппорт</span>
-                  <HelpCircle size={10} className="text-muted-foreground/60 flex-shrink-0" />
-                </label>
+                <div className="flex items-center gap-0.5 rounded border border-border overflow-hidden text-[11px] text-muted-foreground">
+                  {(['all', 'exclude', 'only'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => onSupportFilterChange(mode)}
+                      className={`px-2 py-1 min-w-0 transition-colors ${
+                        supportFilter === mode
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-secondary'
+                      }`}
+                    >
+                      {mode === 'all' ? 'Все' : mode === 'exclude' ? 'Разработка' : 'Поддержка'}
+                    </button>
+                  ))}
+                  <HelpCircle size={10} className="text-muted-foreground/60 flex-shrink-0 mr-1 self-center" />
+                </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[240px] text-xs">
-                Скрывает инициативу, если за последний квартал выбранного периода стоит поддержка
+              <TooltipContent side="bottom" className="max-w-[260px] text-xs">
+                Все — показать все инициативы. Разработка — только инициативы в разработке (без поддержки). Поддержка — только инициативы на поддержке (по последнему кварталу периода).
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

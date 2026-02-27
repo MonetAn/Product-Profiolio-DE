@@ -15,6 +15,7 @@ import {
   formatBudget,
   calculateBudget,
   isInitiativeOffTrack,
+  type SupportFilter,
 } from '@/lib/dataManager';
 import { useInitiatives } from '@/hooks/useInitiatives';
 import { useAccess } from '@/hooks/useAccess';
@@ -43,7 +44,7 @@ const Index = () => {
   // Filter state - changed to multi-select arrays
   const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [hideSupport, setHideSupport] = useState(false);
+  const [supportFilter, setSupportFilter] = useState<SupportFilter>('all');
   const [showOnlyOfftrack, setShowOnlyOfftrack] = useState(false);
   const [selectedStakeholders, setSelectedStakeholders] = useState<string[]>([]);
   const [showTeams, setShowTeams] = useState(false);
@@ -106,7 +107,7 @@ const Index = () => {
 
     const options = {
       selectedQuarters,
-      hideSupportInitiatives: hideSupport,
+      supportFilter,
       showOnlyOfftrack,
       selectedStakeholders,
       unitFilter,
@@ -124,7 +125,7 @@ const Index = () => {
     setStakeholdersData(stakeholdersTree);
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives]);
 
   useEffect(() => {
     rebuildTree();
@@ -313,7 +314,7 @@ const Index = () => {
     setSelectedUnits([]);
     setSelectedTeams([]);
     setSelectedStakeholders([]);
-    setHideSupport(false);
+    setSupportFilter('all');
     setShowOnlyOfftrack(false);
     
     // Reset cost filters
@@ -331,7 +332,7 @@ const Index = () => {
   const hasActiveFilters = selectedUnits.length > 0 || 
                            selectedTeams.length > 0 || 
                            selectedStakeholders.length > 0 ||
-                           hideSupport || 
+                           supportFilter !== 'all' || 
                            showOnlyOfftrack ||
                            costSortOrder !== 'none' ||
                            costFilterMin !== null ||
@@ -483,8 +484,8 @@ const Index = () => {
           setZoomPath([]);
           setResetZoomTrigger(prev => prev + 1);
         }}
-        hideSupport={hideSupport}
-        onHideSupportChange={setHideSupport}
+        supportFilter={supportFilter}
+        onSupportFilterChange={setSupportFilter}
         showOnlyOfftrack={showOnlyOfftrack}
         onShowOnlyOfftrackChange={setShowOnlyOfftrack}
         allStakeholders={stakeholderCombinations}
@@ -589,7 +590,7 @@ const Index = () => {
           <GanttView
             rawData={rawData}
             selectedQuarters={selectedQuarters}
-            hideSupport={hideSupport}
+            supportFilter={supportFilter}
             showOnlyOfftrack={showOnlyOfftrack}
             selectedUnits={selectedUnits}
             selectedTeams={selectedTeams}

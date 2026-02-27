@@ -33,6 +33,7 @@ const Admin = () => {
   const { 
     updateInitiative, 
     updateQuarterData, 
+    updateQuarterDataBulk,
     createInitiative, 
     deleteInitiative,
     syncStatus,
@@ -80,6 +81,13 @@ const Admin = () => {
   ) => {
     updateQuarterData(id, quarter, field, value);
   }, [updateQuarterData]);
+
+  const handleQuarterlyDataBulkChange = useCallback((
+    id: string,
+    quarterlyData: Record<string, AdminQuarterData>
+  ) => {
+    updateQuarterDataBulk(id, quarterlyData);
+  }, [updateQuarterDataBulk]);
 
   // New initiative handler
   const handleAddInitiative = useCallback(async (data: {
@@ -256,6 +264,7 @@ const Admin = () => {
                   selectedTeams={selectedTeams}
                   onDataChange={handleDataChange}
                   onQuarterDataChange={handleQuarterDataChange}
+                  onQuarterlyDataBulkChange={handleQuarterlyDataBulkChange}
                   onAddInitiative={() => setNewDialogOpen(true)}
                   onDeleteInitiative={handleDeleteInitiative}
                   modifiedIds={new Set()}

@@ -314,10 +314,10 @@ export function getInitiativeQuarters(row: RawDataRow): string[] {
   return Object.keys(row.quarterlyData).filter(q => row.quarterlyData[q].budget > 0);
 }
 
+/** True if the initiative has support in any quarter of the selected period. */
 export function isInitiativeSupport(row: RawDataRow, selectedQuarters: string[]): boolean {
   if (selectedQuarters.length === 0) return false;
-  const lastQ = selectedQuarters[selectedQuarters.length - 1];
-  return row.quarterlyData[lastQ]?.support ?? false;
+  return selectedQuarters.some(q => row.quarterlyData[q]?.support === true);
 }
 
 export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]): boolean {
@@ -329,9 +329,11 @@ export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]
 }
 
 // ===== DATA TREE BUILDING =====
+export type SupportFilter = 'all' | 'exclude' | 'only';
+
 export interface BuildTreeOptions {
   selectedQuarters: string[];
-  hideSupportInitiatives: boolean;
+  supportFilter: SupportFilter;
   showOnlyOfftrack: boolean;
   selectedStakeholders: string[];
   unitFilter: string;
@@ -375,7 +377,8 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions, budget: nu
   const isSupport = isInitiativeSupport(row, options.selectedQuarters);
   const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
 
-  if (options.hideSupportInitiatives && isSupport) return false;
+  if (options.supportFilter === 'exclude' && isSupport) return false;
+  if (options.supportFilter === 'only' && !isSupport) return false;
   if (options.showOnlyOfftrack && !isOffTrack) return false;
   if (options.selectedStakeholders.length > 0 && !options.selectedStakeholders.includes(row.stakeholders)) return false;
   if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit)) return false;
