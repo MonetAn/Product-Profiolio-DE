@@ -24,6 +24,16 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import type { Database } from '@/integrations/supabase/types';
 
 type AllowedUserRow = Database['public']['Tables']['allowed_users']['Row'];
@@ -69,6 +79,7 @@ export default function AdminAccess() {
   const [scopeSelectedUnits, setScopeSelectedUnits] = useState<string[]>([]);
   const [scopeSelectedPairs, setScopeSelectedPairs] = useState<TeamPair[]>([]);
   const [scopeSaving, setScopeSaving] = useState(false);
+  const [deleteConfirmRow, setDeleteConfirmRow] = useState<AllowedUserRow | null>(null);
 
   const fetchOptions = useCallback(async () => {
     const [initRes, peopleRes] = await Promise.all([
@@ -159,7 +170,7 @@ export default function AdminAccess() {
       toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Роль обновлена', description: `${row.email} — ${newRole === 'admin' ? 'Админ' : 'Пользователь'}` });
+    toast({ title: 'Роль обновлена', description: `${row.email} — ${newRole === 'admin' ? 'Admin' : 'User'}` });
     fetchList();
   };
 
@@ -180,7 +191,21 @@ export default function AdminAccess() {
       return;
     }
     toast({ title: 'Доступ удалён', description: row.email });
+    if (scopeDialogUserId === id) closeScopeDialog();
     fetchList();
+  };
+
+  const requestDelete = (row: AllowedUserRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isSelf(row)) {
+      toast({ title: 'Нельзя удалить себя', variant: 'destructive' });
+      return;
+    }
+    if (row.role === 'admin' && adminCount <= 1) {
+      toast({ title: 'Нельзя удалить последнего админа', variant: 'destructive' });
+      return;
+    }
+    setDeleteConfirmRow(row);
   };
 
   const editingRow = scopeDialogUserId ? list.find((r) => r.id === scopeDialogUserId) : null;
@@ -318,7 +343,6 @@ export default function AdminAccess() {
                     <TableRow>
                       <TableHead>Email</TableHead>
                       <TableHead>Роль</TableHead>
-                      <TableHead className="w-[120px]">Действия</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -329,10 +353,25 @@ export default function AdminAccess() {
                         onClick={() => selectUserForEditing(row)}
                       >
                         <TableCell className="font-medium">
-                          {row.email}
-                          {isSelf(row) && (
-                            <span className="ml-2 text-xs text-muted-foreground">(вы)</span>
-                          )}
+                          <div className="flex items-center gap-2 w-full min-w-0">
+                            <span className="truncate min-w-0">
+                              {row.email}
+                              {isSelf(row) && (
+                                <span className="ml-2 text-xs text-muted-foreground">(вы)</span>
+                              )}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 ml-auto"
+                              onClick={(e) => requestDelete(row, e)}
+                              disabled={isSelf(row) || (row.role === 'admin' && adminCount <= 1)}
+                              title={isSelf(row) ? 'Нельзя удалить себя' : 'Удалить доступ'}
+                              aria-label={isSelf(row) ? 'Нельзя удалить себя' : `Удалить доступ для ${row.email}`}
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
@@ -349,12 +388,12 @@ export default function AdminAccess() {
                             <SelectContent>
                               <SelectItem value="admin">
                                 <span className="flex items-center gap-2">
-                                  <ShieldCheck size={14} /> Админ
+                                  <ShieldCheck size={14} /> Admin
                                 </span>
                               </SelectItem>
                               <SelectItem value="user">
                                 <span className="flex items-center gap-2">
-                                  <User size={14} /> Пользователь
+                                  <User size={14} /> User
                                 </span>
                               </SelectItem>
                             </SelectContent>
@@ -362,22 +401,6 @@ export default function AdminAccess() {
                           {cannotDemoteSelf(row) && (
                             <p className="text-xs text-amber-600 mt-1">Вы последний админ</p>
                           )}
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(row.id);
-                            }}
-                            disabled={isSelf(row) || (row.role === 'admin' && adminCount <= 1)}
-                            title={isSelf(row) ? 'Нельзя удалить себя' : 'Удалить доступ'}
-                          >
-                            <Trash2 size={14} />
-                            <span className="ml-1">Удалить</span>
-                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -408,20 +431,20 @@ export default function AdminAccess() {
                 </p>
               </div>
               <ScrollArea className="flex-1 min-h-0 mt-4">
-                <div className="space-y-6 pr-4">
+                <div className="space-y-4 pr-4">
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="scope-full"
                       checked={scopeFullAccess}
                       onCheckedChange={(c) => setScopeFullAccess(!!c)}
                     />
-                    <Label htmlFor="scope-full" className="cursor-pointer">Полный доступ (видеть все юниты и команды)</Label>
+                    <Label htmlFor="scope-full" className="cursor-pointer font-medium">Полный доступ (все юниты и команды)</Label>
                   </div>
-                  {!scopeFullAccess && (units.length > 0 || unitKeysForTeams.length > 0) && (
-                    <div className="space-y-2">
-                      <Label>Юниты и команды</Label>
+                  {units.length > 0 || unitKeysForTeams.length > 0 ? (
+                    <div className={`space-y-2 ${scopeFullAccess ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <Label className="text-muted-foreground">Юниты и команды</Label>
                       <p className="text-xs text-muted-foreground">
-                        Отметьте юнит — доступ ко всему юниту. Или отметьте только нужные команды.
+                        Снимите галочку «Полный доступ» выше, чтобы выбрать отдельные юниты или команды.
                       </p>
                       <div className="rounded-md border p-3 space-y-4">
                         {units.map((unit) => {
@@ -446,6 +469,7 @@ export default function AdminAccess() {
                                         setScopeSelectedPairs((prev) => prev.filter((p) => p.unit !== unit));
                                       }
                                     }}
+                                    disabled={scopeFullAccess}
                                   />
                                   {unit}
                                 </label>
@@ -455,6 +479,7 @@ export default function AdminAccess() {
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 text-xs"
+                                  disabled={scopeFullAccess}
                                   onClick={() => {
                                     if (unitChecked) {
                                       setScopeSelectedUnits((prev) => prev.filter((x) => x !== unit));
@@ -480,7 +505,7 @@ export default function AdminAccess() {
                                     <Checkbox
                                       checked={unitChecked || scopeSelectedPairs.some((x) => x.unit === p.unit && x.team === p.team)}
                                       onCheckedChange={() => toggleScopePair(p)}
-                                      disabled={unitChecked}
+                                      disabled={unitChecked || scopeFullAccess}
                                     />
                                     {p.team}
                                   </label>
@@ -491,11 +516,11 @@ export default function AdminAccess() {
                           );
                         })}
                       </div>
-                      {scopeSelectedUnits.length === 0 && scopeSelectedPairs.length === 0 && (
+                      {!scopeFullAccess && scopeSelectedUnits.length === 0 && scopeSelectedPairs.length === 0 && (
                         <p className="text-xs text-amber-600">Не выбрано ни юнитов, ни команд — пользователь не будет видеть данные.</p>
                       )}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </ScrollArea>
               <div className="shrink-0 flex gap-2 pt-4 border-t border-border mt-4">
@@ -511,6 +536,31 @@ export default function AdminAccess() {
           )}
         </div>
       </main>
+
+      <AlertDialog open={!!deleteConfirmRow} onOpenChange={(open) => !open && setDeleteConfirmRow(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить доступ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Пользователь {deleteConfirmRow?.email} потеряет доступ к дашборду. Вы сможете снова добавить его позже.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deleteConfirmRow) return;
+                const id = deleteConfirmRow.id;
+                setDeleteConfirmRow(null);
+                await handleDelete(id);
+              }}
+            >
+              Удалить доступ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
