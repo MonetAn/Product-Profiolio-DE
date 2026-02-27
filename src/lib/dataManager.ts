@@ -229,6 +229,14 @@ export function sortStakeholderEntities(arr: string[]): string[] {
   return [...arr].sort(compareStakeholderOrder);
 }
 
+/** Canonical key for a set of stakeholders (same set, any order → same key). Used for treemap grouping. */
+export function getStakeholderSetKey(stakeholdersStr: string): string {
+  if (!stakeholdersStr || !stakeholdersStr.trim()) return 'Без стейкхолдера';
+  const parts = parseStakeholderParts(stakeholdersStr);
+  if (parts.length === 0) return 'Без стейкхолдера';
+  return sortStakeholderEntities(parts).join(', ');
+}
+
 export function detectPeriodsFromHeaders(headers: string[]): { years: string[]; quarters: string[] } {
   const yearSet = new Set<string>();
   const quarterSet = new Set<string>();
@@ -780,7 +788,7 @@ function buildStakeholdersUnitsOnlyTree(rawData: RawDataRow[], options: BuildTre
     const budget = calculateBudget(row, options.selectedQuarters);
     if (!shouldIncludeRow(row, options, budget)) return;
 
-    const stakeholderKey = row.stakeholders || 'Без стейкхолдера';
+    const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
 
     if (!stakeholderMap[stakeholderKey]) {
       stakeholderMap[stakeholderKey] = { 
@@ -828,7 +836,7 @@ function buildStakeholdersUnitsTeamsTree(rawData: RawDataRow[], options: BuildTr
     const budget = calculateBudget(row, options.selectedQuarters);
     if (!shouldIncludeRow(row, options, budget)) return;
 
-    const stakeholderKey = row.stakeholders || 'Без стейкхолдера';
+    const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
 
     if (!stakeholderMap[stakeholderKey]) {
       stakeholderMap[stakeholderKey] = { 
@@ -893,7 +901,7 @@ function buildStakeholdersFullTree(rawData: RawDataRow[], options: BuildTreeOpti
     const budget = calculateBudget(row, options.selectedQuarters);
     if (!shouldIncludeRow(row, options, budget)) return;
 
-    const stakeholderKey = row.stakeholders || 'Без стейкхолдера';
+    const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
 
@@ -977,7 +985,7 @@ function buildStakeholdersUnitsInitiativesTree(rawData: RawDataRow[], options: B
     const budget = calculateBudget(row, options.selectedQuarters);
     if (!shouldIncludeRow(row, options, budget)) return;
 
-    const stakeholderKey = row.stakeholders || 'Без стейкхолдера';
+    const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
 
