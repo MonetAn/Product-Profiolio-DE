@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown } from 'lucide-react';
-import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, type SupportFilter } from '@/lib/dataManager';
+import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -224,7 +224,7 @@ const FilterBar = ({
           if (row.unit !== zoomPath[0]) return acc;
           if (zoomPath.length >= 2 && row.team !== zoomPath[1]) return acc;
         } else {
-          if (row.stakeholders !== zoomPath[0]) return acc;
+          if (getStakeholderSetKey(row.stakeholders || '') !== zoomPath[0]) return acc;
           if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
           if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
         }
