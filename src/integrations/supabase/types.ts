@@ -324,18 +324,24 @@ export type Database = {
           email: string
           role: string
           created_at: string
+          allowed_units: string[] | null
+          allowed_team_pairs: Json | null
         }
         Insert: {
           id?: string
           email: string
           role: string
           created_at?: string
+          allowed_units?: string[] | null
+          allowed_team_pairs?: Json | null
         }
         Update: {
           id?: string
           email?: string
           role?: string
           created_at?: string
+          allowed_units?: string[] | null
+          allowed_team_pairs?: Json | null
         }
         Relationships: []
       }

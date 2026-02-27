@@ -22,7 +22,7 @@ import { useAccess } from '@/hooks/useAccess';
 import { toast } from 'sonner';
 
 const Index = () => {
-  const { isAdmin } = useAccess();
+  const { isAdmin, canAccess, scope } = useAccess();
   // Fetch data from database
   const { data: dbData, isLoading, error } = useInitiatives();
   
@@ -431,6 +431,31 @@ const Index = () => {
     );
   }
 
+  // Empty state: user has access but no data in their scope
+  if (canAccess && rawData.length === 0 && !isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          onSearchClick={() => setShowSearch(true)}
+          onShortcutsClick={() => setShowShortcuts(true)}
+          isAdmin={isAdmin}
+        />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center max-w-md px-4">
+            <span className="text-muted-foreground">По вашему доступу данных нет.</span>
+            <span className="text-sm text-muted-foreground">
+              Если считаете, что должны видеть часть портфеля, обратитесь к администратору.
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const showScopeHint = canAccess && !scope.seeAll && (scope.allowedUnits.length > 0 || scope.allowedTeamPairs.length > 0);
+
   return (
     <div 
       className="min-h-screen bg-background overflow-hidden"
@@ -527,8 +552,23 @@ const Index = () => {
         currentView={currentView}
       />
 
+      {showScopeHint && (
+        <div className="bg-muted/50 border-b border-border px-4 py-2 text-sm text-muted-foreground flex items-center justify-center gap-2 flex-wrap">
+          <span>Вы видите только выбранные юниты и команды:</span>
+          {scope.allowedUnits.length > 0 && (
+            <span>юниты {scope.allowedUnits.join(', ')}</span>
+          )}
+          {scope.allowedUnits.length > 0 && scope.allowedTeamPairs.length > 0 && <span>;</span>}
+          {scope.allowedTeamPairs.length > 0 && (
+            <span>команды {scope.allowedTeamPairs.map((p) => `${p.unit} → ${p.team}`).join(', ')}</span>
+          )}
+        </div>
+      )}
+
       {/* Main Content - full height without padding for immersive treemap */}
-      <main className="mt-[116px] h-[calc(100vh-116px)] overflow-hidden">
+      <main
+        className={showScopeHint ? 'mt-[148px] h-[calc(100vh-148px)] overflow-hidden' : 'mt-[116px] h-[calc(100vh-116px)] overflow-hidden'}
+      >
         {currentView === 'budget' && (
           <BudgetTreemap
             data={currentRoot}

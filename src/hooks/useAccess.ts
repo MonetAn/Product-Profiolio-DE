@@ -2,26 +2,56 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 
+export interface AccessScope {
+  seeAll: boolean;
+  allowedUnits: string[];
+  allowedTeamPairs: { unit: string; team: string }[];
+}
+
 export interface AccessState {
   canAccess: boolean;
   isAdmin: boolean;
+  scope: AccessScope;
   accessLoading: boolean;
 }
 
-/** RPC returns { can_access: boolean, is_admin: boolean }. */
-function parseAccessResponse(data: unknown): { canAccess: boolean; isAdmin: boolean } {
-  if (data && typeof data === 'object' && 'can_access' in data && 'is_admin' in data) {
-    return {
-      canAccess: Boolean((data as { can_access: boolean }).can_access),
-      isAdmin: Boolean((data as { is_admin: boolean }).is_admin),
+const DEFAULT_SCOPE: AccessScope = { seeAll: true, allowedUnits: [], allowedTeamPairs: [] };
+
+/** RPC returns { can_access, is_admin, scope?: { see_all, allowed_units?, allowed_team_pairs? } }. */
+function parseAccessResponse(data: unknown): {
+  canAccess: boolean;
+  isAdmin: boolean;
+  scope: AccessScope;
+} {
+  if (!data || typeof data !== 'object' || !('can_access' in data) || !('is_admin' in data)) {
+    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE };
+  }
+  const obj = data as { can_access: boolean; is_admin: boolean; scope?: unknown };
+  let scope: AccessScope = DEFAULT_SCOPE;
+  if (obj.scope && typeof obj.scope === 'object' && obj.scope !== null) {
+    const s = obj.scope as { see_all?: boolean; allowed_units?: string[]; allowed_team_pairs?: { unit: string; team: string }[] };
+    scope = {
+      seeAll: Boolean(s.see_all),
+      allowedUnits: Array.isArray(s.allowed_units) ? s.allowed_units : [],
+      allowedTeamPairs: Array.isArray(s.allowed_team_pairs)
+        ? s.allowed_team_pairs.filter((p): p is { unit: string; team: string } => typeof p?.unit === 'string' && typeof p?.team === 'string')
+        : [],
     };
   }
-  return { canAccess: false, isAdmin: false };
+  return {
+    canAccess: Boolean(obj.can_access),
+    isAdmin: Boolean(obj.is_admin),
+    scope,
+  };
 }
 
 export function useAccess(): AccessState {
   const { user, loading: authLoading, isDodoEmployee } = useAuth();
-  const [access, setAccess] = useState<{ canAccess: boolean; isAdmin: boolean } | null>(null);
+  const [access, setAccess] = useState<{
+    canAccess: boolean;
+    isAdmin: boolean;
+    scope: AccessScope;
+  } | null>(null);
   const fetchedRef = useRef(false);
 
   const shouldFetch = Boolean(user && isDodoEmployee && !authLoading);
@@ -35,7 +65,8 @@ export function useAccess(): AccessState {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
 
-    const setFailed = () => setAccess({ canAccess: false, isAdmin: false });
+    const setFailed = () =>
+      setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
 
     const timeoutId = setTimeout(setFailed, 8000);
 
@@ -43,7 +74,7 @@ export function useAccess(): AccessState {
       .rpc('get_my_access')
       .then(({ data, error }) => {
         if (error) {
-          setAccess({ canAccess: false, isAdmin: false });
+          setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
           return;
         }
         setAccess(parseAccessResponse(data));
@@ -57,20 +88,21 @@ export function useAccess(): AccessState {
   }, [user]);
 
   if (!user || !isDodoEmployee) {
-    return { canAccess: false, isAdmin: false, accessLoading: false };
+    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: false };
   }
   if (authLoading) {
-    return { canAccess: false, isAdmin: false, accessLoading: false };
+    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: false };
   }
   if (!shouldFetch) {
-    return { canAccess: false, isAdmin: false, accessLoading: false };
+    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: false };
   }
   if (access === null) {
-    return { canAccess: false, isAdmin: false, accessLoading: true };
+    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: true };
   }
   return {
     canAccess: access.canAccess,
     isAdmin: access.isAdmin,
+    scope: access.scope,
     accessLoading: false,
   };
 }

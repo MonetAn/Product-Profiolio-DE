@@ -21,10 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import type { Database } from '@/integrations/supabase/types';
 
 type AllowedUserRow = Database['public']['Tables']['allowed_users']['Row'];
+
+type TeamPair = { unit: string; team: string };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,6 +41,17 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function parseTeamPairs(value: unknown): TeamPair[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (p): p is TeamPair => p != null && typeof (p as TeamPair).unit === 'string' && typeof (p as TeamPair).team === 'string'
+  );
+}
+
+function parseUnits(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((u): u is string => typeof u === 'string') : [];
+}
+
 export default function AdminAccess() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -46,6 +61,42 @@ export default function AdminAccess() {
   const [loading, setLoading] = useState(true);
   const [addEmail, setAddEmail] = useState('');
   const [adding, setAdding] = useState(false);
+
+  const [units, setUnits] = useState<string[]>([]);
+  const [teamPairs, setTeamPairs] = useState<TeamPair[]>([]);
+  const [scopeDialogUserId, setScopeDialogUserId] = useState<string | null>(null);
+  const [scopeFullAccess, setScopeFullAccess] = useState(true);
+  const [scopeSelectedUnits, setScopeSelectedUnits] = useState<string[]>([]);
+  const [scopeSelectedPairs, setScopeSelectedPairs] = useState<TeamPair[]>([]);
+  const [scopeSaving, setScopeSaving] = useState(false);
+
+  const fetchOptions = useCallback(async () => {
+    const [initRes, peopleRes] = await Promise.all([
+      supabase.from('initiatives').select('unit, team'),
+      supabase.from('people').select('unit, team'),
+    ]);
+    const rows: { unit: string | null; team: string | null }[] = [
+      ...(initRes.data ?? []),
+      ...(peopleRes.data ?? []).filter((r) => r.unit != null || r.team != null),
+    ];
+    const unitSet = new Set<string>();
+    const pairKeySet = new Set<string>();
+    const pairs: TeamPair[] = [];
+    rows.forEach((r) => {
+      const u = r.unit ?? '';
+      const t = r.team ?? '';
+      if (u) unitSet.add(u);
+      if (u && t) {
+        const key = `${u}\0${t}`;
+        if (!pairKeySet.has(key)) {
+          pairKeySet.add(key);
+          pairs.push({ unit: u, team: t });
+        }
+      }
+    });
+    setUnits(Array.from(unitSet).sort());
+    setTeamPairs(pairs.sort((a, b) => a.unit.localeCompare(b.unit) || a.team.localeCompare(b.team)));
+  }, []);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -61,7 +112,8 @@ export default function AdminAccess() {
 
   useEffect(() => {
     fetchList();
-  }, [fetchList]);
+    fetchOptions();
+  }, [fetchList, fetchOptions]);
 
   const adminCount = list.filter((r) => r.role === 'admin').length;
   const isSelf = (row: AllowedUserRow) => row.email.toLowerCase() === currentEmail;
@@ -131,13 +183,102 @@ export default function AdminAccess() {
     fetchList();
   };
 
+  const editingRow = scopeDialogUserId ? list.find((r) => r.id === scopeDialogUserId) : null;
+
+  const selectUserForEditing = (row: AllowedUserRow) => {
+    if (row.role === 'admin') {
+      setScopeDialogUserId(row.id);
+      setScopeFullAccess(true);
+      setScopeSelectedUnits([]);
+      setScopeSelectedPairs([]);
+      return;
+    }
+    openScopeDialog(row);
+  };
+
+  const openScopeDialog = (row: AllowedUserRow) => {
+    setScopeDialogUserId(row.id);
+    const u = parseUnits(row.allowed_units);
+    const p = parseTeamPairs(row.allowed_team_pairs);
+    setScopeFullAccess(u.length === 0 && p.length === 0);
+    setScopeSelectedUnits(u);
+    setScopeSelectedPairs(p);
+  };
+
+  const closeScopeDialog = () => {
+    setScopeDialogUserId(null);
+  };
+
+  const toggleScopeUnit = (unit: string) => {
+    setScopeSelectedUnits((prev) =>
+      prev.includes(unit) ? prev.filter((x) => x !== unit) : [...prev, unit]
+    );
+  };
+
+  const toggleScopePair = (pair: TeamPair) => {
+    setScopeSelectedPairs((prev) => {
+      const exists = prev.some((x) => x.unit === pair.unit && x.team === pair.team);
+      return exists ? prev.filter((x) => !(x.unit === pair.unit && x.team === pair.team)) : [...prev, pair];
+    });
+  };
+
+  const selectAllTeamsInUnit = (unit: string) => {
+    const pairsInUnit = teamPairs.filter((p) => p.unit === unit);
+    setScopeSelectedPairs((prev) => {
+      const rest = prev.filter((p) => p.unit !== unit);
+      const added = pairsInUnit.filter((p) => !rest.some((x) => x.unit === p.unit && x.team === p.team));
+      return [...rest, ...added];
+    });
+  };
+
+  const clearAllTeamsInUnit = (unit: string) => {
+    setScopeSelectedPairs((prev) => prev.filter((p) => p.unit !== unit));
+  };
+
+  const teamsByUnit = teamPairs.reduce<Record<string, TeamPair[]>>((acc, p) => {
+    if (!acc[p.unit]) acc[p.unit] = [];
+    acc[p.unit].push(p);
+    return acc;
+  }, {});
+  const unitKeysForTeams = Object.keys(teamsByUnit).sort();
+
+  const handleSaveScope = async () => {
+    if (!scopeDialogUserId) return;
+    setScopeSaving(true);
+    const allowed_units = scopeFullAccess ? [] : scopeSelectedUnits;
+    const allowed_team_pairs = scopeFullAccess ? [] : scopeSelectedPairs;
+    const { error } = await supabase
+      .from('allowed_users')
+      .update({ allowed_units, allowed_team_pairs })
+      .eq('id', scopeDialogUserId);
+    setScopeSaving(false);
+    if (error) {
+      toast({ title: 'Ошибка сохранения доступа', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Доступ обновлён' });
+    closeScopeDialog();
+    fetchList();
+  };
+
+  const scopeSummary = (row: AllowedUserRow) => {
+    const u = parseUnits(row.allowed_units);
+    const p = parseTeamPairs(row.allowed_team_pairs);
+    if (u.length === 0 && p.length === 0) return 'Всё';
+    const parts: string[] = [];
+    if (u.length) parts.push(`Юниты: ${u.length}`);
+    if (p.length) parts.push(`Команды: ${p.length}`);
+    return parts.join(', ') || 'Ограничен';
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       <AdminHeader currentView="access" />
 
-      <main className="flex-1 overflow-auto p-6">
-        <div className="max-w-2xl space-y-6">
-          <div className="space-y-2">
+      <main className="flex-1 flex overflow-hidden p-6">
+        {/* Левая колонка: добавить пользователя + таблица */}
+        <div className="flex flex-col min-w-0 w-full max-w-md shrink-0 border-r border-border pr-6 overflow-hidden">
+          <div className="space-y-2 shrink-0">
             <h2 className="text-lg font-semibold">Добавить пользователя</h2>
             <p className="text-sm text-muted-foreground">
               Введите корпоративный email @dodobrands.io. Пользователь получит доступ к дашборду.
@@ -162,77 +303,212 @@ export default function AdminAccess() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">Пользователи с доступом</h2>
+          <div className="flex-1 min-h-0 flex flex-col pt-6">
+            <h2 className="text-lg font-semibold shrink-0">Пользователи с доступом</h2>
             {loading ? (
-              <div className="flex items-center justify-center py-12">
+              <div className="flex items-center justify-center py-12 flex-1">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Пока никого нет. Добавьте первого пользователя выше.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Роль</TableHead>
-                    <TableHead className="w-[180px]">Действия</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {list.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-medium">
-                        {row.email}
-                        {isSelf(row) && (
-                          <span className="ml-2 text-xs text-muted-foreground">(вы)</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={row.role}
-                          onValueChange={(v) => handleRoleChange(row.id, v as 'admin' | 'user')}
-                          disabled={cannotDemoteSelf(row)}
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="admin">
-                              <span className="flex items-center gap-2">
-                                <ShieldCheck size={14} /> Админ
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="user">
-                              <span className="flex items-center gap-2">
-                                <User size={14} /> Пользователь
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {cannotDemoteSelf(row) && (
-                          <p className="text-xs text-amber-600 mt-1">Вы последний админ</p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDelete(row.id)}
-                          disabled={isSelf(row) || (row.role === 'admin' && adminCount <= 1)}
-                          title={isSelf(row) ? 'Нельзя удалить себя' : 'Удалить доступ'}
-                        >
-                          <Trash2 size={14} />
-                          <span className="ml-1">Удалить</span>
-                        </Button>
-                      </TableCell>
+              <ScrollArea className="flex-1 min-h-0 -mx-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Роль</TableHead>
+                      <TableHead className="w-[120px]">Действия</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {list.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        className={`cursor-pointer ${scopeDialogUserId === row.id ? 'bg-muted/50' : ''} hover:bg-muted/30`}
+                        onClick={() => selectUserForEditing(row)}
+                      >
+                        <TableCell className="font-medium">
+                          {row.email}
+                          {isSelf(row) && (
+                            <span className="ml-2 text-xs text-muted-foreground">(вы)</span>
+                          )}
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Select
+                            value={row.role}
+                            onValueChange={(v) => handleRoleChange(row.id, v as 'admin' | 'user')}
+                            disabled={cannotDemoteSelf(row)}
+                          >
+                            <SelectTrigger
+                              className="w-[140px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="admin">
+                                <span className="flex items-center gap-2">
+                                  <ShieldCheck size={14} /> Админ
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="user">
+                                <span className="flex items-center gap-2">
+                                  <User size={14} /> Пользователь
+                                </span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {cannotDemoteSelf(row) && (
+                            <p className="text-xs text-amber-600 mt-1">Вы последний админ</p>
+                          )}
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(row.id);
+                            }}
+                            disabled={isSelf(row) || (row.role === 'admin' && adminCount <= 1)}
+                            title={isSelf(row) ? 'Нельзя удалить себя' : 'Удалить доступ'}
+                          >
+                            <Trash2 size={14} />
+                            <span className="ml-1">Удалить</span>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
             )}
           </div>
+        </div>
+
+        {/* Правая колонка: настройка доступа без затемнения */}
+        <div className="flex-1 min-w-0 flex flex-col pl-6 overflow-hidden">
+          {!editingRow ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+              Выберите пользователя в списке слева
+            </div>
+          ) : editingRow.role === 'admin' ? (
+            <div className="flex flex-col gap-2 py-4">
+              <h3 className="text-lg font-semibold">Доступ: {editingRow.email}</h3>
+              <p className="text-sm text-muted-foreground">У админа полный доступ ко всем данным.</p>
+            </div>
+          ) : (
+            <>
+              <div className="shrink-0 pb-4 border-b border-border">
+                <h3 className="text-lg font-semibold">Доступ: {editingRow.email}</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Юнит — весь юнит со всеми командами. Команда — только выбранная пара. Пусто = полный доступ.
+                </p>
+              </div>
+              <ScrollArea className="flex-1 min-h-0 mt-4">
+                <div className="space-y-6 pr-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="scope-full"
+                      checked={scopeFullAccess}
+                      onCheckedChange={(c) => setScopeFullAccess(!!c)}
+                    />
+                    <Label htmlFor="scope-full" className="cursor-pointer">Полный доступ (видеть все юниты и команды)</Label>
+                  </div>
+                  {!scopeFullAccess && (units.length > 0 || unitKeysForTeams.length > 0) && (
+                    <div className="space-y-2">
+                      <Label>Юниты и команды</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Отметьте юнит — доступ ко всему юниту. Или отметьте только нужные команды.
+                      </p>
+                      <div className="rounded-md border p-3 space-y-4">
+                        {units.map((unit) => {
+                          const pairs = teamsByUnit[unit] ?? [];
+                          const unitChecked = scopeSelectedUnits.includes(unit);
+                          const selectedCount = pairs.filter((p) =>
+                            scopeSelectedPairs.some((x) => x.unit === p.unit && x.team === p.team)
+                          ).length;
+                          const allTeamsSelected = pairs.length > 0 && selectedCount === pairs.length;
+                          return (
+                            <div key={unit} className="space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                                  <Checkbox
+                                    checked={unitChecked}
+                                    onCheckedChange={() => {
+                                      if (unitChecked) {
+                                        setScopeSelectedUnits((prev) => prev.filter((x) => x !== unit));
+                                        setScopeSelectedPairs((prev) => prev.filter((p) => p.unit !== unit));
+                                      } else {
+                                        setScopeSelectedUnits((prev) => [...prev, unit]);
+                                        setScopeSelectedPairs((prev) => prev.filter((p) => p.unit !== unit));
+                                      }
+                                    }}
+                                  />
+                                  {unit}
+                                </label>
+                                {pairs.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    if (unitChecked) {
+                                      setScopeSelectedUnits((prev) => prev.filter((x) => x !== unit));
+                                      setScopeSelectedPairs((prev) => prev.filter((p) => p.unit !== unit));
+                                    } else if (allTeamsSelected) {
+                                      setScopeSelectedPairs((prev) => prev.filter((p) => p.unit !== unit));
+                                    } else {
+                                      selectAllTeamsInUnit(unit);
+                                    }
+                                  }}
+                                >
+                                  {unitChecked ? 'Снять юнит' : allTeamsSelected ? 'Снять все' : 'Выбрать все'}
+                                </Button>
+                                )}
+                              </div>
+                              {pairs.length > 0 && (
+                              <div className="flex flex-col gap-0.5 pl-6">
+                                {pairs.map((p) => (
+                                  <label
+                                    key={`${p.unit}\0${p.team}`}
+                                    className={`flex items-center gap-2 cursor-pointer text-sm ${unitChecked ? 'opacity-50 pointer-events-none' : ''}`}
+                                  >
+                                    <Checkbox
+                                      checked={unitChecked || scopeSelectedPairs.some((x) => x.unit === p.unit && x.team === p.team)}
+                                      onCheckedChange={() => toggleScopePair(p)}
+                                      disabled={unitChecked}
+                                    />
+                                    {p.team}
+                                  </label>
+                                ))}
+                              </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {scopeSelectedUnits.length === 0 && scopeSelectedPairs.length === 0 && (
+                        <p className="text-xs text-amber-600">Не выбрано ни юнитов, ни команд — пользователь не будет видеть данные.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+              <div className="shrink-0 flex gap-2 pt-4 border-t border-border mt-4">
+                <Button variant="outline" onClick={closeScopeDialog} disabled={scopeSaving}>
+                  Закрыть
+                </Button>
+                <Button onClick={handleSaveScope} disabled={scopeSaving}>
+                  {scopeSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  <span className={scopeSaving ? 'ml-2' : ''}>Сохранить</span>
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </main>
     </div>
