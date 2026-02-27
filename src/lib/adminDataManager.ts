@@ -41,6 +41,7 @@ export interface AdminDataRow {
   documentationLink: string;
   stakeholders: string; // Legacy field for backward compatibility
   quarterlyData: Record<string, AdminQuarterData>;
+  isTimelineStub?: boolean;
   isNew?: boolean;
   isModified?: boolean;
 }

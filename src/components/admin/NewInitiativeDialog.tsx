@@ -42,6 +42,7 @@ interface NewInitiativeDialogProps {
     stakeholdersList: string[];
     description: string; 
     documentationLink: string;
+    isTimelineStub?: boolean;
   }) => void;
 }
 
@@ -61,6 +62,7 @@ const NewInitiativeDialog = ({
   const [stakeholdersList, setStakeholdersList] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
+  const [isTimelineStub, setIsTimelineStub] = useState(false);
 
   // Sync with filter selection when dialog opens
   useEffect(() => {
@@ -79,7 +81,8 @@ const NewInitiativeDialog = ({
       initiativeType,
       stakeholdersList,
       description, 
-      documentationLink 
+      documentationLink,
+      isTimelineStub,
     });
     // Reset form
     setInitiative('');
@@ -87,6 +90,7 @@ const NewInitiativeDialog = ({
     setStakeholdersList([]);
     setDescription('');
     setDocumentationLink('');
+    setIsTimelineStub(false);
     onOpenChange(false);
   };
 
@@ -228,6 +232,20 @@ const NewInitiativeDialog = ({
               value={documentationLink}
               onChange={(e) => setDocumentationLink(e.target.value)}
               placeholder="https://..."
+            />
+          </div>
+
+          {/* Timeline stub */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <Label className="text-sm font-medium">Заглушка в таймлайне</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Показывать внизу таймлайна
+              </p>
+            </div>
+            <Checkbox
+              checked={isTimelineStub}
+              onCheckedChange={(checked) => setIsTimelineStub(checked === true)}
             />
           </div>
         </div>

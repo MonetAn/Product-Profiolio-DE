@@ -127,16 +127,21 @@ const GanttView = ({
     // Sort by cost if enabled
     if (costSortOrder !== 'none') {
       result = [...result].sort((a, b) => {
-        const costA = costType === 'period' 
-          ? calculateBudget(a, selectedQuarters) 
+        const costA = costType === 'period'
+          ? calculateBudget(a, selectedQuarters)
           : calculateTotalBudget(a);
-        const costB = costType === 'period' 
-          ? calculateBudget(b, selectedQuarters) 
+        const costB = costType === 'period'
+          ? calculateBudget(b, selectedQuarters)
           : calculateTotalBudget(b);
-        
+
         return costSortOrder === 'asc' ? costA - costB : costB - costA;
       });
     }
+
+    // Stubs (placeholders) at the bottom of the timeline
+    const stubs = result.filter(row => row.isTimelineStub === true);
+    const nonStubs = result.filter(row => row.isTimelineStub !== true);
+    result = [...nonStubs, ...stubs];
 
     return result;
   }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);

@@ -64,6 +64,7 @@ export type Database = {
           id: string
           initiative: string
           initiative_type: string | null
+          is_timeline_stub: boolean
           quarterly_data: Json
           stakeholders: string | null
           stakeholders_list: string[] | null
@@ -80,6 +81,7 @@ export type Database = {
           id?: string
           initiative: string
           initiative_type?: string | null
+          is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
           stakeholders_list?: string[] | null
@@ -96,6 +98,7 @@ export type Database = {
           id?: string
           initiative?: string
           initiative_type?: string | null
+          is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
           stakeholders_list?: string[] | null

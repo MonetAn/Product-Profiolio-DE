@@ -39,7 +39,7 @@ interface InitiativeTableProps {
   quarters: string[];
   selectedUnits: string[];
   selectedTeams: string[];
-  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
+  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
   onQuarterlyDataBulkChange?: (id: string, quarterlyData: Record<string, AdminQuarterData>) => void;
   onAddInitiative: () => void;

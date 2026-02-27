@@ -17,6 +17,7 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   description: 'description',
   documentationLink: 'documentation_link',
   stakeholders: 'stakeholders',
+  isTimelineStub: 'is_timeline_stub',
   quarterlyData: 'quarterly_data',
 };
 
@@ -73,18 +74,24 @@ export function useInitiativeMutations() {
       return { previous };
     },
     onError: (err, variables, context) => {
-      console.error('Update failed:', err);
+      const details =
+        (err && typeof err === 'object' && 'message' in err)
+          ? (err as { message: string }).message
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      console.error('Update failed:', variables.field, variables.id, err);
       setSyncStatus('error');
-      setLastError(err instanceof Error ? err.message : 'Ошибка сохранения');
-      
+      setLastError(details);
+
       // Rollback on error
       if (context?.previous) {
         queryClient.setQueryData(['initiatives'], context.previous);
       }
-      
+
       toast({
         title: 'Ошибка сохранения',
-        description: 'Не удалось сохранить изменения. Попробуйте ещё раз.',
+        description: details || 'Не удалось сохранить изменения. Попробуйте ещё раз.',
         variant: 'destructive'
       });
     },
@@ -112,6 +119,7 @@ export function useInitiativeMutations() {
           description: data.description,
           documentation_link: data.documentationLink,
           stakeholders: data.stakeholders,
+          is_timeline_stub: data.isTimelineStub ?? false,
           quarterly_data: quarterlyDataToJson(data.quarterlyData),
         })
         .select()

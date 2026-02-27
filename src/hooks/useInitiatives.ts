@@ -39,6 +39,7 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
     description: db.description || '',
     documentationLink: db.documentation_link || '',
     stakeholders: db.stakeholders || '',
+    isTimelineStub: db.is_timeline_stub ?? false,
     quarterlyData,
   };
 }
@@ -73,6 +74,7 @@ export function adminRowToDb(row: Partial<AdminDataRow>): Record<string, unknown
   if (row.description !== undefined) result.description = row.description;
   if (row.documentationLink !== undefined) result.documentation_link = row.documentationLink;
   if (row.stakeholders !== undefined) result.stakeholders = row.stakeholders;
+  if (row.isTimelineStub !== undefined) result.is_timeline_stub = row.isTimelineStub;
   if (row.quarterlyData !== undefined) result.quarterly_data = quarterlyDataToJson(row.quarterlyData);
   
   return result;

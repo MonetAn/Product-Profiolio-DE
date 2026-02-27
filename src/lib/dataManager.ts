@@ -17,6 +17,7 @@ export interface RawDataRow {
   description: string;
   stakeholders: string;
   documentationLink?: string;
+  isTimelineStub?: boolean;
   quarterlyData: Record<string, QuarterData>;
 }
 
@@ -112,6 +113,7 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
       description: row.description || '',
       stakeholders: row.stakeholders || '',
       documentationLink: row.documentationLink || '',
+      isTimelineStub: row.isTimelineStub ?? false,
       quarterlyData
     };
   });

@@ -67,9 +67,9 @@ const Admin = () => {
   const hideUnitTeamColumns = selectedUnits.length > 0;
 
   // Data modification handlers
-  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number) => {
-    // Arrays (stakeholders) save immediately, text/number fields use short debounce
-    const delay = Array.isArray(value) ? 0 : 300;
+  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
+    // Arrays (stakeholders) and booleans save immediately, text/number fields use short debounce
+    const delay = (Array.isArray(value) || typeof value === 'boolean') ? 0 : 300;
     updateInitiative(id, field, value, delay);
   }, [updateInitiative]);
 
@@ -98,6 +98,7 @@ const Admin = () => {
     stakeholdersList: string[];
     description: string;
     documentationLink: string;
+    isTimelineStub?: boolean;
   }) => {
     // Build quarterly data for all quarters
     const quarterlyData: Record<string, AdminQuarterData> = {};
@@ -124,6 +125,7 @@ const Admin = () => {
         description: data.description,
         documentationLink: data.documentationLink,
         stakeholders: '',
+        isTimelineStub: data.isTimelineStub ?? false,
         quarterlyData,
       });
       

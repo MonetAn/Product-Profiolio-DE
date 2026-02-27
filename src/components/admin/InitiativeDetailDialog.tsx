@@ -197,7 +197,7 @@ interface InitiativeDetailDialogProps {
   quarters: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
+  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
 }
 
@@ -353,6 +353,20 @@ const InitiativeDetailDialog = ({
                 </a>
               )}
             </div>
+          </div>
+
+          {/* Timeline stub (show at bottom in timeline) */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <Label className="text-sm font-medium">Заглушка в таймлайне</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Показывать внизу таймлайна (кварталы без расписанных инициатив или цели без инициатив)
+              </p>
+            </div>
+            <Switch
+              checked={initiative.isTimelineStub === true}
+              onCheckedChange={(checked) => onDataChange(initiative.id, 'isTimelineStub', checked)}
+            />
           </div>
 
           <Separator />
