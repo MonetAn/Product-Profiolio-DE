@@ -16,6 +16,7 @@ export interface RawDataRow {
   initiative: string;
   description: string;
   stakeholders: string;
+  documentationLink?: string;
   quarterlyData: Record<string, QuarterData>;
 }
 
@@ -110,6 +111,7 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
       initiative: row.initiative,
       description: row.description || '',
       stakeholders: row.stakeholders || '',
+      documentationLink: row.documentationLink || '',
       quarterlyData
     };
   });

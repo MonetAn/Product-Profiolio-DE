@@ -710,6 +710,23 @@
   pointer-events: none;
 }
 
+.gantt-name-popup-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: hsl(var(--primary));
+  text-decoration: none;
+  margin-top: 4px;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.gantt-name-popup-doc-link:hover {
+  color: hsl(var(--primary));
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
 .gantt-name-popup-stakeholders {
   display: flex;
   flex-wrap: wrap;
