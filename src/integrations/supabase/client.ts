@@ -11,6 +11,26 @@ if (import.meta.env.DEV && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
   );
 }
 
+// Однократная проверка доступности бэкенда в dev (диагностика pending)
+if (import.meta.env.DEV && SUPABASE_URL) {
+  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  fetch(url, { method: 'HEAD', signal: controller.signal })
+    .then(() => {
+      clearTimeout(timeoutId);
+      console.info('[Supabase] Подключение к бэкенду доступно:', url);
+    })
+    .catch((err) => {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.warn('[Supabase] Проверка подключения к бэкенду: таймаут 10 с. Возможна пауза проекта (Free tier) или сеть:', url);
+      } else {
+        console.warn('[Supabase] Проверка подключения к бэкенду не удалась:', err.message || err, url);
+      }
+    });
+}
+
 export const supabase = createClient<Database>(
   SUPABASE_URL || '',
   SUPABASE_PUBLISHABLE_KEY || '',

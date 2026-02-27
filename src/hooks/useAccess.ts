@@ -17,16 +17,56 @@ export interface AccessState {
 
 const DEFAULT_SCOPE: AccessScope = { seeAll: true, allowedUnits: [], allowedTeamPairs: [] };
 
-/** RPC returns { can_access, is_admin, scope?: { see_all, allowed_units?, allowed_team_pairs? } }. */
+const ACCESS_CACHE_KEY = 'app_access';
+
+function getCachedAccess(userId: string): { canAccess: boolean; isAdmin: boolean; scope: AccessScope } | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(ACCESS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { userId: string; canAccess: boolean; isAdmin: boolean; scope: AccessScope };
+    if (parsed.userId !== userId) return null;
+    return {
+      canAccess: Boolean(parsed.canAccess),
+      isAdmin: Boolean(parsed.isAdmin),
+      scope: {
+        seeAll: Boolean(parsed.scope?.seeAll),
+        allowedUnits: Array.isArray(parsed.scope?.allowedUnits) ? parsed.scope.allowedUnits : [],
+        allowedTeamPairs: Array.isArray(parsed.scope?.allowedTeamPairs) ? parsed.scope.allowedTeamPairs : [],
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setCachedAccess(userId: string, access: { canAccess: boolean; isAdmin: boolean; scope: AccessScope }) {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(ACCESS_CACHE_KEY, JSON.stringify({ userId, ...access }));
+  } catch {}
+}
+
+/** In dev: log why we showed "no access" so you can debug if it happens again. */
+function devLogNoAccess(reason: string, extra?: unknown) {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+    console.warn('[useAccess] Showing no access:', reason, extra != null ? extra : '');
+  }
+}
+
+/** RPC returns { can_access, is_admin, scope?: { see_all, allowed_units?, allowed_team_pairs? } }.
+ *  Supabase/PostgREST may wrap single-row RPC result in an array [row]. */
 function parseAccessResponse(data: unknown): {
   canAccess: boolean;
   isAdmin: boolean;
   scope: AccessScope;
 } {
-  if (!data || typeof data !== 'object' || !('can_access' in data) || !('is_admin' in data)) {
+  const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
+  if (!raw || typeof raw !== 'object' || !('can_access' in raw) || !('is_admin' in raw)) {
+    devLogNoAccess('parse_invalid_shape', { dataType: typeof data, isArray: Array.isArray(data), data });
     return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE };
   }
-  const obj = data as { can_access: boolean; is_admin: boolean; scope?: unknown };
+  const obj = raw as { can_access: boolean; is_admin: boolean; scope?: unknown };
   let scope: AccessScope = DEFAULT_SCOPE;
   if (obj.scope && typeof obj.scope === 'object' && obj.scope !== null) {
     const s = obj.scope as { see_all?: boolean; allowed_units?: string[]; allowed_team_pairs?: { unit: string; team: string }[] };
@@ -38,8 +78,10 @@ function parseAccessResponse(data: unknown): {
         : [],
     };
   }
+  const canAccess = Boolean(obj.can_access);
+  if (!canAccess) devLogNoAccess('rpc_returned_can_access_false', { raw });
   return {
-    canAccess: Boolean(obj.can_access),
+    canAccess,
     isAdmin: Boolean(obj.is_admin),
     scope,
   };
@@ -66,14 +108,24 @@ export function useAccess(): AccessState {
     fetchedRef.current = true;
     let cancelled = false;
     let retryCount = 0;
-    const maxRetries = 1;
+    const maxRetries = 2; // 3 attempts total: initial + 2 retries
+    const timeoutMs = 15000; // 15s per attempt (slow networks / cold start)
 
-    const setFailed = () => {
+    const setFailed = (reason: string, extra?: unknown) => {
+      devLogNoAccess(reason, extra);
       if (!cancelled) setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
     };
 
     const run = () => {
-      const timeoutId = setTimeout(setFailed, 10000);
+      const timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(run, 1500);
+          return;
+        }
+        setFailed('timeout_exhausted', { retryCount });
+      }, timeoutMs);
 
       supabase
         .rpc('get_my_access')
@@ -86,12 +138,14 @@ export function useAccess(): AccessState {
               setTimeout(run, 1500);
               return;
             }
-            setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+            setFailed('rpc_error', { message: error.message, code: error.code, details: error.details });
             return;
           }
-          setAccess(parseAccessResponse(data));
+          const result = parseAccessResponse(data);
+          setAccess(result);
+          if (result.canAccess && user) setCachedAccess(user.id, result);
         })
-        .catch(() => {
+        .catch((err) => {
           if (cancelled) return;
           clearTimeout(timeoutId);
           if (retryCount < maxRetries) {
@@ -99,10 +153,12 @@ export function useAccess(): AccessState {
             setTimeout(run, 1500);
             return;
           }
-          setFailed();
+          setFailed('rpc_throw', err);
         });
     };
 
+    const cached = user ? getCachedAccess(user.id) : null;
+    if (cached?.canAccess) setAccess(cached);
     run();
     return () => { cancelled = true; };
   }, [shouldFetch, user?.id, isDodoEmployee]);
