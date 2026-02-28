@@ -177,10 +177,73 @@ const TreemapNode = memo(({
     />
   );
 
+  const boxStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: x,
+    top: y,
+    width: node.width,
+    height: node.height,
+    backgroundColor: node.color,
+    borderRadius: 4,
+    overflow: 'hidden',
+    cursor: 'pointer',
+    zIndex: 1,
+  };
+
+  const eventHandlers = {
+    onClick: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onClick?.(node);
+    },
+    onMouseOver: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onMouseEnter?.(e, node);
+    },
+    onMouseMove,
+    onMouseLeave: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onMouseLeave?.(node);
+    },
+  };
+
+  const childrenBlock = shouldRenderChildren && showChildren && node.children && (
+    <>
+      {node.children.map(child => (
+        <TreemapNode
+          key={child.key}
+          node={child}
+          animationType={animationType}
+          textVisible={textVisible}
+          parentX={node.x0}
+          parentY={node.y0}
+          onClick={onClick}
+          onMouseEnter={onMouseEnter}
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
+          showChildren={showChildren}
+          renderDepth={renderDepth}
+          totalValue={totalValue}
+          selectedUnitsCount={selectedUnitsCount}
+        />
+      ))}
+    </>
+  );
+
+  // First load: no motion, no opacity layer — box and text paint together
+  if (animationType === 'initial') {
+    return (
+      <div className={classNames} style={boxStyle} {...eventHandlers}>
+        {content}
+        {childrenBlock}
+      </div>
+    );
+  }
+
+  // Transitions: motion box + opacity wrapper for fade after layout
   return (
     <motion.div
       variants={variants}
-      initial={skipInitial ? false : "initial"}
+      initial="initial"
       animate="animate"
       exit="exit"
       className={classNames}
@@ -193,48 +256,19 @@ const TreemapNode = memo(({
         transformOrigin: 'center center',
         zIndex: 1,
       }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick?.(node);
-      }}
-      onMouseOver={(e) => {
-        e.stopPropagation();
-        onMouseEnter?.(e, node);
-      }}
-      onMouseMove={onMouseMove}
-      onMouseLeave={(e) => {
-        e.stopPropagation();
-        onMouseLeave?.(node);
-      }}
+      {...eventHandlers}
     >
       <div
         className="absolute inset-0"
-        style={{ opacity: textVisible ? 1 : 0, transition: 'opacity 0.12s ease-out' }}
+        style={{
+          opacity: textVisible ? 1 : 0,
+          transition: 'opacity 0.12s ease-out',
+        }}
       >
         {content}
       </div>
-
       <AnimatePresence mode="sync">
-        {shouldRenderChildren && showChildren &&
-          node.children!.map(child => (
-            <TreemapNode
-              key={child.key}
-              node={child}
-              animationType={animationType}
-              textVisible={textVisible}
-              parentX={node.x0}
-              parentY={node.y0}
-              onClick={onClick}
-              onMouseEnter={onMouseEnter}
-              onMouseMove={onMouseMove}
-              onMouseLeave={onMouseLeave}
-              showChildren={showChildren}
-              renderDepth={renderDepth}
-              totalValue={totalValue}
-              selectedUnitsCount={selectedUnitsCount}
-            />
-          ))
-        }
+        {childrenBlock}
       </AnimatePresence>
     </motion.div>
   );

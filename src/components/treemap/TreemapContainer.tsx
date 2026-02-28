@@ -193,7 +193,12 @@ const TreemapContainer = ({
       newAnimationType = 'filter';
     }
 
-    if (!isFirstRenderRef.current && (prevDimensionsRef.current.width !== dimensions.width || prevDimensionsRef.current.height !== dimensions.height)) {
+    // First time we get real dimensions (was 0,0): keep initial — no animation, no text fade
+    const hadNoDimensions = prevDimensionsRef.current.width === 0 && prevDimensionsRef.current.height === 0;
+    const hasDimensionsNow = dimensions.width > 0 && dimensions.height > 0;
+    if (hadNoDimensions && hasDimensionsNow) {
+      newAnimationType = 'initial';
+    } else if (!isFirstRenderRef.current && !hadNoDimensions && (prevDimensionsRef.current.width !== dimensions.width || prevDimensionsRef.current.height !== dimensions.height)) {
       newAnimationType = 'resize';
     }
 
