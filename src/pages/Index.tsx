@@ -78,6 +78,9 @@ const Index = () => {
   // Track if quarters were already initialized
   const quartersInitializedRef = useRef(false);
 
+  // Tree is "ready" only after rebuildTree has run for current rawData (avoids one-frame flash of "no initiatives" empty state)
+  const [treeReady, setTreeReady] = useState(false);
+
   // Get unique units and teams
   const units = [...new Set(rawData.map(r => r.unit))].sort();
   const teams = [...new Set(rawData.filter(r => r.team).map(r => r.team))].sort();
@@ -132,8 +135,13 @@ const Index = () => {
   }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives]);
 
   useEffect(() => {
+    if (rawData.length === 0) {
+      setTreeReady(false);
+      return;
+    }
     rebuildTree();
-  }, [rebuildTree]);
+    setTreeReady(true);
+  }, [rebuildTree, rawData.length]);
 
   // Auto-enable toggles when zooming into a node (called from TreemapContainer)
   const handleAutoEnableTeams = useCallback(() => {
@@ -556,7 +564,7 @@ const Index = () => {
       <main
         className="mt-[116px] h-[calc(100vh-116px)] overflow-hidden"
       >
-        {rawData.length === 0 && (isLoading || (dbData && dbData.length > 0)) ? (
+        {(rawData.length === 0 && (isLoading || (dbData && dbData.length > 0))) || (rawData.length > 0 && !treeReady) ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             Загрузка…
           </div>
