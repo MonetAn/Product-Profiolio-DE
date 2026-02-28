@@ -47,16 +47,19 @@ export interface TreemapLayoutNode {
 // Animation type determines duration and behavior
 export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigate-up' | 'navigate-up-fast' | 'resize' | 'initial';
 
-// Animation durations in ms
+// Animation durations in ms — zoom-in aligned with zoom-out, can be longer when needed
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 750,
-  'drilldown': 1200,
-  'drilldown-fast': 400,
+  'drilldown': 700,
+  'drilldown-fast': 350,
   'navigate-up': 700,
   'navigate-up-fast': 350,
   'resize': 420
 };
+
+// При zoom-in показывать текст под конец анимации (на этой доле длительности), а не после
+export const DRILLDOWN_TEXT_VISIBLE_AT_RATIO = 0.88;
 
 // Content fade: movement threshold (px) above which text fades out/in during layout animation
 export const CONTENT_FADE_MOVEMENT_THRESHOLD_PX = 24;

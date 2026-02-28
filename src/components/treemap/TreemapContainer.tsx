@@ -6,7 +6,7 @@ import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
-import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS } from './types';
+import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, DRILLDOWN_TEXT_VISIBLE_AT_RATIO } from './types';
 import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
@@ -271,14 +271,19 @@ const TreemapContainer = ({
     prevAnimationTypeRef.current = newAnimationType;
     setAnimationType(newAnimationType);
 
-    // Text visibility: hide during transition, show after layout animation (skip on first load and when reduceMotion)
+    // Text visibility: hide during transition; show toward end for drilldown, at end for others
     if (!reduceMotion && !isFirstRenderRef.current && newAnimationType !== 'initial') {
       setTextVisible(false);
       if (textVisibleTimerRef.current) clearTimeout(textVisibleTimerRef.current);
+      const fullDuration = ANIMATION_DURATIONS[newAnimationType];
+      const isDrilldown = newAnimationType === 'drilldown' || newAnimationType === 'drilldown-fast';
+      const textShowDelay = isDrilldown
+        ? Math.round(fullDuration * DRILLDOWN_TEXT_VISIBLE_AT_RATIO)
+        : fullDuration;
       textVisibleTimerRef.current = setTimeout(() => {
         textVisibleTimerRef.current = null;
         setTextVisible(true);
-      }, ANIMATION_DURATIONS[newAnimationType]);
+      }, textShowDelay);
     }
 
     setShowHint(true);
@@ -347,8 +352,8 @@ const TreemapContainer = ({
       // Detect extreme aspect ratio for fast drilldown
       const aspectRatio = node.width / node.height;
       const isExtreme = aspectRatio > 5 || aspectRatio < (1 / 5);
-      // Set animation type in same batch as setFocusedPath so first paint is drilldown (no initial→drilldown flash)
-      setAnimationType(isExtreme ? 'drilldown-fast' : 'drilldown');
+      const drilldownType: AnimationType = isExtreme ? 'drilldown-fast' : 'drilldown';
+      setAnimationType(drilldownType);
       const newFocusedPath = node.path.split('/');
       isAnimatingRef.current = true;
       setTimeout(() => {
@@ -358,7 +363,7 @@ const TreemapContainer = ({
           pendingClickRef.current = null;
           handleNodeClick(pending);
         }
-      }, 900);
+      }, ANIMATION_DURATIONS[drilldownType] + 80);
       if (!reduceMotion) setTextVisible(false);
       setFocusedPath(newFocusedPath);
       onFocusedPathChange?.(newFocusedPath);
