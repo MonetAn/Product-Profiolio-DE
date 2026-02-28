@@ -37,6 +37,8 @@ interface TreemapContainerProps {
   onFocusedPathChange?: (path: string[]) => void;
   resetZoomTrigger?: number;
   initialFocusedPath?: string[];
+  /** When switching to this tab (viewKey changes), show treemap with no animation and text immediately */
+  viewKey?: string;
 }
 
 const TreemapContainer = ({
@@ -65,6 +67,7 @@ const TreemapContainer = ({
   onFocusedPathChange,
   resetZoomTrigger,
   initialFocusedPath,
+  viewKey,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -87,6 +90,13 @@ const TreemapContainer = ({
   const prevFocusedPathRef = useRef<string[]>([]);
   const prevDimensionsRef = useRef({ width: 0, height: 0 });
   const isFirstRenderRef = useRef(true);
+  const prevViewKeyRef = useRef<string | undefined>(undefined);
+  /** После принудительного initial при переключении вкладки — ещё 2 прогона держим initial, чтобы не перезаписать в filter */
+  const useInitialForRunsLeftRef = useRef(0);
+  /** Последний выставленный тип: второй прогон эффекта (из‑за layoutNodes) не перезаписывает drilldown/navigate-up в filter */
+  const prevAnimationTypeRef = useRef<AnimationType>('initial');
+  /** Предыдущая раскладка (при root) для анимации drilldown: от старой позиции/размера к новой */
+  const prevLayoutAtRootRef = useRef<TreemapLayoutNode[]>([]);
 
   // prefers-reduced-motion: do not hide text when user requests reduced motion
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -141,6 +151,11 @@ const TreemapContainer = ({
     focusedPath,
   });
 
+  // Store root layout so drilldown can animate FROM it (first zoom-in: blocks grow from old positions)
+  if (focusedPath.length === 0 && layoutNodes.length > 0) {
+    prevLayoutAtRootRef.current = layoutNodes;
+  }
+
   // Measure container synchronously to avoid flash
   useLayoutEffect(() => {
     if (!containerRef.current) return;
@@ -168,38 +183,84 @@ const TreemapContainer = ({
   useLayoutEffect(() => {
     if (isEmpty) return;
 
-    let newAnimationType: AnimationType = 'filter';
-
-    if (isFirstRenderRef.current) {
-      isFirstRenderRef.current = false;
-      newAnimationType = 'initial';
-    } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
-      newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
-    } else if (prevFocusedPathRef.current.length !== focusedPath.length) {
-      if (focusedPath.length > prevFocusedPathRef.current.length) {
-        newAnimationType = 'drilldown';
-      } else {
-        const prevLastName = prevFocusedPathRef.current[prevFocusedPathRef.current.length - 1];
-        const returningNode = prevLastName ? layoutNodes.find(n => n.name === prevLastName) : null;
-        if (returningNode) {
-          const ar = returningNode.width / returningNode.height;
-          newAnimationType = (ar > 5 || ar < 1/5) ? 'navigate-up-fast' : 'navigate-up';
-        } else {
-          newAnimationType = 'navigate-up';
-        }
-      }
-    } else if (prevShowTeamsRef.current !== showTeams ||
-               prevShowInitiativesRef.current !== showInitiatives) {
-      newAnimationType = 'filter';
-    }
-
-    // First time we get real dimensions (was 0,0): keep initial — no animation, no text fade
     const hadNoDimensions = prevDimensionsRef.current.width === 0 && prevDimensionsRef.current.height === 0;
     const hasDimensionsNow = dimensions.width > 0 && dimensions.height > 0;
-    if (hadNoDimensions && hasDimensionsNow) {
-      newAnimationType = 'initial';
-    } else if (!isFirstRenderRef.current && !hadNoDimensions && (prevDimensionsRef.current.width !== dimensions.width || prevDimensionsRef.current.height !== dimensions.height)) {
-      newAnimationType = 'resize';
+    // При переключении вкладки: первый прогон (viewKey изменился) И прогон "впервые получили размеры" — принудительный initial
+    const forcedInitialForView =
+      viewKey !== undefined &&
+      (prevViewKeyRef.current !== viewKey || (hadNoDimensions && hasDimensionsNow));
+
+    const atRoot = focusedPath.length === 0;
+    const wasAtRoot = prevFocusedPathRef.current.length === 0;
+
+    // При переключении на вкладку с тримапом — сразу initial, без анимации.
+    // Выходим до остальных веток; следующие 2 прогона тоже держим initial через useInitialForRunsLeftRef.
+    if (forcedInitialForView) {
+      prevViewKeyRef.current = viewKey;
+      prevDataNameRef.current = data.name;
+      prevShowTeamsRef.current = showTeams;
+      prevShowInitiativesRef.current = showInitiatives;
+      prevFocusedPathRef.current = focusedPath;
+      prevDimensionsRef.current = { width: dimensions.width, height: dimensions.height };
+      if (isFirstRenderRef.current) isFirstRenderRef.current = false;
+      useInitialForRunsLeftRef.current = 2;
+      prevAnimationTypeRef.current = 'initial';
+      setTextVisible(true);
+      setAnimationType('initial');
+      setShowHint(true);
+      const hintTimer = setTimeout(() => setShowHint(false), 3000);
+      return () => clearTimeout(hintTimer);
+    }
+
+    // По умолчанию сохраняем последний тип — второй прогон эффекта (layoutNodes) не перезаписывает drilldown/navigate-up в filter
+    let newAnimationType: AnimationType = prevAnimationTypeRef.current;
+
+    // Стабилизация только на корне: не перезаписывать drilldown/navigate-up при первом зуме.
+    // Условие: мы на корне (focusedPath.length === 0) и не только что пришли сюда зум аут'ом (prev был корень).
+    // atRoot, wasAtRoot объявлены выше.
+    if (
+      viewKey !== undefined &&
+      useInitialForRunsLeftRef.current > 0 &&
+      atRoot &&
+      wasAtRoot
+    ) {
+      useInitialForRunsLeftRef.current -= 1;
+      // Не перезаписывать только что отыгравший navigate-up при выходе на корень — иначе обрежем анимацию
+      if (prevAnimationTypeRef.current === 'navigate-up' || prevAnimationTypeRef.current === 'navigate-up-fast' || prevAnimationTypeRef.current === 'drilldown' || prevAnimationTypeRef.current === 'drilldown-fast') {
+        newAnimationType = prevAnimationTypeRef.current;
+      } else {
+        newAnimationType = 'initial';
+      }
+    } else {
+      if (isFirstRenderRef.current) {
+        isFirstRenderRef.current = false;
+        newAnimationType = 'initial';
+      } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
+        newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
+      } else if (prevFocusedPathRef.current.length !== focusedPath.length) {
+        if (focusedPath.length > prevFocusedPathRef.current.length) {
+          newAnimationType = 'drilldown';
+        } else {
+          const prevLastName = prevFocusedPathRef.current[prevFocusedPathRef.current.length - 1];
+          const returningNode = prevLastName ? layoutNodes.find(n => n.name === prevLastName) : null;
+          if (returningNode) {
+            const ar = returningNode.width / returningNode.height;
+            newAnimationType = (ar > 5 || ar < 1/5) ? 'navigate-up-fast' : 'navigate-up';
+          } else {
+            newAnimationType = 'navigate-up';
+          }
+        }
+      } else if (prevShowTeamsRef.current !== showTeams ||
+                 prevShowInitiativesRef.current !== showInitiatives) {
+        newAnimationType = 'filter';
+      }
+
+      // First time we get real dimensions (was 0,0): keep initial — no animation, no text fade
+      if (hadNoDimensions && hasDimensionsNow) {
+        newAnimationType = 'initial';
+      } else if (!isFirstRenderRef.current && !hadNoDimensions && (prevDimensionsRef.current.width !== dimensions.width || prevDimensionsRef.current.height !== dimensions.height)) {
+        newAnimationType = 'resize';
+      }
     }
 
     prevDataNameRef.current = data.name;
@@ -207,6 +268,7 @@ const TreemapContainer = ({
     prevShowInitiativesRef.current = showInitiatives;
     prevFocusedPathRef.current = focusedPath;
     prevDimensionsRef.current = { width: dimensions.width, height: dimensions.height };
+    prevAnimationTypeRef.current = newAnimationType;
     setAnimationType(newAnimationType);
 
     // Text visibility: hide during transition, show after layout animation (skip on first load and when reduceMotion)
@@ -228,7 +290,7 @@ const TreemapContainer = ({
         textVisibleTimerRef.current = null;
       }
     };
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, reduceMotion]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, reduceMotion, viewKey]);
   
   // Render depth: matches actual tree structure from toggles
   const targetRenderDepth = useMemo(() => {
@@ -285,11 +347,9 @@ const TreemapContainer = ({
       // Detect extreme aspect ratio for fast drilldown
       const aspectRatio = node.width / node.height;
       const isExtreme = aspectRatio > 5 || aspectRatio < (1 / 5);
-      
-      if (isExtreme) {
-        setAnimationType('drilldown-fast');
-      }
-      
+      // Set animation type in same batch as setFocusedPath so first paint is drilldown (no initial→drilldown flash)
+      setAnimationType(isExtreme ? 'drilldown-fast' : 'drilldown');
+      const newFocusedPath = node.path.split('/');
       isAnimatingRef.current = true;
       setTimeout(() => {
         isAnimatingRef.current = false;
@@ -300,7 +360,6 @@ const TreemapContainer = ({
         }
       }, 900);
       if (!reduceMotion) setTextVisible(false);
-      const newFocusedPath = node.path.split('/');
       setFocusedPath(newFocusedPath);
       onFocusedPathChange?.(newFocusedPath);
     }
@@ -460,6 +519,7 @@ const TreemapContainer = ({
                 key={node.key}
                 node={node}
                 animationType={animationType}
+                fromLayoutNodes={focusedPath.length === 1 && (animationType === 'drilldown' || animationType === 'drilldown-fast') ? prevLayoutAtRootRef.current : undefined}
                 textVisible={reduceMotion ? true : textVisible}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}

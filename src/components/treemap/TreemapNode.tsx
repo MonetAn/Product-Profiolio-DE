@@ -25,6 +25,8 @@ function getTextColorClass(bgColor: string): string {
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
+  /** При drilldown с root: раскладка «до», чтобы анимировать от старых позиций/размеров */
+  fromLayoutNodes?: TreemapLayoutNode[];
   textVisible?: boolean;
   parentX?: number;
   parentY?: number;
@@ -112,6 +114,7 @@ TreemapNodeContent.displayName = 'TreemapNodeContent';
 const TreemapNode = memo(({
   node,
   animationType,
+  fromLayoutNodes,
   textVisible = true,
   parentX = 0,
   parentY = 0,
@@ -149,8 +152,17 @@ const TreemapNode = memo(({
 
   const skipInitial = animationType === 'initial';
 
+  const isDrilldown = animationType === 'drilldown' || animationType === 'drilldown-fast';
+  const initialOpacity = isDrilldown ? 1 : 0;
+
+  // При первом zoom-in с root: анимировать от старых позиций/размеров к новым (настоящий zoom)
+  const fromNode = fromLayoutNodes?.length ? fromLayoutNodes.find(n => n.key === node.key) : undefined;
+  const useFromLayout = isDrilldown && fromNode;
+
   const variants = {
-    initial: { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height },
+    initial: useFromLayout
+      ? { opacity: initialOpacity, scale: 1, x: fromNode.x0, y: fromNode.y0, width: fromNode.width, height: fromNode.height }
+      : { opacity: initialOpacity, scale: 0.92, x, y, width: node.width, height: node.height },
     animate: {
       opacity: 1,
       scale: 1,

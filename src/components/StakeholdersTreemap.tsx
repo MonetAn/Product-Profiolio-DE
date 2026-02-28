@@ -58,6 +58,7 @@ interface StakeholdersTreemapProps {
   showTeams?: boolean;
   showInitiatives?: boolean;
   initialFocusedPath?: string[];
+  viewKey?: string;
 }
 
 const StakeholdersTreemap = ({
@@ -79,6 +80,7 @@ const StakeholdersTreemap = ({
   showTeams = false,
   showInitiatives = false,
   initialFocusedPath,
+  viewKey,
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -105,6 +107,7 @@ const StakeholdersTreemap = ({
       onFocusedPathChange={onFocusedPathChange}
       resetZoomTrigger={resetZoomTrigger}
       initialFocusedPath={initialFocusedPath}
+      viewKey={viewKey}
     />
   );
 };

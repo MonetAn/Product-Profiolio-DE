@@ -572,6 +572,7 @@ const Index = () => {
           <>
         {currentView === 'budget' && (
           <BudgetTreemap
+            viewKey="budget"
             data={currentRoot}
             onDrillDown={drillDown}
             onNavigateUp={navigateUp}
@@ -602,6 +603,7 @@ const Index = () => {
 
         {currentView === 'stakeholders' && (
           <StakeholdersTreemap
+            viewKey="stakeholders"
             data={stakeholdersData}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}

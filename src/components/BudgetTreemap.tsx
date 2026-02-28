@@ -28,6 +28,7 @@ interface BudgetTreemapProps {
   onFocusedPathChange?: (path: string[]) => void;
   resetZoomTrigger?: number;
   initialFocusedPath?: string[];
+  viewKey?: string;
 }
 
 const BudgetTreemap = ({
@@ -51,6 +52,7 @@ const BudgetTreemap = ({
   onFocusedPathChange,
   resetZoomTrigger,
   initialFocusedPath,
+  viewKey,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
@@ -78,6 +80,7 @@ const BudgetTreemap = ({
       onFocusedPathChange={onFocusedPathChange}
       resetZoomTrigger={resetZoomTrigger}
       initialFocusedPath={initialFocusedPath}
+      viewKey={viewKey}
     />
   );
 };
