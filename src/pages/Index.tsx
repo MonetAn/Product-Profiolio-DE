@@ -430,8 +430,8 @@ const Index = () => {
   // Show loading state — не полноэкранный лоадер: shell уже ниже, в main покажем «Загрузка…»
   // (блок ниже удалён: return <MascotsLoadingScreen />)
 
-  // Show error state
-  if (error && rawData.length === 0) {
+  // Show error state (only when no successful data — avoid flash while rawData syncs from dbData)
+  if (error && rawData.length === 0 && (!dbData || dbData.length === 0)) {
     return (
       <MascotMessageScreen
         title="Упс, не удалось загрузить данные"
@@ -446,8 +446,8 @@ const Index = () => {
     );
   }
 
-  // Empty state: user has access but no data in their scope
-  if (canAccess && rawData.length === 0 && !isLoading) {
+  // Empty state: user has access but no data in their scope (avoid flash while rawData syncs from dbData)
+  if (canAccess && rawData.length === 0 && !isLoading && (!dbData || dbData.length === 0)) {
     return (
       <MascotMessageScreen
         title="Упс, по вашему доступу данных нет"
@@ -556,7 +556,7 @@ const Index = () => {
       <main
         className="mt-[116px] h-[calc(100vh-116px)] overflow-hidden"
       >
-        {isLoading && rawData.length === 0 ? (
+        {rawData.length === 0 && (isLoading || (dbData && dbData.length > 0)) ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             Загрузка…
           </div>
