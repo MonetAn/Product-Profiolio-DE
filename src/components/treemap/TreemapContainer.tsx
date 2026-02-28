@@ -6,7 +6,7 @@ import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
-import { TreemapLayoutNode, AnimationType, ColorGetter } from './types';
+import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS } from './types';
 import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
@@ -69,22 +69,34 @@ const TreemapContainer = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [animationType, setAnimationType] = useState<AnimationType>('initial');
+  const [textVisible, setTextVisible] = useState(true);
+  const textVisibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
   const isAnimatingRef = useRef(false);
   const pendingClickRef = useRef<TreemapLayoutNode | null>(null);
-  
+
   // Flourish-style zoom: internal focused path (array of node names from root children)
   const [focusedPath, setFocusedPath] = useState<string[]>(initialFocusedPath || []);
-  
-  
+
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
   const prevShowTeamsRef = useRef(showTeams);
   const prevShowInitiativesRef = useRef(showInitiatives);
   const prevFocusedPathRef = useRef<string[]>([]);
+  const prevDimensionsRef = useRef({ width: 0, height: 0 });
   const isFirstRenderRef = useRef(true);
+
+  // prefers-reduced-motion: do not hide text when user requests reduced motion
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduceMotion(mq.matches);
+    const fn = () => setReduceMotion(mq.matches);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
   
   // Tooltip state with race condition prevention using depth priority
   const [tooltipData, setTooltipData] = useState<{
@@ -128,7 +140,7 @@ const TreemapContainer = ({
     extraDepth,
     focusedPath,
   });
-  
+
   // Measure container synchronously to avoid flash
   useLayoutEffect(() => {
     if (!containerRef.current) return;
@@ -152,24 +164,21 @@ const TreemapContainer = ({
     return () => resizeObserver.disconnect();
   }, []);
   
-  // Detect animation type based on data changes
+  // Detect animation type and drive text visibility: hide at transition start, show after layout duration
   useLayoutEffect(() => {
     if (isEmpty) return;
-    
+
     let newAnimationType: AnimationType = 'filter';
-    
+
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
       newAnimationType = 'initial';
     } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
       newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
     } else if (prevFocusedPathRef.current.length !== focusedPath.length) {
-      // Focused path changed — this is a zoom drill-down/up
       if (focusedPath.length > prevFocusedPathRef.current.length) {
         newAnimationType = 'drilldown';
       } else {
-        // Zoom out: check aspect ratio of the node we're returning FROM
-        // (the node at the previous focused path, which is now expanding back)
         const prevLastName = prevFocusedPathRef.current[prevFocusedPathRef.current.length - 1];
         const returningNode = prevLastName ? layoutNodes.find(n => n.name === prevLastName) : null;
         if (returningNode) {
@@ -179,22 +188,42 @@ const TreemapContainer = ({
           newAnimationType = 'navigate-up';
         }
       }
-    } else if (prevShowTeamsRef.current !== showTeams || 
+    } else if (prevShowTeamsRef.current !== showTeams ||
                prevShowInitiativesRef.current !== showInitiatives) {
       newAnimationType = 'filter';
     }
-    
+
+    if (!isFirstRenderRef.current && (prevDimensionsRef.current.width !== dimensions.width || prevDimensionsRef.current.height !== dimensions.height)) {
+      newAnimationType = 'resize';
+    }
+
     prevDataNameRef.current = data.name;
     prevShowTeamsRef.current = showTeams;
     prevShowInitiativesRef.current = showInitiatives;
     prevFocusedPathRef.current = focusedPath;
+    prevDimensionsRef.current = { width: dimensions.width, height: dimensions.height };
     setAnimationType(newAnimationType);
-    
-    // Show hint briefly
+
+    // Text visibility: hide during transition, show after layout animation (skip on first load and when reduceMotion)
+    if (!reduceMotion && !isFirstRenderRef.current && newAnimationType !== 'initial') {
+      setTextVisible(false);
+      if (textVisibleTimerRef.current) clearTimeout(textVisibleTimerRef.current);
+      textVisibleTimerRef.current = setTimeout(() => {
+        textVisibleTimerRef.current = null;
+        setTextVisible(true);
+      }, ANIMATION_DURATIONS[newAnimationType]);
+    }
+
     setShowHint(true);
-    const timer = setTimeout(() => setShowHint(false), 3000);
-    return () => clearTimeout(timer);
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath]);
+    const hintTimer = setTimeout(() => setShowHint(false), 3000);
+    return () => {
+      clearTimeout(hintTimer);
+      if (textVisibleTimerRef.current) {
+        clearTimeout(textVisibleTimerRef.current);
+        textVisibleTimerRef.current = null;
+      }
+    };
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, reduceMotion]);
   
   // Render depth: matches actual tree structure from toggles
   const targetRenderDepth = useMemo(() => {
@@ -265,12 +294,12 @@ const TreemapContainer = ({
           handleNodeClick(pending);
         }
       }, 900);
-      // Build full path from node.path (e.g. "UnitA/Team1" -> ['UnitA', 'Team1'])
+      if (!reduceMotion) setTextVisible(false);
       const newFocusedPath = node.path.split('/');
       setFocusedPath(newFocusedPath);
       onFocusedPathChange?.(newFocusedPath);
     }
-  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange]);
+  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange, reduceMotion]);
   
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {
@@ -278,21 +307,21 @@ const TreemapContainer = ({
       const oldLength = focusedPath.length;
       const newPath = focusedPath.slice(0, -1);
       const newLength = newPath.length;
-      
-      // Auto-disable nesting levels symmetrically
+
       if (oldLength >= 2 && newLength < 2) {
         onAutoDisableInitiatives?.();
       }
       if (oldLength >= 1 && newLength < 1) {
         onAutoDisableTeams?.();
       }
-      
+
+      if (!reduceMotion) setTextVisible(false);
       setFocusedPath(newPath);
       onFocusedPathChange?.(newPath);
     } else if (onNavigateBack) {
       onNavigateBack();
     }
-  }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives]);
+  }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives, reduceMotion]);
 
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
@@ -426,6 +455,7 @@ const TreemapContainer = ({
                 key={node.key}
                 node={node}
                 animationType={animationType}
+                textVisible={reduceMotion ? true : textVisible}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}

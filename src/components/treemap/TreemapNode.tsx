@@ -25,6 +25,7 @@ function getTextColorClass(bgColor: string): string {
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
+  textVisible?: boolean;
   parentX?: number;
   parentY?: number;
   onClick?: (node: TreemapLayoutNode) => void;
@@ -111,6 +112,7 @@ TreemapNodeContent.displayName = 'TreemapNodeContent';
 const TreemapNode = memo(({
   node,
   animationType,
+  textVisible = true,
   parentX = 0,
   parentY = 0,
   onClick,
@@ -127,13 +129,13 @@ const TreemapNode = memo(({
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
   const textColorClass = getTextColorClass(node.color);
-  
+
   const x = node.x0 - parentX;
   const y = node.y0 - parentY;
-  
+
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
-  
+
   const classNames = [
     'treemap-node',
     `depth-${node.depth}`,
@@ -146,7 +148,7 @@ const TreemapNode = memo(({
   ].filter(Boolean).join(' ');
 
   const skipInitial = animationType === 'initial';
-  
+
   const variants = {
     initial: { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height },
     animate: {
@@ -164,6 +166,16 @@ const TreemapNode = memo(({
     },
     exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
   };
+
+  const content = (
+    <TreemapNodeContent
+      node={node}
+      showValue={!shouldRenderChildren}
+      textColorClass={textColorClass}
+      totalValue={totalValue}
+      selectedUnitsCount={selectedUnitsCount}
+    />
+  );
 
   return (
     <motion.div
@@ -195,8 +207,13 @@ const TreemapNode = memo(({
         onMouseLeave?.(node);
       }}
     >
-      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} totalValue={totalValue} selectedUnitsCount={selectedUnitsCount} />
-      
+      <div
+        className="absolute inset-0"
+        style={{ opacity: textVisible ? 1 : 0, transition: 'opacity 0.12s ease-out' }}
+      >
+        {content}
+      </div>
+
       <AnimatePresence mode="sync">
         {shouldRenderChildren && showChildren &&
           node.children!.map(child => (
@@ -204,6 +221,7 @@ const TreemapNode = memo(({
               key={child.key}
               node={child}
               animationType={animationType}
+              textVisible={textVisible}
               parentX={node.x0}
               parentY={node.y0}
               onClick={onClick}

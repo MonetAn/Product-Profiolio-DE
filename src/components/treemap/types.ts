@@ -58,6 +58,14 @@ export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'resize': 420
 };
 
+// Content fade: movement threshold (px) above which text fades out/in during layout animation
+export const CONTENT_FADE_MOVEMENT_THRESHOLD_PX = 24;
+// Share of animation duration for fade-out (start) and fade-in (end)
+export const CONTENT_FADE_OUT_RATIO = 0.08;
+export const CONTENT_FADE_IN_RATIO = 0.08;
+// New nodes: text stays hidden until movement is done, then fades in in the last 5%
+export const CONTENT_FADE_NEW_IN_START = 0.95;
+
 // Container dimensions
 export interface ContainerDimensions {
   width: number;
