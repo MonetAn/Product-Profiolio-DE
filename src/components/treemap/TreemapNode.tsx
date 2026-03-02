@@ -27,6 +27,8 @@ interface TreemapNodeProps {
   animationType: AnimationType;
   /** При drilldown с root: раскладка «до», чтобы анимировать от старых позиций/размеров */
   fromLayoutNodes?: TreemapLayoutNode[];
+  /** Текущий путь зума; при drilldown дочерние ноды этого пути получают fade-in */
+  focusedPath?: string[];
   textVisible?: boolean;
   parentX?: number;
   parentY?: number;
@@ -117,6 +119,7 @@ const TreemapNode = memo(({
   node,
   animationType,
   fromLayoutNodes,
+  focusedPath,
   textVisible = true,
   parentX = 0,
   parentY = 0,
@@ -158,14 +161,23 @@ const TreemapNode = memo(({
   const isDrilldown = animationType === 'drilldown' || animationType === 'drilldown-fast';
   const initialOpacity = isDrilldown ? 1 : 0;
 
+  /** При zoom-in дочерние карточки текущего уровня — лёгкий fade-in (opacity 0 → 1), без useTransform */
+  const isDirectChildOnDrilldown =
+    isDrilldown &&
+    focusedPath &&
+    focusedPath.length > 0 &&
+    node.path.startsWith(focusedPath.join('/') + '/') &&
+    node.path.split('/').length === focusedPath.length + 1;
+  const initialOpacityForVariant = isDirectChildOnDrilldown ? 0 : initialOpacity;
+
   // При первом zoom-in с root: анимировать от старых позиций/размеров к новым (настоящий zoom)
   const fromNode = fromLayoutNodes?.length ? fromLayoutNodes.find(n => n.key === node.key) : undefined;
   const useFromLayout = isDrilldown && fromNode;
 
   const variants = {
     initial: useFromLayout
-      ? { opacity: initialOpacity, scale: 1, x: fromNode.x0, y: fromNode.y0, width: fromNode.width, height: fromNode.height }
-      : { opacity: initialOpacity, scale: 0.92, x, y, width: node.width, height: node.height },
+      ? { opacity: initialOpacityForVariant, scale: 1, x: fromNode.x0, y: fromNode.y0, width: fromNode.width, height: fromNode.height }
+      : { opacity: initialOpacityForVariant, scale: 0.92, x, y, width: node.width, height: node.height },
     animate: {
       opacity: 1,
       scale: 1,
@@ -228,6 +240,8 @@ const TreemapNode = memo(({
           key={child.key}
           node={child}
           animationType={animationType}
+          fromLayoutNodes={undefined}
+          focusedPath={focusedPath}
           textVisible={textVisible}
           visibleNodeCount={visibleNodeCount}
           parentX={node.x0}

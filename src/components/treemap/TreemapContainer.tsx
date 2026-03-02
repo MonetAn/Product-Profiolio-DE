@@ -539,6 +539,7 @@ const TreemapContainer = ({
                 node={node}
                 animationType={animationType}
                 fromLayoutNodes={focusedPath.length === 1 && (animationType === 'drilldown' || animationType === 'drilldown-fast') ? prevLayoutAtRootRef.current : undefined}
+                focusedPath={focusedPath}
                 textVisible={reduceMotion ? true : textVisible}
                 visibleNodeCount={visibleNodeCount}
                 onClick={handleNodeClick}
