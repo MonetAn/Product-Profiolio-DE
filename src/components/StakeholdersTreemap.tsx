@@ -108,6 +108,7 @@ const StakeholdersTreemap = ({
       resetZoomTrigger={resetZoomTrigger}
       initialFocusedPath={initialFocusedPath}
       viewKey={viewKey}
+      showDistributionInTooltip={false}
     />
   );
 };

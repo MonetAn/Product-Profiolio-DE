@@ -1,4 +1,4 @@
-import { Search, Keyboard, Sliders } from 'lucide-react';
+import { Search, Sliders } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,7 +14,6 @@ interface HeaderProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   onSearchClick: () => void;
-  onShortcutsClick: () => void;
   isAdmin?: boolean;
 }
 
@@ -22,7 +21,6 @@ const Header = ({
   currentView,
   onViewChange,
   onSearchClick,
-  onShortcutsClick,
   isAdmin = false
 }: HeaderProps) => {
   const navigate = useNavigate();
@@ -44,7 +42,7 @@ const Header = ({
           }`}
           onClick={() => onViewChange('budget')}
         >
-          Budget <kbd className="text-xs text-muted-foreground ml-1">1</kbd>
+          Бюджет <kbd className="text-xs text-muted-foreground ml-1">1</kbd>
           {currentView === 'budget' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
@@ -57,7 +55,7 @@ const Header = ({
           }`}
           onClick={() => onViewChange('stakeholders')}
         >
-          Stakeholders <kbd className="text-xs text-muted-foreground ml-1">2</kbd>
+          Кластеры <kbd className="text-xs text-muted-foreground ml-1">2</kbd>
           {currentView === 'stakeholders' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
@@ -70,7 +68,7 @@ const Header = ({
           }`}
           onClick={() => onViewChange('timeline')}
         >
-          Timeline <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
+          Таймлайн <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
           {currentView === 'timeline' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
@@ -86,14 +84,6 @@ const Header = ({
           <Search size={16} />
           <span>Поиск...</span>
           <kbd className="text-xs px-1.5 py-0.5 bg-card border border-border rounded">/</kbd>
-        </button>
-
-        <button
-          onClick={onShortcutsClick}
-          className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          title="Горячие клавиши"
-        >
-          <Keyboard size={20} />
         </button>
 
         {isAdmin && (

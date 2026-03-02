@@ -42,6 +42,12 @@ export interface TreemapLayoutNode {
   stakeholders?: string[];
   // Description
   description?: string;
+  // Timeline stub (placeholder initiative)
+  isTimelineStub?: boolean;
+  /** For unit-only view: aggregated distributed budget */
+  distributedValue?: number;
+  /** For unit-only view: aggregated unallocated budget */
+  unallocatedValue?: number;
 }
 
 // Animation type determines duration and behavior
@@ -50,7 +56,7 @@ export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigat
 // Animation durations in ms — zoom-in aligned with zoom-out, can be longer when needed
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
-  'filter': 750,
+  'filter': 380,
   'drilldown': 960,
   'drilldown-fast': 400,
   'navigate-up': 900,
@@ -60,7 +66,7 @@ export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
 
 // Shorter duration when many nodes are visible to reduce reflow frames (same animation, less time in heavy phase)
 const VISIBLE_NODES_THRESHOLD = 50;
-const DURATION_WHEN_MANY_FILTER_MS = 500;
+const DURATION_WHEN_MANY_FILTER_MS = 280;
 const DURATION_WHEN_MANY_RESIZE_MS = 300;
 
 export function getEffectiveDuration(animationType: AnimationType, visibleNodeCount?: number): number {

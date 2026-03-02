@@ -497,7 +497,6 @@ const Index = () => {
         currentView={currentView}
         onViewChange={handleViewChange}
         onSearchClick={() => setShowSearch(true)}
-        onShortcutsClick={() => setShowShortcuts(true)}
         isAdmin={isAdmin}
       />
 
@@ -733,9 +732,9 @@ const Index = () => {
             </div>
             <div className="p-4 space-y-2">
               {[
-                ['Вкладка Budget', '1'],
-                ['Вкладка Stakeholders', '2'],
-                ['Вкладка Timeline', '3'],
+                ['Вкладка Бюджет', '1'],
+                ['Вкладка Кластеры', '2'],
+                ['Вкладка Таймлайн', '3'],
                 ['Поиск', '/'],
                 ['Сбросить фильтры', 'Shift+R'],
                 ['Наверх / Закрыть', 'Esc']

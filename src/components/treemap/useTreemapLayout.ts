@@ -80,6 +80,9 @@ function flattenHierarchy(
     quarterlyData: node.data.quarterlyData,
     stakeholders: node.data.stakeholders,
     description: node.data.description,
+    isTimelineStub: node.data.isTimelineStub,
+    distributedValue: node.data.distributedValue,
+    unallocatedValue: node.data.unallocatedValue,
   };
   
   // Process children if we haven't reached max depth

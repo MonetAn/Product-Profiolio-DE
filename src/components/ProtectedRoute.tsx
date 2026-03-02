@@ -15,7 +15,6 @@ function LoadingWithHeader() {
         currentView="budget"
         onViewChange={() => {}}
         onSearchClick={() => {}}
-        onShortcutsClick={() => {}}
         isAdmin={false}
       />
       <div className="flex-1 flex items-center justify-center pt-14">

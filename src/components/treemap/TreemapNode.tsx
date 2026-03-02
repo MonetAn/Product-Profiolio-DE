@@ -154,6 +154,7 @@ const TreemapNode = memo(({
     node.offTrack && isLeaf && 'off-track',
     node.isTeam && 'is-team',
     node.isInitiative && 'is-initiative',
+    node.isInitiative && node.isTimelineStub && 'is-timeline-stub',
   ].filter(Boolean).join(' ');
 
   const skipInitial = animationType === 'initial';

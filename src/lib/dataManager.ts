@@ -35,6 +35,11 @@ export interface TreeNode {
   isInitiative?: boolean;
   isRoot?: boolean;
   isStakeholder?: boolean;
+  isTimelineStub?: boolean;
+  /** For unit-only tree: aggregated distributed (non-stub) budget */
+  distributedValue?: number;
+  /** For unit-only tree: aggregated unallocated (stub) budget */
+  unallocatedValue?: number;
 }
 
 /** Sum of values in a node's subtree (node.value if set, else sum of children recursively). */
@@ -361,6 +366,21 @@ export function getInitiativeQuarters(row: RawDataRow): string[] {
   return Object.keys(row.quarterlyData).filter(q => row.quarterlyData[q].budget > 0);
 }
 
+/** Format quarter range for display: "Q1 2025 – Q4 2026" or "Q2 2025" */
+export function formatQuarterRange(quarterlyData: Record<string, QuarterData> | undefined): string {
+  if (!quarterlyData) return '';
+  const quarters = Object.keys(quarterlyData)
+    .filter(q => (quarterlyData[q]?.budget ?? 0) > 0)
+    .sort();
+  if (quarters.length === 0) return '';
+  const formatOne = (key: string) => {
+    const [year, q] = key.split('-');
+    return `${q} ${year}`;
+  };
+  if (quarters.length === 1) return formatOne(quarters[0]);
+  return `${formatOne(quarters[0])} – ${formatOne(quarters[quarters.length - 1])}`;
+}
+
 /** True if the initiative has support in any quarter of the selected period. */
 export function isInitiativeSupport(row: RawDataRow, selectedQuarters: string[]): boolean {
   if (selectedQuarters.length === 0) return false;
@@ -442,19 +462,34 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions, budget: nu
 
 // Case 1: Only Units with aggregated values
 function buildUnitsOnlyTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
-  const unitMap: Record<string, { name: string; value: number; isUnit: boolean; children: TreeNode[] }> = {};
+  const unitMap: Record<string, { name: string; value: number; distributedValue: number; unallocatedValue: number; isUnit: boolean; children: TreeNode[] }> = {};
 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters);
     if (!shouldIncludeRow(row, options, budget)) return;
 
     if (!unitMap[row.unit]) {
-      unitMap[row.unit] = { name: row.unit, value: 0, isUnit: true, children: [] };
+      unitMap[row.unit] = { name: row.unit, value: 0, distributedValue: 0, unallocatedValue: 0, isUnit: true, children: [] };
     }
-    unitMap[row.unit].value += budget;
+    const unit = unitMap[row.unit];
+    unit.value += budget;
+    if (row.isTimelineStub) {
+      unit.unallocatedValue += budget;
+    } else {
+      unit.distributedValue += budget;
+    }
   });
 
-  const children = Object.values(unitMap).filter(u => u.value > 0);
+  const children: TreeNode[] = Object.values(unitMap)
+    .filter(u => u.value > 0)
+    .map(u => ({
+      name: u.name,
+      value: u.value,
+      distributedValue: u.distributedValue,
+      unallocatedValue: u.unallocatedValue,
+      isUnit: true,
+      children: [],
+    }));
   return { name: 'Все Unit', children, isRoot: true };
 }
 
@@ -463,8 +498,10 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
   const unitMap: Record<string, { 
     name: string; 
     children: TreeNode[]; 
-    teamMap: Record<string, { name: string; value: number; isTeam: boolean; children: TreeNode[] }>; 
-    isUnit: boolean 
+    teamMap: Record<string, { name: string; value: number; distributedValue: number; unallocatedValue: number; isTeam: boolean; children: TreeNode[] }>; 
+    isUnit: boolean;
+    distributedValue: number;
+    unallocatedValue: number;
   }> = {};
 
   rawData.forEach(row => {
@@ -472,18 +509,26 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
     if (!shouldIncludeRow(row, options, budget)) return;
 
     if (!unitMap[row.unit]) {
-      unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
+      unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true, distributedValue: 0, unallocatedValue: 0 };
     }
 
     const unit = unitMap[row.unit];
     const teamName = row.team || 'Без команды';
 
     if (!unit.teamMap[teamName]) {
-      unit.teamMap[teamName] = { name: teamName, value: 0, isTeam: true, children: [] };
+      unit.teamMap[teamName] = { name: teamName, value: 0, distributedValue: 0, unallocatedValue: 0, isTeam: true, children: [] };
       unit.children.push(unit.teamMap[teamName]);
     }
 
-    unit.teamMap[teamName].value += budget;
+    const team = unit.teamMap[teamName];
+    team.value += budget;
+    if (row.isTimelineStub) {
+      team.unallocatedValue += budget;
+      unit.unallocatedValue += budget;
+    } else {
+      team.distributedValue += budget;
+      unit.distributedValue += budget;
+    }
   });
 
   const children = Object.values(unitMap)
@@ -491,7 +536,9 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
       const { teamMap, ...rest } = unit;
       return {
         ...rest,
-        children: rest.children.filter((team: TreeNode) => (team.value || 0) > 0)
+        distributedValue: unit.distributedValue,
+        unallocatedValue: unit.unallocatedValue,
+        children: rest.children.filter((team: TreeNode) => (team.value || 0) > 0),
       };
     })
     .filter(unit => unit.children.length > 0);
@@ -530,7 +577,8 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
-      isInitiative: true
+      isInitiative: true,
+      isTimelineStub: row.isTimelineStub ?? false
     });
   });
 
@@ -570,7 +618,8 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
-      isInitiative: true
+      isInitiative: true,
+      isTimelineStub: row.isTimelineStub ?? false
     });
   });
 
@@ -946,7 +995,8 @@ function buildStakeholdersFullTree(rawData: RawDataRow[], options: BuildTreeOpti
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
-      isInitiative: true
+      isInitiative: true,
+      isTimelineStub: row.isTimelineStub ?? false
     });
   });
 
@@ -1020,7 +1070,8 @@ function buildStakeholdersUnitsInitiativesTree(rawData: RawDataRow[], options: B
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
-      isInitiative: true
+      isInitiative: true,
+      isTimelineStub: row.isTimelineStub ?? false
     });
   });
 

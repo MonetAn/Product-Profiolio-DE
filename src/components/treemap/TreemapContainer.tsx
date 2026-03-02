@@ -39,6 +39,8 @@ interface TreemapContainerProps {
   initialFocusedPath?: string[];
   /** When switching to this tab (viewKey changes), show treemap with no animation and text immediately */
   viewKey?: string;
+  /** If false, tooltip does not show "Распределение бюджета" block (e.g. for Stakeholders treemap) */
+  showDistributionInTooltip?: boolean;
 }
 
 const TreemapContainer = ({
@@ -68,6 +70,7 @@ const TreemapContainer = ({
   resetZoomTrigger,
   initialFocusedPath,
   viewKey,
+  showDistributionInTooltip = true,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -516,6 +519,7 @@ const TreemapContainer = ({
         lastQuarter={lastQuarter}
         selectedUnitsCount={selectedUnitsCount}
         totalValue={totalValue}
+        showDistributionInTooltip={showDistributionInTooltip}
       />
       
       {/* Framer Motion treemap rendering */}

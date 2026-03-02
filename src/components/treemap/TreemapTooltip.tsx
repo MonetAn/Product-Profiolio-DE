@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { TreemapLayoutNode } from './types';
-import { formatBudget, escapeHtml } from '@/lib/dataManager';
+import { formatBudget, escapeHtml, formatQuarterRange } from '@/lib/dataManager';
 
 interface TreemapTooltipProps {
   data: {
@@ -13,13 +13,32 @@ interface TreemapTooltipProps {
   lastQuarter: string | null;
   selectedUnitsCount: number;
   totalValue: number;
+  /** If false, do not show "Распределение бюджета" block (used for Stakeholders treemap) */
+  showDistributionInTooltip?: boolean;
 }
+
+export type { TreemapTooltipProps };
 
 // Constants for positioning
 const CURSOR_OFFSET = 12;  // Distance from cursor
 const SCREEN_PADDING = 16; // Min distance from screen edges
 
-const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue }: TreemapTooltipProps) => {
+/** Sum distributed (described) vs unallocated (stub) budget in subtree */
+function sumDistributedUnallocated(node: TreemapLayoutNode): { distributed: number; unallocated: number } {
+  let distributed = 0, unallocated = 0;
+  function walk(n: TreemapLayoutNode) {
+    if (n.isInitiative) {
+      if (n.isTimelineStub) unallocated += n.value;
+      else distributed += n.value;
+      return;
+    }
+    (n.children ?? []).forEach(walk);
+  }
+  walk(node);
+  return { distributed, unallocated };
+}
+
+const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedUnitsCount, totalValue, showDistributionInTooltip = true }) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   
@@ -61,6 +80,9 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
     
     const { node } = data;
     const isInitiative = node.isInitiative;
+    const hasDistributionFromChildren = !isInitiative && node.children && node.children.length > 0;
+    const hasDistributionFromAggregates = !isInitiative && (node.distributedValue !== undefined || node.unallocatedValue !== undefined);
+    const showDistribution = showDistributionInTooltip && (hasDistributionFromChildren || hasDistributionFromAggregates);
     
     let html = `<div class="tooltip-header">
       <div class="tooltip-title">${escapeHtml(node.name)}</div>`;
@@ -70,53 +92,85 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
     }
     html += `</div>`;
     
-    html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
-    
-    // Percent of unit (skip for top-level units)
-    if (node.depth > 0) {
-      // Note: for proper % of unit, we'd need parent value from context
+    // Unit or Team (or Stakeholder group): show distribution (header + mini-bar + 2 rows)
+    if (showDistribution) {
+      let distributed: number;
+      let unallocated: number;
+      if (hasDistributionFromChildren) {
+        const summed = sumDistributedUnallocated(node);
+        distributed = summed.distributed;
+        unallocated = summed.unallocated;
+        // When view is "teams only" (no initiatives), subtree has no initiative nodes — use aggregates if present
+        if (distributed + unallocated === 0 && (node.distributedValue !== undefined || node.unallocatedValue !== undefined)) {
+          distributed = node.distributedValue ?? 0;
+          unallocated = node.unallocatedValue ?? 0;
+        }
+      } else {
+        distributed = node.distributedValue ?? 0;
+        unallocated = node.unallocatedValue ?? 0;
+      }
+      const total = distributed + unallocated;
+      const pctDist = total > 0 ? (distributed / total) * 100 : 0;
+      const pctUnalloc = total > 0 ? (unallocated / total) * 100 : 0;
+      
+      html += `<div class="tooltip-mini-bar">`;
+      if (pctDist > 0) html += `<div class="tooltip-mini-bar-segment tooltip-mini-bar-segment-distributed" style="flex-grow:${pctDist}"></div>`;
+      if (pctUnalloc > 0) html += `<div class="tooltip-mini-bar-segment tooltip-mini-bar-segment-unallocated" style="flex-grow:${pctUnalloc}"></div>`;
+      html += `</div>`;
+      html += `<div class="tooltip-row tooltip-row-initiatives"><span class="tooltip-label">Инициативы</span><span class="tooltip-value">${formatBudget(distributed)} (${pctDist.toFixed(1)}%)</span></div>`;
+      html += `<div class="tooltip-row tooltip-row-team-cost"><span class="tooltip-label">Стоимость команд</span><span class="tooltip-value">${formatBudget(unallocated)} (${pctUnalloc.toFixed(1)}%)</span></div>`;
+      
+      return html;
     }
     
-    // Percent of total (visible on screen — filter or zoom)
+    // Initiative: only show "unallocated" note for stubs; period, metrics, stakeholders
+    if (isInitiative) {
+      if (node.isTimelineStub) {
+        html += `<div class="tooltip-stub-notice">Нераспределённая стоимость команды</div>`;
+      }
+      
+      const quarterRange = formatQuarterRange(node.data.quarterlyData);
+      if (quarterRange) {
+        html += `<div class="tooltip-quarters">${escapeHtml(quarterRange)}</div>`;
+      }
+      
+      // Quarter metrics for initiatives (plan/fact last quarter)
+      if (node.quarterlyData && lastQuarter) {
+        const qData = node.quarterlyData[lastQuarter];
+        if (qData && (qData.metricPlan || qData.metricFact)) {
+          const [year, quarter] = lastQuarter.split('-');
+          const qLabel = `${quarter} ${year}`;
+          html += `<div class="tooltip-metrics">`;
+          if (qData.metricPlan) {
+            const truncatedPlan = qData.metricPlan.length > 100 
+              ? qData.metricPlan.slice(0, 100) + '…' 
+              : qData.metricPlan;
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedPlan)}</span></div>`;
+          }
+          if (qData.metricFact) {
+            const truncatedFact = qData.metricFact.length > 100 
+              ? qData.metricFact.slice(0, 100) + '…' 
+              : qData.metricFact;
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedFact)}</span></div>`;
+          }
+          html += `</div>`;
+        }
+      }
+      
+      if (node.stakeholders && node.stakeholders.length > 0) {
+        html += `<div class="tooltip-stakeholders">
+          <div class="tooltip-stakeholders-label">Стейкхолдеры</div>
+          <div class="tooltip-tags">${node.stakeholders.map(s => `<span class="tooltip-tag">${escapeHtml(s)}</span>`).join('')}</div>
+        </div>`;
+      }
+      return html;
+    }
+    
+    // Fallback: e.g. stakeholder group or other — budget + %
+    html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
     if (totalValue > 0) {
       const percentOfTotal = ((node.value / totalValue) * 100).toFixed(1);
       html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
-    }
-    
-    // Quarter metrics for initiatives
-    if (isInitiative && node.quarterlyData && lastQuarter) {
-      const qData = node.quarterlyData[lastQuarter];
-      if (qData && (qData.metricPlan || qData.metricFact)) {
-        const [year, quarter] = lastQuarter.split('-');
-        const qLabel = `${quarter} ${year}`;
-        html += `<div class="tooltip-metrics">`;
-        if (qData.metricPlan) {
-          const truncatedPlan = qData.metricPlan.length > 100 
-            ? qData.metricPlan.slice(0, 100) + '…' 
-            : qData.metricPlan;
-          html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedPlan)}</span></div>`;
-        }
-        if (qData.metricFact) {
-          const truncatedFact = qData.metricFact.length > 100 
-            ? qData.metricFact.slice(0, 100) + '…' 
-            : qData.metricFact;
-          html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedFact)}</span></div>`;
-        }
-        html += `</div>`;
-      }
-    }
-    
-    // Stakeholders
-    if (node.stakeholders && node.stakeholders.length > 0) {
-      html += `<div class="tooltip-stakeholders">
-        <div class="tooltip-stakeholders-label">Стейкхолдеры</div>
-        <div class="tooltip-tags">${node.stakeholders.map(s => `<span class="tooltip-tag">${escapeHtml(s)}</span>`).join('')}</div>
-      </div>`;
-    }
-    
-    // Hint
-    if (node.data.children && node.data.children.length > 0) {
-      html += '<div class="tooltip-hint">Кликните для детализации →</div>';
     }
     
     return html;

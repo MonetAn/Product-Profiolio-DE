@@ -108,6 +108,16 @@
   opacity: 0.95;
 }
 
+/* Timeline stub (unallocated team budget) — soft, distinct from off-track (no stripes) */
+.treemap-node.is-timeline-stub {
+  filter: saturate(0.82) brightness(1.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.treemap-node.is-timeline-stub:hover {
+  filter: saturate(0.88) brightness(1.1);
+}
+
 .treemap-node.depth-1 {
   /* border removed for cleaner look */
 }
@@ -123,6 +133,7 @@
   border-radius: var(--radius);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   padding: 16px;
+  min-width: 240px;
   max-width: 320px;
   z-index: 1000;
   pointer-events: none;
@@ -161,15 +172,35 @@
   background: hsl(var(--destructive));
 }
 
+/* Stub initiative notice in tooltip */
+.tooltip-stub-notice {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: hsl(var(--muted) / 0.5);
+  border-radius: 6px;
+  border-left: 3px solid hsl(var(--muted-foreground) / 0.5);
+}
+
 .tooltip-path {
   font-size: 12px;
   color: hsl(var(--muted-foreground));
   margin-bottom: 12px;
 }
 
+.tooltip-quarters {
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
 .tooltip-row {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
   padding: 6px 0;
   border-bottom: 1px solid hsl(var(--border));
   font-size: 13px;
@@ -181,10 +212,67 @@
 
 .tooltip-label {
   color: hsl(var(--muted-foreground));
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tooltip-value {
   font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Distribution block: colored dots link rows to mini-bar segments */
+.tooltip-row-initiatives .tooltip-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.tooltip-row-team-cost .tooltip-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground) / 0.5);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Legacy: optional distribution header (currently unused) */
+.tooltip-distribution-header {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 8px;
+}
+
+.tooltip-mini-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: hsl(var(--muted));
+  margin-bottom: 12px;
+}
+
+.tooltip-mini-bar-segment {
+  min-width: 0;
+}
+
+.tooltip-mini-bar-segment-distributed {
+  background: hsl(var(--primary));
+}
+
+.tooltip-mini-bar-segment-unallocated {
+  background: hsl(var(--muted-foreground) / 0.4);
 }
 
 /* Two-line label with subtitle */
