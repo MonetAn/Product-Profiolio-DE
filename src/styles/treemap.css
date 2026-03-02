@@ -19,6 +19,7 @@
   overflow: hidden;
   cursor: pointer;
   will-change: transform; /* GPU optimization for smooth animations */
+  contain: layout; /* Limit reflow to this node during size animations */
 }
 
 .treemap-node:hover {

@@ -3,7 +3,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { memo } from 'react';
-import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS } from './types';
+import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, getEffectiveDuration } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
 // Calculate relative luminance for WCAG contrast
@@ -38,6 +38,8 @@ interface TreemapNodeProps {
   renderDepth?: number;
   totalValue?: number;
   selectedUnitsCount?: number;
+  /** When high, container uses shorter animation duration for filter/resize to reduce lag */
+  visibleNodeCount?: number;
 }
 
 interface TreemapNodeContentProps {
@@ -126,8 +128,9 @@ const TreemapNode = memo(({
   renderDepth = 3,
   totalValue = 0,
   selectedUnitsCount = 0,
+  visibleNodeCount,
 }: TreemapNodeProps) => {
-  const duration = animationType === 'initial' ? 0 : ANIMATION_DURATIONS[animationType] / 1000;
+  const duration = animationType === 'initial' ? 0 : getEffectiveDuration(animationType, visibleNodeCount) / 1000;
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
@@ -226,6 +229,7 @@ const TreemapNode = memo(({
           node={child}
           animationType={animationType}
           textVisible={textVisible}
+          visibleNodeCount={visibleNodeCount}
           parentX={node.x0}
           parentY={node.y0}
           onClick={onClick}

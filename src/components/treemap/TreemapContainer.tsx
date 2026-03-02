@@ -6,7 +6,7 @@ import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
-import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, DRILLDOWN_TEXT_VISIBLE_AT_RATIO } from './types';
+import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, DRILLDOWN_TEXT_VISIBLE_AT_RATIO, getEffectiveDuration } from './types';
 import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
@@ -151,6 +151,30 @@ const TreemapContainer = ({
     focusedPath,
   });
 
+  function countRenderedNodes(nodes: TreemapLayoutNode[], maxDepth: number): number {
+    let count = 0;
+    for (const node of nodes) {
+      if (node.depth < maxDepth) count += 1;
+      if (node.children) count += countRenderedNodes(node.children, maxDepth);
+    }
+    return count;
+  }
+
+  // Render depth: matches actual tree structure from toggles (needed early for visibleNodeCount and effect)
+  const targetRenderDepth = useMemo(() => {
+    let depth = 1; // Units only
+    if (showTeams && showInitiatives) depth = 3; // Unit > Team > Initiative
+    else if (showTeams) depth = 2; // Unit > Team
+    else if (showInitiatives) depth = 2; // Unit > Initiative (teams skipped in data)
+    depth = Math.max(depth, focusedPath.length + 1);
+    return depth + extraDepth;
+  }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);
+
+  const visibleNodeCount = useMemo(
+    () => countRenderedNodes(layoutNodes, targetRenderDepth),
+    [layoutNodes, targetRenderDepth]
+  );
+
   // Store root layout so drilldown can animate FROM it (first zoom-in: blocks grow from old positions)
   if (focusedPath.length === 0 && layoutNodes.length > 0) {
     prevLayoutAtRootRef.current = layoutNodes;
@@ -275,7 +299,7 @@ const TreemapContainer = ({
     if (!reduceMotion && !isFirstRenderRef.current && newAnimationType !== 'initial') {
       setTextVisible(false);
       if (textVisibleTimerRef.current) clearTimeout(textVisibleTimerRef.current);
-      const fullDuration = ANIMATION_DURATIONS[newAnimationType];
+      const fullDuration = getEffectiveDuration(newAnimationType, visibleNodeCount);
       const isDrilldown = newAnimationType === 'drilldown' || newAnimationType === 'drilldown-fast';
       const textShowDelay = isDrilldown
         ? Math.round(fullDuration * DRILLDOWN_TEXT_VISIBLE_AT_RATIO)
@@ -295,17 +319,7 @@ const TreemapContainer = ({
         textVisibleTimerRef.current = null;
       }
     };
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, reduceMotion, viewKey]);
-  
-  // Render depth: matches actual tree structure from toggles
-  const targetRenderDepth = useMemo(() => {
-    let depth = 1; // Units only
-    if (showTeams && showInitiatives) depth = 3; // Unit > Team > Initiative
-    else if (showTeams) depth = 2; // Unit > Team
-    else if (showInitiatives) depth = 2; // Unit > Initiative (teams skipped in data)
-    depth = Math.max(depth, focusedPath.length + 1);
-    return depth + extraDepth;
-  }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, reduceMotion, viewKey, visibleNodeCount]);
   
   // Delayed render depth: when decreasing, keep old value during exit animation
   const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
@@ -323,7 +337,7 @@ const TreemapContainer = ({
       if (renderDepthTimerRef.current !== null) clearTimeout(renderDepthTimerRef.current);
     };
   }, [targetRenderDepth]);
-  
+
   // Node click handler — Flourish-style: zoom into node by updating focusedPath
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
     // Queue click during animation instead of dropping it
@@ -526,6 +540,7 @@ const TreemapContainer = ({
                 animationType={animationType}
                 fromLayoutNodes={focusedPath.length === 1 && (animationType === 'drilldown' || animationType === 'drilldown-fast') ? prevLayoutAtRootRef.current : undefined}
                 textVisible={reduceMotion ? true : textVisible}
+                visibleNodeCount={visibleNodeCount}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}

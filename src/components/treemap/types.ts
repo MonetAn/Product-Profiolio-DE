@@ -58,7 +58,20 @@ export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'resize': 420
 };
 
-// При zoom-in показывать текст под конец анимации (на этой доле длительности), а не после
+// Shorter duration when many nodes are visible to reduce reflow frames (same animation, less time in heavy phase)
+const VISIBLE_NODES_THRESHOLD = 50;
+const DURATION_WHEN_MANY_FILTER_MS = 450;
+const DURATION_WHEN_MANY_RESIZE_MS = 280;
+
+export function getEffectiveDuration(animationType: AnimationType, visibleNodeCount?: number): number {
+  const base = ANIMATION_DURATIONS[animationType];
+  if (visibleNodeCount == null || visibleNodeCount <= VISIBLE_NODES_THRESHOLD) return base;
+  if (animationType === 'filter') return DURATION_WHEN_MANY_FILTER_MS;
+  if (animationType === 'resize') return DURATION_WHEN_MANY_RESIZE_MS;
+  return base;
+}
+
+// При zoom-in показывать текст под конец анимации (на этой доле длительности), а не после (на этой доле длительности), а не после
 export const DRILLDOWN_TEXT_VISIBLE_AT_RATIO = 0.88;
 
 // Content fade: movement threshold (px) above which text fades out/in during layout animation
