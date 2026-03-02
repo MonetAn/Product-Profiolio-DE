@@ -51,17 +51,17 @@ export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigat
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 750,
-  'drilldown': 700,
-  'drilldown-fast': 380,
-  'navigate-up': 700,
-  'navigate-up-fast': 380,
+  'drilldown': 960,
+  'drilldown-fast': 400,
+  'navigate-up': 900,
+  'navigate-up-fast': 400,
   'resize': 420
 };
 
 // Shorter duration when many nodes are visible to reduce reflow frames (same animation, less time in heavy phase)
 const VISIBLE_NODES_THRESHOLD = 50;
-const DURATION_WHEN_MANY_FILTER_MS = 450;
-const DURATION_WHEN_MANY_RESIZE_MS = 280;
+const DURATION_WHEN_MANY_FILTER_MS = 500;
+const DURATION_WHEN_MANY_RESIZE_MS = 300;
 
 export function getEffectiveDuration(animationType: AnimationType, visibleNodeCount?: number): number {
   const base = ANIMATION_DURATIONS[animationType];
@@ -71,8 +71,8 @@ export function getEffectiveDuration(animationType: AnimationType, visibleNodeCo
   return base;
 }
 
-// При zoom-in показывать текст под конец анимации (на этой доле длительности), а не после (на этой доле длительности), а не после
-export const DRILLDOWN_TEXT_VISIBLE_AT_RATIO = 0.88;
+// При zoom-in показывать текст ближе к концу анимации (меньше лагов при многих узлах)
+export const DRILLDOWN_TEXT_VISIBLE_AT_RATIO = 0.95;
 
 // Content fade: movement threshold (px) above which text fades out/in during layout animation
 export const CONTENT_FADE_MOVEMENT_THRESHOLD_PX = 24;

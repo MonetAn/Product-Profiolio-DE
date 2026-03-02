@@ -292,7 +292,7 @@ const TreemapNode = memo(({
         className="absolute inset-0"
         style={{
           opacity: textVisible ? 1 : 0,
-          transition: 'opacity 0.12s ease-out',
+          transition: 'opacity 0.22s ease-out',
         }}
       >
         {content}
