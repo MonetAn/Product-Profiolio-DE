@@ -117,8 +117,6 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
     // Hint
     if (node.data.children && node.data.children.length > 0) {
       html += '<div class="tooltip-hint">Кликните для детализации →</div>';
-    } else if (isInitiative) {
-      html += '<div class="tooltip-hint">Кликните для перехода в таймлайн →</div>';
     }
     
     return html;

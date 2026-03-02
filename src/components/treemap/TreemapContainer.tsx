@@ -74,7 +74,6 @@ const TreemapContainer = ({
   const [animationType, setAnimationType] = useState<AnimationType>('initial');
   const [textVisible, setTextVisible] = useState(true);
   const textVisibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
   const isAnimatingRef = useRef(false);
@@ -231,9 +230,7 @@ const TreemapContainer = ({
       prevAnimationTypeRef.current = 'initial';
       setTextVisible(true);
       setAnimationType('initial');
-      setShowHint(true);
-      const hintTimer = setTimeout(() => setShowHint(false), 3000);
-      return () => clearTimeout(hintTimer);
+      return;
     }
 
     // По умолчанию сохраняем последний тип — второй прогон эффекта (layoutNodes) не перезаписывает drilldown/navigate-up в filter
@@ -310,10 +307,7 @@ const TreemapContainer = ({
       }, textShowDelay);
     }
 
-    setShowHint(true);
-    const hintTimer = setTimeout(() => setShowHint(false), 3000);
     return () => {
-      clearTimeout(hintTimer);
       if (textVisibleTimerRef.current) {
         clearTimeout(textVisibleTimerRef.current);
         textVisibleTimerRef.current = null;
@@ -515,11 +509,6 @@ const TreemapContainer = ({
       >
         <ArrowUp size={28} strokeWidth={2.5} />
       </button>
-      
-      {/* Instruction hint */}
-      <div className={`instruction-hint ${showHint && !isEmpty ? 'visible' : ''}`}>
-        Кликните на блок для детализации
-      </div>
       
       {/* Tooltip */}
       <TreemapTooltip
