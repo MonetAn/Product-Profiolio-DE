@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, DragEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useContext, DragEvent } from 'react';
 import { Upload, RefreshCw } from 'lucide-react';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import BudgetTreemap from '@/components/BudgetTreemap';
 import StakeholdersTreemap from '@/components/StakeholdersTreemap';
 import GanttView from '@/components/GanttView';
 import { InitiativePeekModal } from '@/components/InitiativePeekModal';
+import { ActivityContext } from '@/contexts/ActivityContext';
 import {
   parseCSV,
   convertFromDB,
@@ -25,6 +26,7 @@ import { useAccess } from '@/hooks/useAccess';
 import { toast } from 'sonner';
 
 const Index = () => {
+  const activityContext = useContext(ActivityContext);
   const { isAdmin, canAccess, scope } = useAccess();
   // Fetch data from database
   const { data: dbData, isLoading, error, refetch } = useInitiatives();
@@ -352,11 +354,21 @@ const Index = () => {
 
   // View switching
   const handleViewChange = (view: ViewType) => {
+    const from = currentView;
     setCurrentView(view);
     setNavigationStack([]);
     setCurrentRoot(portfolioData);
     setHighlightedInitiative(null);
+    activityContext?.send?.('view_switch', { from, to: view });
   };
+
+  // Sync activity context for tracking (view + zoomPath)
+  useEffect(() => {
+    activityContext?.setContext({
+      view: currentView,
+      zoomPath: currentView !== 'timeline' ? zoomPath : [],
+    });
+  }, [currentView, zoomPath, activityContext?.setContext]);
 
   // Resolve initiative row from treemap path (Unit/Team/Initiative or Stakeholder/Unit/Team/Initiative)
   const initiativePeekRow = (() => {
@@ -585,6 +597,7 @@ const Index = () => {
             onInitiativeClick={(name, path) => {
               setInitiativePeekPath(path);
             }}
+            onTrackTreemapAction={(type, payload) => activityContext?.send?.(type, payload)}
             onFileDrop={processCSVFile}
             hasData={rawData.length > 0}
             onResetFilters={resetFilters}
@@ -611,6 +624,7 @@ const Index = () => {
             onInitiativeClick={(name, path) => {
               setInitiativePeekPath(path);
             }}
+            onTrackTreemapAction={(type, payload) => activityContext?.send?.(type, payload)}
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
             clickedNodeName={clickedNodeName}

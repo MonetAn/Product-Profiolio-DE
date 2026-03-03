@@ -59,6 +59,7 @@ interface StakeholdersTreemapProps {
   showInitiatives?: boolean;
   initialFocusedPath?: string[];
   viewKey?: string;
+  onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
 }
 
 const StakeholdersTreemap = ({
@@ -81,6 +82,7 @@ const StakeholdersTreemap = ({
   showInitiatives = false,
   initialFocusedPath,
   viewKey,
+  onTrackTreemapAction,
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -108,6 +110,7 @@ const StakeholdersTreemap = ({
       resetZoomTrigger={resetZoomTrigger}
       initialFocusedPath={initialFocusedPath}
       viewKey={viewKey}
+      onTrackTreemapAction={onTrackTreemapAction}
       showDistributionInTooltip={false}
     />
   );

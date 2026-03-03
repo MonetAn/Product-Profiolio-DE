@@ -41,6 +41,7 @@ interface TreemapContainerProps {
   viewKey?: string;
   /** If false, tooltip does not show "Распределение бюджета" block (e.g. for Stakeholders treemap) */
   showDistributionInTooltip?: boolean;
+  onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
 }
 
 const TreemapContainer = ({
@@ -71,6 +72,7 @@ const TreemapContainer = ({
   initialFocusedPath,
   viewKey,
   showDistributionInTooltip = true,
+  onTrackTreemapAction,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -345,6 +347,7 @@ const TreemapContainer = ({
     
     // Initiative click → open peek modal (parent may navigate to Gantt from there)
     if (node.data.isInitiative && onInitiativeClick) {
+      onTrackTreemapAction?.('treemap_click', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
       onInitiativeClick(node.data.name, node.path);
       return;
     }
@@ -353,6 +356,7 @@ const TreemapContainer = ({
     const isNonLeaf = node.data.isUnit || node.data.isTeam || node.data.isStakeholder;
     
     if (isNonLeaf) {
+      onTrackTreemapAction?.('treemap_zoom', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
       // Smart auto-enable: show children based on node type
       if (node.data.isUnit || node.data.isStakeholder) {
         if (!showTeams) onAutoEnableTeams?.();
@@ -379,7 +383,7 @@ const TreemapContainer = ({
       setFocusedPath(newFocusedPath);
       onFocusedPathChange?.(newFocusedPath);
     }
-  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange, reduceMotion]);
+  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange, onTrackTreemapAction, reduceMotion, viewKey]);
   
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {

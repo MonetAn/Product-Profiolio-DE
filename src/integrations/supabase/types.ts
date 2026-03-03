@@ -345,6 +345,47 @@ export type Database = {
         }
         Relationships: []
       }
+      activity_events: {
+        Row: {
+          id: string
+          user_id: string
+          user_email: string | null
+          session_id: string
+          event_type: string
+          path: string | null
+          payload: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          user_email?: string | null
+          session_id: string
+          event_type: string
+          path?: string | null
+          payload?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          user_email?: string | null
+          session_id?: string
+          event_type?: string
+          path?: string | null
+          payload?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -352,6 +393,40 @@ export type Database = {
     Functions: {
       is_dodo_employee: { Args: never; Returns: boolean }
       get_my_access: { Args: Record<string, never>; Returns: Json }
+      prune_activity_events_by_range: {
+        Args: { period_start: string; period_end: string }
+        Returns: number
+      }
+      get_activity_events_stats: { Args: Record<string, never>; Returns: Json }
+      get_activity_summary: {
+        Args: {
+          period_start: string
+          period_end: string
+          filter_user_email?: string | null
+          filter_type?: string | null
+          filter_path?: string | null
+          exclude_user_emails?: string[] | null
+          include_user_emails?: string[] | null
+        }
+        Returns: Json
+      }
+      get_activity_sessions: {
+        Args: {
+          period_start: string
+          period_end: string
+          filter_user_email?: string | null
+          filter_type?: string | null
+          exclude_user_emails?: string[] | null
+          include_user_emails?: string[] | null
+        }
+        Returns: {
+          session_id: string
+          user_email: string | null
+          first_at: string
+          last_at: string
+          event_count: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

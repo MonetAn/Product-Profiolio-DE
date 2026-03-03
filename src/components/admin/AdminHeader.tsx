@@ -1,4 +1,4 @@
-import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList, Shield } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList, Shield, Activity } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { SyncStatus } from '@/hooks/useInitiativeMutations';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
-export type ViewMode = 'initiatives' | 'people' | 'access';
+export type ViewMode = 'initiatives' | 'people' | 'access' | 'activity';
 
 interface AdminHeaderProps {
   currentView: ViewMode;
@@ -59,6 +59,7 @@ const AdminHeader = ({
   }, [searchParams]);
 
   const accessUrl = '/admin/access';
+  const activityUrl = '/admin/activity';
 
   // Sync status indicator
   const renderSyncStatus = () => {
@@ -173,6 +174,15 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Доступ</span>
             </ToggleGroupItem>
           </Link>
+          <Link to={activityUrl}>
+            <ToggleGroupItem 
+              value="activity" 
+              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">Активность</span>
+            </ToggleGroupItem>
+          </Link>
         </ToggleGroup>
       </div>
 
@@ -197,7 +207,8 @@ const AdminHeader = ({
             </div>
           )}
           {currentView === 'access' && null}
-          {currentView !== 'access' && renderSyncStatus()}
+          {currentView === 'activity' && null}
+          {currentView !== 'access' && currentView !== 'activity' && renderSyncStatus()}
         </div>
       )}
 

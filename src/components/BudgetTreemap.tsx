@@ -29,6 +29,7 @@ interface BudgetTreemapProps {
   resetZoomTrigger?: number;
   initialFocusedPath?: string[];
   viewKey?: string;
+  onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
 }
 
 const BudgetTreemap = ({
@@ -53,6 +54,7 @@ const BudgetTreemap = ({
   resetZoomTrigger,
   initialFocusedPath,
   viewKey,
+  onTrackTreemapAction,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
@@ -81,6 +83,7 @@ const BudgetTreemap = ({
       resetZoomTrigger={resetZoomTrigger}
       initialFocusedPath={initialFocusedPath}
       viewKey={viewKey}
+      onTrackTreemapAction={onTrackTreemapAction}
     />
   );
 };
