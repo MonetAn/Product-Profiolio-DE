@@ -54,6 +54,7 @@ const Index = () => {
   const [selectedStakeholders, setSelectedStakeholders] = useState<string[]>([]);
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
+  const [showMoney, setShowMoney] = useState(true);
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
   const [clickedNodeName, setClickedNodeName] = useState<string | null>(null);
 
@@ -548,6 +549,8 @@ const Index = () => {
         showInitiatives={showInitiatives}
         onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
         onShowInitiativesChange={(v) => { setShowInitiatives(v); if (!v) autoEnabledRef.current.initiatives = false; else autoEnabledRef.current.initiatives = false; }}
+        showMoney={showMoney}
+        onShowMoneyChange={setShowMoney}
         onOfftrackClick={() => {
           setShowOnlyOfftrack(true);
           setCurrentView('timeline');
@@ -610,6 +613,7 @@ const Index = () => {
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
             initialFocusedPath={zoomPath}
+            showMoney={showMoney}
           />
         )}
 
@@ -637,6 +641,7 @@ const Index = () => {
             showTeams={showTeams}
             showInitiatives={showInitiatives}
             initialFocusedPath={zoomPath}
+            showMoney={showMoney}
           />
         )}
 

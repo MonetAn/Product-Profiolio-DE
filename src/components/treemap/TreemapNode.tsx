@@ -42,6 +42,8 @@ interface TreemapNodeProps {
   selectedUnitsCount?: number;
   /** When high, container uses shorter animation duration for filter/resize to reduce lag */
   visibleNodeCount?: number;
+  /** If false, only percentage is shown on leaf cells (no money) */
+  showMoney?: boolean;
 }
 
 interface TreemapNodeContentProps {
@@ -50,9 +52,10 @@ interface TreemapNodeContentProps {
   textColorClass: string;
   totalValue?: number;
   selectedUnitsCount?: number;
+  showMoney?: boolean;
 }
 
-const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue = 0, selectedUnitsCount = 0 }: TreemapNodeContentProps) => {
+const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue = 0, selectedUnitsCount = 0, showMoney = true }: TreemapNodeContentProps) => {
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   const hasChildren = node.children && node.children.length > 0;
@@ -100,12 +103,14 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue =
                 {`${((node.value / totalValue) * 100).toFixed(1)}%`}
               </div>
             )}
-            <div 
-              className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
-              style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
-            >
-              {formatBudget(node.value)}
-            </div>
+            {showMoney && (
+              <div 
+                className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
+                style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
+              >
+                {formatBudget(node.value)}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -132,6 +137,7 @@ const TreemapNode = memo(({
   totalValue = 0,
   selectedUnitsCount = 0,
   visibleNodeCount,
+  showMoney = true,
 }: TreemapNodeProps) => {
   const duration = animationType === 'initial' ? 0 : getEffectiveDuration(animationType, visibleNodeCount) / 1000;
   const hasChildren = node.children && node.children.length > 0;
@@ -202,6 +208,7 @@ const TreemapNode = memo(({
       textColorClass={textColorClass}
       totalValue={totalValue}
       selectedUnitsCount={selectedUnitsCount}
+      showMoney={showMoney}
     />
   );
 
@@ -255,6 +262,7 @@ const TreemapNode = memo(({
           renderDepth={renderDepth}
           totalValue={totalValue}
           selectedUnitsCount={selectedUnitsCount}
+          showMoney={showMoney}
         />
       ))}
     </>

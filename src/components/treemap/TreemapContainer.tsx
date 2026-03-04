@@ -42,6 +42,8 @@ interface TreemapContainerProps {
   /** If false, tooltip does not show "Распределение бюджета" block (e.g. for Stakeholders treemap) */
   showDistributionInTooltip?: boolean;
   onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
+  /** If false, only percentages are shown on cells (no money) */
+  showMoney?: boolean;
 }
 
 const TreemapContainer = ({
@@ -73,6 +75,7 @@ const TreemapContainer = ({
   viewKey,
   showDistributionInTooltip = true,
   onTrackTreemapAction,
+  showMoney = true,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -301,7 +304,8 @@ const TreemapContainer = ({
     if (!reduceMotion && !isFirstRenderRef.current && newAnimationType !== 'initial') {
       setTextVisible(false);
       if (textVisibleTimerRef.current) clearTimeout(textVisibleTimerRef.current);
-      const fullDuration = getEffectiveDuration(newAnimationType, visibleNodeCount);
+      const count = countRenderedNodes(layoutNodes, targetRenderDepth);
+      const fullDuration = getEffectiveDuration(newAnimationType, count);
       const isDrilldown = newAnimationType === 'drilldown' || newAnimationType === 'drilldown-fast';
       const textShowDelay = isDrilldown
         ? Math.round(fullDuration * DRILLDOWN_TEXT_VISIBLE_AT_RATIO)
@@ -318,7 +322,7 @@ const TreemapContainer = ({
         textVisibleTimerRef.current = null;
       }
     };
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, reduceMotion, viewKey, visibleNodeCount]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, targetRenderDepth, reduceMotion, viewKey]);
   
   // Delayed render depth: when decreasing, keep old value during exit animation
   const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
@@ -547,6 +551,7 @@ const TreemapContainer = ({
                 renderDepth={renderDepth}
                 totalValue={totalValue}
                 selectedUnitsCount={selectedUnitsCount}
+                showMoney={showMoney}
               />
             ))}
           </AnimatePresence>

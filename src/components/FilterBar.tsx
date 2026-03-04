@@ -42,6 +42,8 @@ interface FilterBarProps {
   showInitiatives: boolean;
   onShowTeamsChange: (val: boolean) => void;
   onShowInitiativesChange: (val: boolean) => void;
+  showMoney: boolean;
+  onShowMoneyChange: (val: boolean) => void;
   
   // Off-track modal
   onOfftrackClick: () => void;
@@ -93,6 +95,8 @@ const FilterBar = ({
   showInitiatives,
   onShowTeamsChange,
   onShowInitiativesChange,
+  showMoney,
+  onShowMoneyChange,
   onOfftrackClick,
   hideNestingToggles = false,
   onResetFilters,
@@ -825,6 +829,27 @@ const FilterBar = ({
           {/* Nesting Toggles - hidden on Gantt */}
           {!hideNestingToggles && (
             <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                      <input
+                        type="checkbox"
+                        checked={showMoney}
+                        onChange={(e) => onShowMoneyChange(e.target.checked)}
+                        className="hidden"
+                      />
+                      <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showMoney ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                        {showMoney && <Check size={10} />}
+                      </span>
+                      <span>Деньги</span>
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    Показывать суммы на ячейках
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                 <input
                   type="checkbox"

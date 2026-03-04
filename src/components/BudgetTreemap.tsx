@@ -30,6 +30,7 @@ interface BudgetTreemapProps {
   initialFocusedPath?: string[];
   viewKey?: string;
   onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
+  showMoney?: boolean;
 }
 
 const BudgetTreemap = ({
@@ -55,12 +56,14 @@ const BudgetTreemap = ({
   initialFocusedPath,
   viewKey,
   onTrackTreemapAction,
+  showMoney = true,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
       data={data}
       showTeams={showTeams}
       showInitiatives={showInitiatives}
+      showMoney={showMoney}
       onNavigateBack={onNavigateBack}
       canNavigateBack={canNavigateBack}
       onInitiativeClick={onInitiativeClick}
