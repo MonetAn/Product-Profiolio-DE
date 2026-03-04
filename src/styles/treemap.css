@@ -210,6 +210,10 @@
   border-bottom: none;
 }
 
+.tooltip-row:has(.tooltip-label-wrap) {
+  align-items: flex-start;
+}
+
 .tooltip-label {
   color: hsl(var(--muted-foreground));
   min-width: 0;
@@ -219,32 +223,45 @@
   white-space: nowrap;
 }
 
+/* Allow long distribution labels to wrap so they fit in tooltip without widening it */
+.tooltip-label-wrap {
+  white-space: normal;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
 .tooltip-value {
   font-weight: 500;
   flex-shrink: 0;
 }
 
-/* Distribution block: colored dots link rows to mini-bar segments */
+/* Distribution block: colored dots left of label; text indented so wrap doesn't go under dot */
+.tooltip-row-initiatives .tooltip-label,
+.tooltip-row-team-cost .tooltip-label {
+  position: relative;
+  padding-left: 14px;
+}
+
 .tooltip-row-initiatives .tooltip-label::before {
   content: '';
-  display: inline-block;
+  position: absolute;
+  left: 0;
+  top: 0.4em;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: hsl(var(--primary));
-  margin-right: 6px;
-  vertical-align: middle;
 }
 
 .tooltip-row-team-cost .tooltip-label::before {
   content: '';
-  display: inline-block;
+  position: absolute;
+  left: 0;
+  top: 0.4em;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: hsl(var(--muted-foreground) / 0.5);
-  margin-right: 6px;
-  vertical-align: middle;
 }
 
 /* Legacy: optional distribution header (currently unused) */

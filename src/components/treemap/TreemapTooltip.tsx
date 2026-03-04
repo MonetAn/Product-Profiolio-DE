@@ -117,8 +117,8 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
       if (pctDist > 0) html += `<div class="tooltip-mini-bar-segment tooltip-mini-bar-segment-distributed" style="flex-grow:${pctDist}"></div>`;
       if (pctUnalloc > 0) html += `<div class="tooltip-mini-bar-segment tooltip-mini-bar-segment-unallocated" style="flex-grow:${pctUnalloc}"></div>`;
       html += `</div>`;
-      html += `<div class="tooltip-row tooltip-row-initiatives"><span class="tooltip-label">Инициативы</span><span class="tooltip-value">${formatBudget(distributed)} (${pctDist.toFixed(1)}%)</span></div>`;
-      html += `<div class="tooltip-row tooltip-row-team-cost"><span class="tooltip-label">Стоимость команд</span><span class="tooltip-value">${formatBudget(unallocated)} (${pctUnalloc.toFixed(1)}%)</span></div>`;
+      html += `<div class="tooltip-row tooltip-row-initiatives"><span class="tooltip-label tooltip-label-wrap">Аллоцированный бюджет</span><span class="tooltip-value">${formatBudget(distributed)} (${pctDist.toFixed(1)}%)</span></div>`;
+      html += `<div class="tooltip-row tooltip-row-team-cost"><span class="tooltip-label tooltip-label-wrap">Нераспределенный бюджет</span><span class="tooltip-value">${formatBudget(unallocated)} (${pctUnalloc.toFixed(1)}%)</span></div>`;
       
       return html;
     }
