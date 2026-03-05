@@ -12,6 +12,7 @@ import {
   parseStakeholderParts,
   type SupportFilter
 } from '@/lib/dataManager';
+import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 import '@/styles/gantt.css';
 
 interface QuarterPopupData {
@@ -34,6 +35,7 @@ interface GanttViewProps {
   selectedQuarters: string[];
   supportFilter: SupportFilter;
   showOnlyOfftrack: boolean;
+  showOnlyStub?: boolean;
   selectedUnits: string[];
   selectedTeams: string[];
   selectedStakeholders: string[];
@@ -52,6 +54,7 @@ const GanttView = ({
   selectedQuarters,
   supportFilter,
   showOnlyOfftrack,
+  showOnlyStub = false,
   selectedUnits,
   selectedTeams,
   selectedStakeholders,
@@ -106,6 +109,7 @@ const GanttView = ({
       if (supportFilter === 'exclude' && isSupport) return false;
       if (supportFilter === 'only' && !isSupport) return false;
       if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
+      if (showOnlyStub && !row.isTimelineStub) return false;
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return false;
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
       if (selectedStakeholders.length > 0) {
@@ -144,7 +148,7 @@ const GanttView = ({
     result = [...nonStubs, ...stubs];
 
     return result;
-  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, showOnlyStub, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
 
   // Calculate Support/Development budget breakdown
   const { supportTotal, developmentTotal, grandTotal, supportPercent } = useMemo(() => {
@@ -581,9 +585,11 @@ const GanttView = ({
             <div 
               className={`gantt-name-popup-text ${!nameExpandedSections['description'] && descriptionLong ? 'truncated' : ''} ${nameExpandedSections['description'] ? 'expanded' : ''}`}
             >
-              {nameExpandedSections['description'] || !descriptionLong 
-                ? row.description 
-                : row.description.slice(0, 450) + '…'}
+              <DescriptionMarkdown
+                content={nameExpandedSections['description'] || !descriptionLong
+                  ? row.description
+                  : row.description.slice(0, 450) + '…'}
+              />
             </div>
           </div>
         )}
@@ -649,7 +655,7 @@ const GanttView = ({
             <div 
               key={idx} 
               ref={isHighlighted ? highlightedRef : null}
-              className={`gantt-row ${isHighlighted ? 'highlighted' : ''}`}
+              className={`gantt-row ${isHighlighted ? 'highlighted' : ''} ${row.isTimelineStub ? 'gantt-row-is-stub' : ''}`}
             >
               <div className="gantt-row-label">
                 <div 
@@ -749,7 +755,7 @@ const GanttView = ({
       {/* Quarter detail popup */}
       {renderQuarterPopup()}
 
-      {/* Legend */}
+      {/* Legend: only bar types and stats (Off-track / Заглушка explained by FilterBar buttons) */}
       <div className="gantt-legend">
         <div className="gantt-legend-item">
           <div className="gantt-legend-color development"></div>
@@ -758,10 +764,6 @@ const GanttView = ({
         <div className="gantt-legend-item">
           <div className="gantt-legend-color support"></div>
           <span>Support</span>
-        </div>
-        <div className="gantt-legend-item">
-          <div className="gantt-legend-color hatched"></div>
-          <span>Off-track</span>
         </div>
         
         {/* Budget statistics */}

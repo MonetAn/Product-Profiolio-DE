@@ -47,6 +47,9 @@ interface FilterBarProps {
   
   // Off-track modal
   onOfftrackClick: () => void;
+  showOnlyStub?: boolean;
+  onShowOnlyStubChange?: (val: boolean) => void;
+  onStubClick?: () => void;
   
   // Hide nesting toggles (for Timeline view)
   hideNestingToggles?: boolean;
@@ -83,6 +86,9 @@ const FilterBar = ({
   onSupportFilterChange,
   showOnlyOfftrack,
   onShowOnlyOfftrackChange,
+  showOnlyStub = false,
+  onShowOnlyStubChange,
+  onStubClick,
   allStakeholders,
   selectedStakeholders,
   onStakeholdersChange,
@@ -214,6 +220,7 @@ const FilterBar = ({
       if (supportFilter === 'exclude' && isSupport) return acc;
       if (supportFilter === 'only' && !isSupport) return acc;
       if (showOnlyOfftrack && !isOffTrack) return acc;
+      if (showOnlyStub && !row.isTimelineStub) return acc;
       if (selectedStakeholders.length > 0) {
         const rowParts = parseStakeholderParts(row.stakeholders);
         if (!rowParts.some(p => selectedStakeholders.includes(p))) return acc;
@@ -237,9 +244,10 @@ const FilterBar = ({
       acc.count++;
       acc.budget += budget;
       if (isOffTrack) acc.offtrack++;
+      if (row.isTimelineStub) acc.stubs++;
       return acc;
     },
-    { count: 0, budget: 0, offtrack: 0 }
+    { count: 0, budget: 0, offtrack: 0, stubs: 0 }
   );
 
   // Period label - shorter version
@@ -784,30 +792,6 @@ const FilterBar = ({
             </Tooltip>
           </TooltipProvider>
 
-          {/* Only offtrack toggle with tooltip */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                  <input
-                    type="checkbox"
-                    checked={showOnlyOfftrack}
-                    onChange={(e) => onShowOnlyOfftrackChange(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showOnlyOfftrack ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                    {showOnlyOfftrack && <Check size={10} />}
-                  </span>
-                  <span className="whitespace-nowrap">Off-track</span>
-                  <HelpCircle size={10} className="text-muted-foreground/60" />
-                </label>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[280px] text-xs">
-                Инициатива считается Off-track, если она off-track в последнем квартале выбранного периода
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
           {/* Reset Filters Button - only visible when filters are active */}
           {hasActiveFilters && onResetFilters && (
             <>
@@ -881,47 +865,46 @@ const FilterBar = ({
         {/* Spacer */}
         <div className="flex-1 min-w-[8px]" />
 
-        {/* KPIs - compact */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {/* Total cost - only on treemap tabs */}
-          {(currentView === 'budget' || currentView === 'stakeholders') && (
-            <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
-              <span className="font-bold">{formatBudgetCompact(totals.budget)}</span>
-            </div>
-          )}
-          <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
-            <span className="font-bold">{totals.count}</span> иниц.
-          </div>
+        {/* Buttons left, KPIs right (flex-nowrap so they don't wrap) */}
+        <div className="flex flex-nowrap items-center gap-1.5 flex-shrink-0">
           <button
             onClick={onOfftrackClick}
-            className="flex items-center gap-1 px-2 py-1 bg-destructive/10 text-destructive rounded text-[11px] font-medium cursor-pointer hover:bg-destructive/20 transition-colors whitespace-nowrap"
-            title="Перейти к Off-track инициативам"
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
+              showOnlyOfftrack
+                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+            }`}
+            title="Показать только Off-track (повторный клик — сброс)"
           >
             <span className="font-bold">{totals.offtrack}</span>
             <span className="hidden sm:inline">off-track</span>
-            <div 
-              className="w-2.5 h-2.5 sm:hidden" 
-              style={{ 
-                borderWidth: '0 10px 10px 0', 
-                borderStyle: 'solid',
-                borderColor: 'transparent hsl(var(--destructive)) transparent transparent' 
-              }} 
-            />
+            <div className="legend-off-track-icon legend-off-track-icon-sm" />
           </button>
-        </div>
-
-        {/* Legend - hidden on small screens */}
-        <div className="hidden lg:flex items-center gap-1.5 pl-2 border-l border-border flex-shrink-0">
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <div 
-              className="w-3 h-3" 
-              style={{ 
-                borderWidth: '0 12px 12px 0', 
-                borderStyle: 'solid',
-                borderColor: 'transparent hsl(var(--destructive)) transparent transparent' 
-              }} 
-            />
-            <span>Off-Track</span>
+          {onStubClick && (
+            <button
+              onClick={onStubClick}
+              className={`flex items-center gap-1 px-2 py-1 border rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
+                showOnlyStub
+                  ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
+                  : 'bg-muted border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              }`}
+              title="Показать только заглушки (сводная стоимость команд). Повторный клик — сброс."
+            >
+              <span className="font-bold">{totals.stubs}</span>
+              <span className="hidden sm:inline">Заглушка</span>
+              <div className="legend-stub-sample-sm" />
+            </button>
+          )}
+          {/* KPIs pushed to the right */}
+          <div className="flex items-center gap-1.5 pl-1.5 border-l border-border">
+            {(currentView === 'budget' || currentView === 'stakeholders') && (
+              <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
+                <span className="font-bold">{formatBudgetCompact(totals.budget)}</span>
+              </div>
+            )}
+            <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
+              <span className="font-bold">{totals.count}</span> иниц.
+            </div>
           </div>
         </div>
       </div>

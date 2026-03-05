@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -8,11 +8,16 @@ export interface AccessScope {
   allowedTeamPairs: { unit: string; team: string }[];
 }
 
+export type AccessErrorType = 'timeout' | 'network';
+
 export interface AccessState {
   canAccess: boolean;
   isAdmin: boolean;
   scope: AccessScope;
   accessLoading: boolean;
+  /** Set when access check failed due to timeout/network (Supabase cold), so UI can show "Повторить" */
+  accessError: AccessErrorType | null;
+  retryAccess: () => void;
 }
 
 const DEFAULT_SCOPE: AccessScope = { seeAll: true, allowedUnits: [], allowedTeamPairs: [] };
@@ -87,6 +92,24 @@ function parseAccessResponse(data: unknown): {
   };
 }
 
+function isNetworkOrTimeoutError(reason: string, extra?: unknown): AccessErrorType | null {
+  if (reason === 'timeout_exhausted') return 'timeout';
+  if (reason === 'rpc_error' || reason === 'rpc_throw') {
+    const msg = String((extra as { message?: string })?.message ?? '');
+    if (/failed to fetch|timeout|network/i.test(msg)) return 'network';
+  }
+  return null;
+}
+
+const noAccessState = {
+  canAccess: false,
+  isAdmin: false,
+  scope: DEFAULT_SCOPE,
+  accessLoading: false as const,
+  accessError: null as AccessErrorType | null,
+  retryAccess: () => {},
+};
+
 export function useAccess(): AccessState {
   const { user, loading: authLoading, isDodoEmployee } = useAuth();
   const [access, setAccess] = useState<{
@@ -94,26 +117,41 @@ export function useAccess(): AccessState {
     isAdmin: boolean;
     scope: AccessScope;
   } | null>(null);
+  const [accessError, setAccessError] = useState<AccessErrorType | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const fetchedRef = useRef(false);
 
   const shouldFetch = Boolean(user && isDodoEmployee && !authLoading);
 
+  const retryAccess = useCallback(() => {
+    fetchedRef.current = false;
+    setAccess(null);
+    setAccessError(null);
+    setRetryKey((k) => k + 1);
+  }, []);
+
   useEffect(() => {
     if (!shouldFetch) {
       setAccess(null);
+      setAccessError(null);
       fetchedRef.current = false;
       return;
     }
     if (fetchedRef.current) return;
     fetchedRef.current = true;
+    setAccessError(null);
     let cancelled = false;
     let retryCount = 0;
-    const maxRetries = 2; // 3 attempts total: initial + 2 retries
-    const timeoutMs = 15000; // 15s per attempt (slow networks / cold start)
+    const maxRetries = 3; // 4 attempts total (cold Supabase can take 1–2 min)
+    const timeoutMs = 30000; // 30s per attempt
 
     const setFailed = (reason: string, extra?: unknown) => {
       devLogNoAccess(reason, extra);
-      if (!cancelled) setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+      const errType = isNetworkOrTimeoutError(reason, extra);
+      if (!cancelled) {
+        setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+        setAccessError(errType);
+      }
     };
 
     const run = () => {
@@ -121,7 +159,7 @@ export function useAccess(): AccessState {
         if (cancelled) return;
         if (retryCount < maxRetries) {
           retryCount++;
-          setTimeout(run, 1500);
+          setTimeout(run, 2000);
           return;
         }
         setFailed('timeout_exhausted', { retryCount });
@@ -135,7 +173,7 @@ export function useAccess(): AccessState {
           if (error) {
             if (retryCount < maxRetries) {
               retryCount++;
-              setTimeout(run, 1500);
+              setTimeout(run, 2000);
               return;
             }
             setFailed('rpc_error', { message: error.message, code: error.code, details: error.details });
@@ -143,6 +181,7 @@ export function useAccess(): AccessState {
           }
           const result = parseAccessResponse(data);
           setAccess(result);
+          setAccessError(null);
           if (result.canAccess && user) setCachedAccess(user.id, result);
         })
         .catch((err) => {
@@ -150,7 +189,7 @@ export function useAccess(): AccessState {
           clearTimeout(timeoutId);
           if (retryCount < maxRetries) {
             retryCount++;
-            setTimeout(run, 1500);
+            setTimeout(run, 2000);
             return;
           }
           setFailed('rpc_throw', err);
@@ -158,31 +197,36 @@ export function useAccess(): AccessState {
     };
 
     const cached = user ? getCachedAccess(user.id) : null;
-    if (cached?.canAccess) setAccess(cached);
+    if (cached?.canAccess) {
+      setAccess(cached);
+      setAccessError(null);
+    }
     run();
     return () => { cancelled = true; };
-  }, [shouldFetch, user?.id, isDodoEmployee]);
+  }, [shouldFetch, user?.id, isDodoEmployee, retryKey]);
 
   useEffect(() => {
     if (!user) fetchedRef.current = false;
   }, [user]);
 
   if (!user || !isDodoEmployee) {
-    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: false };
+    return { ...noAccessState, retryAccess };
   }
   if (authLoading) {
-    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: false };
+    return { ...noAccessState, retryAccess };
   }
   if (!shouldFetch) {
-    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: false };
+    return { ...noAccessState, retryAccess };
   }
   if (access === null) {
-    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE, accessLoading: true };
+    return { ...noAccessState, accessLoading: true, retryAccess };
   }
   return {
     canAccess: access.canAccess,
     isAdmin: access.isAdmin,
     scope: access.scope,
     accessLoading: false,
+    accessError,
+    retryAccess,
   };
 }

@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { RawDataRow, calculateBudget, formatBudget } from '@/lib/dataManager';
 import { ExternalLink } from 'lucide-react';
+import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 
 interface InitiativePeekModalProps {
   open: boolean;
@@ -69,7 +70,7 @@ export function InitiativePeekModal({
               <section>
                 <h3 className="text-sm font-medium text-muted-foreground mb-1">Описание</h3>
                 {row.description?.trim() ? (
-                  <p className="text-sm whitespace-pre-wrap">{row.description}</p>
+                  <DescriptionMarkdown content={row.description} className="text-sm" />
                 ) : (
                   <p className="text-sm text-muted-foreground italic">Описание не добавлено</p>
                 )}

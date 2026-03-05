@@ -51,6 +51,7 @@ const Index = () => {
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [supportFilter, setSupportFilter] = useState<SupportFilter>('all');
   const [showOnlyOfftrack, setShowOnlyOfftrack] = useState(false);
+  const [showOnlyStub, setShowOnlyStub] = useState(false);
   const [selectedStakeholders, setSelectedStakeholders] = useState<string[]>([]);
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
@@ -119,6 +120,7 @@ const Index = () => {
       selectedQuarters,
       supportFilter,
       showOnlyOfftrack,
+      showOnlyStub,
       selectedStakeholders,
       unitFilter,
       teamFilter,
@@ -135,7 +137,7 @@ const Index = () => {
     setStakeholdersData(stakeholdersTree);
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, showOnlyStub, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives]);
 
   useEffect(() => {
     if (rawData.length === 0) {
@@ -331,6 +333,7 @@ const Index = () => {
     setSelectedStakeholders([]);
     setSupportFilter('all');
     setShowOnlyOfftrack(false);
+    setShowOnlyStub(false);
     
     // Reset cost filters
     setCostSortOrder('none');
@@ -349,6 +352,7 @@ const Index = () => {
                            selectedStakeholders.length > 0 ||
                            supportFilter !== 'all' || 
                            showOnlyOfftrack ||
+                           showOnlyStub ||
                            costSortOrder !== 'none' ||
                            costFilterMin !== null ||
                            costFilterMax !== null;
@@ -533,6 +537,12 @@ const Index = () => {
         onSupportFilterChange={setSupportFilter}
         showOnlyOfftrack={showOnlyOfftrack}
         onShowOnlyOfftrackChange={setShowOnlyOfftrack}
+        showOnlyStub={showOnlyStub}
+        onShowOnlyStubChange={setShowOnlyStub}
+        onStubClick={() => {
+          setShowOnlyOfftrack(false);
+          setShowOnlyStub(prev => !prev);
+        }}
         allStakeholders={stakeholderCombinations}
         selectedStakeholders={selectedStakeholders}
         onStakeholdersChange={(stakeholders) => {
@@ -552,8 +562,8 @@ const Index = () => {
         showMoney={showMoney}
         onShowMoneyChange={setShowMoney}
         onOfftrackClick={() => {
-          setShowOnlyOfftrack(true);
-          setCurrentView('timeline');
+          setShowOnlyStub(false);
+          setShowOnlyOfftrack(prev => !prev);
         }}
         hideNestingToggles={currentView === 'timeline'}
         onResetFilters={resetFilters}
@@ -651,6 +661,7 @@ const Index = () => {
             selectedQuarters={selectedQuarters}
             supportFilter={supportFilter}
             showOnlyOfftrack={showOnlyOfftrack}
+            showOnlyStub={showOnlyStub}
             selectedUnits={selectedUnits}
             selectedTeams={selectedTeams}
             selectedStakeholders={selectedStakeholders}

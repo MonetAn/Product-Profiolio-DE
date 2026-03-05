@@ -201,6 +201,33 @@
   );
 }
 
+/* Stub row (placeholder initiative = team FTE cost) — light hatching overrides off-track red */
+.gantt-row-is-stub .gantt-segment {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.22) 3px,
+    rgba(255, 255, 255, 0.22) 6px
+  );
+}
+.gantt-row-is-stub .gantt-segment.development {
+  background-color: hsl(var(--development));
+}
+.gantt-row-is-stub .gantt-segment.support {
+  background-color: hsl(var(--support-color));
+}
+.gantt-row-is-stub .gantt-segment.development.off-track,
+.gantt-row-is-stub .gantt-segment.support.off-track {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.22) 3px,
+    rgba(255, 255, 255, 0.22) 6px
+  );
+}
+
 /* Quarter details below segment */
 .gantt-quarter-details {
   display: flex;

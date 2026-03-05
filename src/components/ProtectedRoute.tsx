@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccess } from '@/hooks/useAccess';
 import { NoAccessStub } from '@/components/NoAccessStub';
+import { ServerUnavailableStub } from '@/components/ServerUnavailableStub';
 import Header from '@/components/Header';
 import { INITIATIVES_QUERY_KEY, fetchInitiatives } from '@/hooks/useInitiatives';
 
@@ -30,7 +31,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading, isDodoEmployee } = useAuth();
-  const { canAccess, accessLoading } = useAccess();
+  const { canAccess, accessLoading, accessError, retryAccess } = useAccess();
   const queryClient = useQueryClient();
 
   // Параллельно с проверкой доступа начинаем загрузку инициатив — к моменту входа данные уже в кэше
@@ -56,6 +57,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!canAccess) {
+    if (accessError) {
+      return <ServerUnavailableStub onRetry={retryAccess} />;
+    }
     return <NoAccessStub />;
   }
 
