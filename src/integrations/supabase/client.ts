@@ -15,7 +15,8 @@ if (import.meta.env.DEV && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
 if (import.meta.env.DEV && SUPABASE_URL) {
   const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutMs = 3000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   fetch(url, { method: 'HEAD', signal: controller.signal })
     .then(() => {
       clearTimeout(timeoutId);
@@ -24,7 +25,7 @@ if (import.meta.env.DEV && SUPABASE_URL) {
     .catch((err) => {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        console.warn('[Supabase] Проверка подключения к бэкенду: таймаут 10 с. Возможна пауза проекта (Free tier) или сеть:', url);
+        console.warn('[Supabase] Проверка подключения к бэкенду: таймаут', timeoutMs / 1000, 'с. Возможна пауза проекта (Free tier) или сеть:', url);
       } else {
         console.warn('[Supabase] Проверка подключения к бэкенду не удалась:', err.message || err, url);
       }

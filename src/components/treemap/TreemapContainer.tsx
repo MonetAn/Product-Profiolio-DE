@@ -167,7 +167,7 @@ const TreemapContainer = ({
     return count;
   }
 
-  // Render depth: matches actual tree structure from toggles (needed early for visibleNodeCount and effect)
+  // Render depth: matches actual tree structure from toggles (needed for nodeCountForAnimation and effect)
   const targetRenderDepth = useMemo(() => {
     let depth = 1; // Units only
     if (showTeams && showInitiatives) depth = 3; // Unit > Team > Initiative
@@ -177,7 +177,7 @@ const TreemapContainer = ({
     return depth + extraDepth;
   }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);
 
-  const visibleNodeCount = useMemo(
+  const nodeCountForAnimation = useMemo(
     () => countRenderedNodes(layoutNodes, targetRenderDepth),
     [layoutNodes, targetRenderDepth]
   );
@@ -304,8 +304,7 @@ const TreemapContainer = ({
     if (!reduceMotion && !isFirstRenderRef.current && newAnimationType !== 'initial') {
       setTextVisible(false);
       if (textVisibleTimerRef.current) clearTimeout(textVisibleTimerRef.current);
-      const count = countRenderedNodes(layoutNodes, targetRenderDepth);
-      const fullDuration = getEffectiveDuration(newAnimationType, count);
+      const fullDuration = getEffectiveDuration(newAnimationType, nodeCountForAnimation);
       const isDrilldown = newAnimationType === 'drilldown' || newAnimationType === 'drilldown-fast';
       const textShowDelay = isDrilldown
         ? Math.round(fullDuration * DRILLDOWN_TEXT_VISIBLE_AT_RATIO)
@@ -322,7 +321,7 @@ const TreemapContainer = ({
         textVisibleTimerRef.current = null;
       }
     };
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, targetRenderDepth, reduceMotion, viewKey]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, targetRenderDepth, nodeCountForAnimation, reduceMotion, viewKey]);
   
   // Delayed render depth: when decreasing, keep old value during exit animation
   const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
@@ -542,7 +541,7 @@ const TreemapContainer = ({
                 fromLayoutNodes={focusedPath.length === 1 && (animationType === 'drilldown' || animationType === 'drilldown-fast') ? prevLayoutAtRootRef.current : undefined}
                 focusedPath={focusedPath}
                 textVisible={reduceMotion ? true : textVisible}
-                visibleNodeCount={visibleNodeCount}
+                visibleNodeCount={nodeCountForAnimation}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}

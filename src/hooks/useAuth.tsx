@@ -32,7 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // Safeguard: stop loading after timeout (e.g. Supabase unreachable or missing .env)
-    const timeoutId = setTimeout(() => setLoading(false), 8000);
+    const timeoutMs = 4000;
+    const timeoutId = setTimeout(() => {
+      if (import.meta.env.DEV) console.warn("[Auth] Таймаут", timeoutMs / 1000, "с — Supabase не ответил");
+      setLoading(false);
+    }, timeoutMs);
 
     // THEN check for existing session
     supabase.auth
@@ -41,8 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        if (import.meta.env.DEV) {
+          console.info("[Auth] Готово:", session?.user ? "пользователь в сессии" : "нет сессии");
+        }
       })
-      .catch(() => setLoading(false))
+      .catch((err) => {
+        if (import.meta.env.DEV) console.warn("[Auth] getSession ошибка:", err?.message ?? err);
+        setLoading(false);
+      })
       .finally(() => clearTimeout(timeoutId));
 
     return () => {
