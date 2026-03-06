@@ -11,24 +11,70 @@ if (import.meta.env.DEV && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
   );
 }
 
-// Однократная проверка доступности бэкенда в dev (диагностика pending)
-if (import.meta.env.DEV && SUPABASE_URL) {
+// Однократная диагностика доступности бэкенда в dev (не блокирует работу приложения)
+if (import.meta.env.DEV && SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) {
   const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/`;
   const controller = new AbortController();
-  const timeoutMs = 3000;
+  const timeoutMs = 12000; // Free tier может "просыпаться" 5–10 с
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  fetch(url, { method: 'HEAD', signal: controller.signal })
+  fetch(url, {
+    method: 'GET',
+    signal: controller.signal,
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    },
+  })
     .then(() => {
       clearTimeout(timeoutId);
-      console.info('[Supabase] Подключение к бэкенду доступно:', url);
+      console.info('[Supabase] Подключение к бэкенду доступно');
     })
     .catch((err) => {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        console.warn('[Supabase] Проверка подключения к бэкенду: таймаут', timeoutMs / 1000, 'с. Возможна пауза проекта (Free tier) или сеть:', url);
+        console.warn(
+          '[Supabase] Диагностика: таймаут', timeoutMs / 1000, 'с. Free tier мог уйти в паузу — подождите и обновите страницу. Приложение продолжит работать.'
+        );
       } else {
-        console.warn('[Supabase] Проверка подключения к бэкенду не удалась:', err.message || err, url);
+        console.warn('[Supabase] Диагностика подключения:', err.message || err);
       }
+    });
+}
+
+// DEBUG: Prod-only one-time connectivity check — remove when closing debug/supabase-prod-timeout
+if (import.meta.env.PROD && SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) {
+  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/`;
+  const maskedUrl = SUPABASE_URL.replace(/^https:\/\/([^.]+)\.supabase\.co.*$/i, 'https://$1.supabase.co');
+  const t0 = performance.now();
+  const controller = new AbortController();
+  const timeoutMs = 25000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  fetch(url, {
+    method: 'GET',
+    signal: controller.signal,
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    },
+  })
+    .then((r) => {
+      clearTimeout(timeoutId);
+      const elapsed = Math.round(performance.now() - t0);
+      console.info(
+        '[Supabase PROD diagnostic]',
+        { mode: import.meta.env.MODE, url: maskedUrl, status: r.status, elapsedMs: elapsed }
+      );
+    })
+    .catch((err) => {
+      clearTimeout(timeoutId);
+      const elapsed = Math.round(performance.now() - t0);
+      console.warn('[Supabase PROD diagnostic]', {
+        mode: import.meta.env.MODE,
+        url: maskedUrl,
+        error: err.name || err.message,
+        elapsedMs: elapsed,
+        timedOut: err.name === 'AbortError',
+      });
     });
 }
 
