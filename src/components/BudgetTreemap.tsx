@@ -31,6 +31,8 @@ interface BudgetTreemapProps {
   viewKey?: string;
   onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
   showMoney?: boolean;
+  /** When support/off-track/stub filter changes, use filter animation (same speed as filter toggles) */
+  contentKey?: string;
 }
 
 const BudgetTreemap = ({
@@ -57,10 +59,12 @@ const BudgetTreemap = ({
   viewKey,
   onTrackTreemapAction,
   showMoney = true,
+  contentKey,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
       data={data}
+      contentKey={contentKey}
       showTeams={showTeams}
       showInitiatives={showInitiatives}
       showMoney={showMoney}

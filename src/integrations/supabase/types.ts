@@ -326,6 +326,7 @@ export type Database = {
           created_at: string
           allowed_units: string[] | null
           allowed_team_pairs: Json | null
+          can_view_money: boolean | null
         }
         Insert: {
           id?: string
@@ -334,6 +335,7 @@ export type Database = {
           created_at?: string
           allowed_units?: string[] | null
           allowed_team_pairs?: Json | null
+          can_view_money?: boolean | null
         }
         Update: {
           id?: string
@@ -342,6 +344,7 @@ export type Database = {
           created_at?: string
           allowed_units?: string[] | null
           allowed_team_pairs?: Json | null
+          can_view_money?: boolean | null
         }
         Relationships: []
       }

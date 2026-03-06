@@ -15,6 +15,8 @@ interface TreemapTooltipProps {
   totalValue: number;
   /** If false, do not show "Распределение бюджета" block (used for Stakeholders treemap) */
   showDistributionInTooltip?: boolean;
+  /** If false, hide budget amounts (show only percentages where applicable) */
+  showMoney?: boolean;
 }
 
 export type { TreemapTooltipProps };
@@ -38,7 +40,7 @@ function sumDistributedUnallocated(node: TreemapLayoutNode): { distributed: numb
   return { distributed, unallocated };
 }
 
-const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedUnitsCount, totalValue, showDistributionInTooltip = true }) => {
+const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedUnitsCount, totalValue, showDistributionInTooltip = true, showMoney = true }) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   
@@ -117,8 +119,13 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
       if (pctDist > 0) html += `<div class="tooltip-mini-bar-segment tooltip-mini-bar-segment-distributed" style="flex-grow:${pctDist}"></div>`;
       if (pctUnalloc > 0) html += `<div class="tooltip-mini-bar-segment tooltip-mini-bar-segment-unallocated" style="flex-grow:${pctUnalloc}"></div>`;
       html += `</div>`;
-      html += `<div class="tooltip-row tooltip-row-initiatives"><span class="tooltip-label tooltip-label-wrap">Аллоцированный бюджет</span><span class="tooltip-value">${formatBudget(distributed)} (${pctDist.toFixed(1)}%)</span></div>`;
-      html += `<div class="tooltip-row tooltip-row-team-cost"><span class="tooltip-label tooltip-label-wrap">Нераспределённый бюджет</span><span class="tooltip-value">${formatBudget(unallocated)} (${pctUnalloc.toFixed(1)}%)</span></div>`;
+      if (showMoney) {
+        html += `<div class="tooltip-row tooltip-row-initiatives"><span class="tooltip-label tooltip-label-wrap">Аллоцированный бюджет</span><span class="tooltip-value">${formatBudget(distributed)} (${pctDist.toFixed(1)}%)</span></div>`;
+        html += `<div class="tooltip-row tooltip-row-team-cost"><span class="tooltip-label tooltip-label-wrap">Нераспределённый бюджет</span><span class="tooltip-value">${formatBudget(unallocated)} (${pctUnalloc.toFixed(1)}%)</span></div>`;
+      } else {
+        html += `<div class="tooltip-row tooltip-row-initiatives"><span class="tooltip-label tooltip-label-wrap">Аллоцированный бюджет</span><span class="tooltip-value">${pctDist.toFixed(1)}%</span></div>`;
+        html += `<div class="tooltip-row tooltip-row-team-cost"><span class="tooltip-label tooltip-label-wrap">Нераспределённый бюджет</span><span class="tooltip-value">${pctUnalloc.toFixed(1)}%</span></div>`;
+      }
       
       return html;
     }
@@ -167,7 +174,9 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
     }
     
     // Fallback: e.g. stakeholder group or other — budget + %
-    html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
+    if (showMoney) {
+      html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
+    }
     if (totalValue > 0) {
       const percentOfTotal = ((node.value / totalValue) * 100).toFixed(1);
       html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;

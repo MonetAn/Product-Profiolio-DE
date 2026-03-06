@@ -42,6 +42,8 @@ interface GanttViewProps {
   onUploadClick?: () => void;
   highlightedInitiative?: string | null;
   onResetFilters?: () => void;
+  /** If false, hide all budget/cost amounts (popups, row costs, cells, legend) */
+  showMoney?: boolean;
   // Cost filter props
   costSortOrder?: 'none' | 'asc' | 'desc';
   costFilterMin?: number | null;
@@ -61,6 +63,7 @@ const GanttView = ({
   onUploadClick,
   highlightedInitiative,
   onResetFilters,
+  showMoney = true,
   costSortOrder = 'none',
   costFilterMin = null,
   costFilterMax = null,
@@ -414,9 +417,11 @@ const GanttView = ({
           )}
         </div>
 
-        <div className="gantt-quarter-popup-budget">
-          Бюджет: {formatBudget(qData.budget)}
-        </div>
+        {showMoney && (
+          <div className="gantt-quarter-popup-budget">
+            Бюджет: {formatBudget(qData.budget)}
+          </div>
+        )}
 
         {qData.metricPlan && (
           <div className="gantt-quarter-popup-section">
@@ -562,12 +567,14 @@ const GanttView = ({
         
         <div className="gantt-name-popup-unit">{row.unit}</div>
 
-        <div className="gantt-name-popup-costs">
-          <span>Всего: {formatBudget(totalCost)}</span>
-          {showPeriodCost && (
-            <span className="period-cost">За период: {formatBudget(periodCost)}</span>
-          )}
-        </div>
+        {showMoney && (
+          <div className="gantt-name-popup-costs">
+            <span>Всего: {formatBudget(totalCost)}</span>
+            {showPeriodCost && (
+              <span className="period-cost">За период: {formatBudget(periodCost)}</span>
+            )}
+          </div>
+        )}
 
         {row.description && (
           <div 
@@ -668,12 +675,14 @@ const GanttView = ({
                   {row.initiative}
                 </div>
                 <div className="gantt-row-team">{row.unit} › {row.team || 'Без команды'}</div>
-                <div className="gantt-row-costs">
-                  <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
-                  {showPeriodCost && (
-                    <span className="gantt-cost-period">За выбранный период: {formatBudget(periodCost)}</span>
-                  )}
-                </div>
+                {showMoney && (
+                  <div className="gantt-row-costs">
+                    <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
+                    {showPeriodCost && (
+                      <span className="gantt-cost-period">За выбранный период: {formatBudget(periodCost)}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="gantt-row-timeline" style={{ width: selectedQuarters.length * quarterWidth }}>
                 {/* Segment bar row */}
@@ -698,7 +707,7 @@ const GanttView = ({
                         onMouseLeave={handleSegmentMouseLeave}
                         onClick={(e) => handleSegmentClick(e, row, q)}
                       >
-                        {formatBudgetShort(qData.budget)}
+                        {showMoney ? formatBudgetShort(qData.budget) : ''}
                       </div>
                     );
                   })}
@@ -766,17 +775,21 @@ const GanttView = ({
           <span>Support</span>
         </div>
         
-        {/* Budget statistics */}
-        <div className="gantt-legend-divider" />
-        <div className="gantt-legend-stats">
-          <span className="gantt-legend-stats-total">Итого: {formatBudget(grandTotal)}</span>
-          <span className="gantt-legend-stats-development">
-            Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)
-          </span>
-          <span className="gantt-legend-stats-support">
-            Support: {formatBudget(supportTotal)} ({supportPercent}%)
-          </span>
-        </div>
+        {/* Budget statistics - hidden when money is off */}
+        {showMoney && (
+          <>
+            <div className="gantt-legend-divider" />
+            <div className="gantt-legend-stats">
+              <span className="gantt-legend-stats-total">Итого: {formatBudget(grandTotal)}</span>
+              <span className="gantt-legend-stats-development">
+                Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)
+              </span>
+              <span className="gantt-legend-stats-support">
+                Support: {formatBudget(supportTotal)} ({supportPercent}%)
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

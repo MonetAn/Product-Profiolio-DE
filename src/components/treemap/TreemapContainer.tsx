@@ -44,6 +44,8 @@ interface TreemapContainerProps {
   onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
   /** If false, only percentages are shown on cells (no money) */
   showMoney?: boolean;
+  /** When this key changes (e.g. support/off-track/stub filter), use same animation as filter toggle (smooth rebuild) */
+  contentKey?: string;
 }
 
 const TreemapContainer = ({
@@ -76,6 +78,7 @@ const TreemapContainer = ({
   showDistributionInTooltip = true,
   onTrackTreemapAction,
   showMoney = true,
+  contentKey,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -92,6 +95,7 @@ const TreemapContainer = ({
 
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
+  const prevContentKeyRef = useRef<string | undefined>(contentKey);
   const prevShowTeamsRef = useRef(showTeams);
   const prevShowInitiativesRef = useRef(showInitiatives);
   const prevFocusedPathRef = useRef<string[]>([]);
@@ -229,6 +233,7 @@ const TreemapContainer = ({
     if (forcedInitialForView) {
       prevViewKeyRef.current = viewKey;
       prevDataNameRef.current = data.name;
+      prevContentKeyRef.current = contentKey;
       prevShowTeamsRef.current = showTeams;
       prevShowInitiativesRef.current = showInitiatives;
       prevFocusedPathRef.current = focusedPath;
@@ -282,6 +287,9 @@ const TreemapContainer = ({
       } else if (prevShowTeamsRef.current !== showTeams ||
                  prevShowInitiativesRef.current !== showInitiatives) {
         newAnimationType = 'filter';
+      } else if (contentKey !== undefined && prevContentKeyRef.current !== contentKey && focusedPath.length === 0) {
+        // Support / off-track / stub filter changed — same smooth animation as filter toggles
+        newAnimationType = 'filter';
       }
 
       // First time we get real dimensions (was 0,0): keep initial — no animation, no text fade
@@ -293,6 +301,7 @@ const TreemapContainer = ({
     }
 
     prevDataNameRef.current = data.name;
+    prevContentKeyRef.current = contentKey;
     prevShowTeamsRef.current = showTeams;
     prevShowInitiativesRef.current = showInitiatives;
     prevFocusedPathRef.current = focusedPath;
@@ -321,7 +330,7 @@ const TreemapContainer = ({
         textVisibleTimerRef.current = null;
       }
     };
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, targetRenderDepth, nodeCountForAnimation, reduceMotion, viewKey]);
+  }, [data.name, contentKey, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, targetRenderDepth, nodeCountForAnimation, reduceMotion, viewKey]);
   
   // Delayed render depth: when decreasing, keep old value during exit animation
   const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
@@ -527,6 +536,7 @@ const TreemapContainer = ({
         selectedUnitsCount={selectedUnitsCount}
         totalValue={totalValue}
         showDistributionInTooltip={showDistributionInTooltip}
+        showMoney={showMoney}
       />
       
       {/* Framer Motion treemap rendering */}

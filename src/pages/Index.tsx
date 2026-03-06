@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 
 const Index = () => {
   const activityContext = useContext(ActivityContext);
-  const { isAdmin, canAccess, scope } = useAccess();
+  const { isAdmin, canAccess, canViewMoney, scope } = useAccess();
   // Fetch data from database
   const { data: dbData, isLoading, error, refetch } = useInitiatives();
   
@@ -56,6 +56,7 @@ const Index = () => {
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
   const [showMoney, setShowMoney] = useState(true);
+  const effectiveShowMoney = canViewMoney && showMoney;
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
   const [clickedNodeName, setClickedNodeName] = useState<string | null>(null);
 
@@ -559,8 +560,9 @@ const Index = () => {
         showInitiatives={showInitiatives}
         onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
         onShowInitiativesChange={(v) => { setShowInitiatives(v); if (!v) autoEnabledRef.current.initiatives = false; else autoEnabledRef.current.initiatives = false; }}
-        showMoney={showMoney}
-        onShowMoneyChange={setShowMoney}
+        canViewMoney={canViewMoney}
+        showMoney={effectiveShowMoney}
+        onShowMoneyChange={canViewMoney ? setShowMoney : () => {}}
         onOfftrackClick={() => {
           setShowOnlyStub(false);
           setShowOnlyOfftrack(prev => !prev);
@@ -597,6 +599,7 @@ const Index = () => {
         {currentView === 'budget' && (
           <BudgetTreemap
             viewKey="budget"
+            contentKey={`${supportFilter}-${showOnlyOfftrack}-${showOnlyStub}`}
             data={currentRoot}
             onDrillDown={drillDown}
             onNavigateUp={navigateUp}
@@ -623,7 +626,7 @@ const Index = () => {
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
             initialFocusedPath={zoomPath}
-            showMoney={showMoney}
+            showMoney={effectiveShowMoney}
           />
         )}
 
@@ -651,7 +654,7 @@ const Index = () => {
             showTeams={showTeams}
             showInitiatives={showInitiatives}
             initialFocusedPath={zoomPath}
-            showMoney={showMoney}
+            showMoney={effectiveShowMoney}
           />
         )}
 
@@ -668,6 +671,7 @@ const Index = () => {
             onUploadClick={() => fileInputRef.current?.click()}
             highlightedInitiative={highlightedInitiative}
             onResetFilters={resetFilters}
+            showMoney={effectiveShowMoney}
             costSortOrder={costSortOrder}
             costFilterMin={costFilterMin}
             costFilterMax={costFilterMax}
@@ -684,6 +688,7 @@ const Index = () => {
         onOpenChange={(open) => !open && setInitiativePeekPath(null)}
         row={initiativePeekRow}
         selectedQuarters={selectedQuarters}
+        showMoney={effectiveShowMoney}
         onGoToTimeline={(initiativeName) => {
           setHighlightedInitiative(initiativeName);
           setCurrentView('timeline');

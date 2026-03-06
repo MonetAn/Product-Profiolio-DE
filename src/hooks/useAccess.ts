@@ -13,6 +13,8 @@ export type AccessErrorType = 'timeout' | 'network';
 export interface AccessState {
   canAccess: boolean;
   isAdmin: boolean;
+  /** If false, user must not see money anywhere and has no money toggle */
+  canViewMoney: boolean;
   scope: AccessScope;
   accessLoading: boolean;
   /** Set when access check failed due to timeout/network (Supabase cold), so UI can show "Повторить" */
@@ -24,16 +26,17 @@ const DEFAULT_SCOPE: AccessScope = { seeAll: true, allowedUnits: [], allowedTeam
 
 const ACCESS_CACHE_KEY = 'app_access';
 
-function getCachedAccess(userId: string): { canAccess: boolean; isAdmin: boolean; scope: AccessScope } | null {
+function getCachedAccess(userId: string): { canAccess: boolean; isAdmin: boolean; canViewMoney: boolean; scope: AccessScope } | null {
   if (typeof sessionStorage === 'undefined') return null;
   try {
     const raw = sessionStorage.getItem(ACCESS_CACHE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { userId: string; canAccess: boolean; isAdmin: boolean; scope: AccessScope };
+    const parsed = JSON.parse(raw) as { userId: string; canAccess: boolean; isAdmin: boolean; canViewMoney?: boolean; scope: AccessScope };
     if (parsed.userId !== userId) return null;
     return {
       canAccess: Boolean(parsed.canAccess),
       isAdmin: Boolean(parsed.isAdmin),
+      canViewMoney: parsed.canViewMoney !== false,
       scope: {
         seeAll: Boolean(parsed.scope?.seeAll),
         allowedUnits: Array.isArray(parsed.scope?.allowedUnits) ? parsed.scope.allowedUnits : [],
@@ -45,7 +48,7 @@ function getCachedAccess(userId: string): { canAccess: boolean; isAdmin: boolean
   }
 }
 
-function setCachedAccess(userId: string, access: { canAccess: boolean; isAdmin: boolean; scope: AccessScope }) {
+function setCachedAccess(userId: string, access: { canAccess: boolean; isAdmin: boolean; canViewMoney: boolean; scope: AccessScope }) {
   if (typeof sessionStorage === 'undefined') return;
   try {
     sessionStorage.setItem(ACCESS_CACHE_KEY, JSON.stringify({ userId, ...access }));
@@ -59,19 +62,20 @@ function devLogNoAccess(reason: string, extra?: unknown) {
   }
 }
 
-/** RPC returns { can_access, is_admin, scope?: { see_all, allowed_units?, allowed_team_pairs? } }.
+/** RPC returns { can_access, is_admin, can_view_money?, scope?: { see_all, allowed_units?, allowed_team_pairs? } }.
  *  Supabase/PostgREST may wrap single-row RPC result in an array [row]. */
 function parseAccessResponse(data: unknown): {
   canAccess: boolean;
   isAdmin: boolean;
+  canViewMoney: boolean;
   scope: AccessScope;
 } {
   const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
   if (!raw || typeof raw !== 'object' || !('can_access' in raw) || !('is_admin' in raw)) {
     devLogNoAccess('parse_invalid_shape', { dataType: typeof data, isArray: Array.isArray(data), data });
-    return { canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE };
+    return { canAccess: false, isAdmin: false, canViewMoney: true, scope: DEFAULT_SCOPE };
   }
-  const obj = raw as { can_access: boolean; is_admin: boolean; scope?: unknown };
+  const obj = raw as { can_access: boolean; is_admin: boolean; can_view_money?: boolean; scope?: unknown };
   let scope: AccessScope = DEFAULT_SCOPE;
   if (obj.scope && typeof obj.scope === 'object' && obj.scope !== null) {
     const s = obj.scope as { see_all?: boolean; allowed_units?: string[]; allowed_team_pairs?: { unit: string; team: string }[] };
@@ -88,6 +92,7 @@ function parseAccessResponse(data: unknown): {
   return {
     canAccess,
     isAdmin: Boolean(obj.is_admin),
+    canViewMoney: obj.can_view_money !== false,
     scope,
   };
 }
@@ -101,12 +106,13 @@ function isNetworkOrTimeoutError(reason: string, extra?: unknown): AccessErrorTy
   return null;
 }
 
-const noAccessState = {
+const noAccessState: AccessState = {
   canAccess: false,
   isAdmin: false,
+  canViewMoney: true,
   scope: DEFAULT_SCOPE,
-  accessLoading: false as const,
-  accessError: null as AccessErrorType | null,
+  accessLoading: false,
+  accessError: null,
   retryAccess: () => {},
 };
 
@@ -115,6 +121,7 @@ export function useAccess(): AccessState {
   const [access, setAccess] = useState<{
     canAccess: boolean;
     isAdmin: boolean;
+    canViewMoney: boolean;
     scope: AccessScope;
   } | null>(null);
   const [accessError, setAccessError] = useState<AccessErrorType | null>(null);
@@ -149,7 +156,7 @@ export function useAccess(): AccessState {
       devLogNoAccess(reason, extra);
       const errType = isNetworkOrTimeoutError(reason, extra);
       if (!cancelled) {
-        setAccess({ canAccess: false, isAdmin: false, scope: DEFAULT_SCOPE });
+        setAccess({ canAccess: false, isAdmin: false, canViewMoney: true, scope: DEFAULT_SCOPE });
         setAccessError(errType);
       }
     };
@@ -224,6 +231,7 @@ export function useAccess(): AccessState {
   return {
     canAccess: access.canAccess,
     isAdmin: access.isAdmin,
+    canViewMoney: access.canViewMoney,
     scope: access.scope,
     accessLoading: false,
     accessError,

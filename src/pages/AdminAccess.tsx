@@ -78,6 +78,7 @@ export default function AdminAccess() {
   const [scopeFullAccess, setScopeFullAccess] = useState(true);
   const [scopeSelectedUnits, setScopeSelectedUnits] = useState<string[]>([]);
   const [scopeSelectedPairs, setScopeSelectedPairs] = useState<TeamPair[]>([]);
+  const [scopeCanViewMoney, setScopeCanViewMoney] = useState(true);
   const [scopeSaving, setScopeSaving] = useState(false);
   const [deleteConfirmRow, setDeleteConfirmRow] = useState<AllowedUserRow | null>(null);
 
@@ -216,6 +217,7 @@ export default function AdminAccess() {
       setScopeFullAccess(true);
       setScopeSelectedUnits([]);
       setScopeSelectedPairs([]);
+      setScopeCanViewMoney(true);
       return;
     }
     openScopeDialog(row);
@@ -228,6 +230,7 @@ export default function AdminAccess() {
     setScopeFullAccess(u.length === 0 && p.length === 0);
     setScopeSelectedUnits(u);
     setScopeSelectedPairs(p);
+    setScopeCanViewMoney(row.can_view_money !== false);
   };
 
   const closeScopeDialog = () => {
@@ -274,7 +277,7 @@ export default function AdminAccess() {
     const allowed_team_pairs = scopeFullAccess ? [] : scopeSelectedPairs;
     const { error } = await supabase
       .from('allowed_users')
-      .update({ allowed_units, allowed_team_pairs })
+      .update({ allowed_units, allowed_team_pairs, can_view_money: scopeCanViewMoney })
       .eq('id', scopeDialogUserId);
     setScopeSaving(false);
     if (error) {
@@ -432,6 +435,17 @@ export default function AdminAccess() {
               </div>
               <ScrollArea className="flex-1 min-h-0 mt-4">
                 <div className="space-y-4 pr-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="scope-can-view-money"
+                      checked={scopeCanViewMoney}
+                      onCheckedChange={(c) => setScopeCanViewMoney(!!c)}
+                    />
+                    <Label htmlFor="scope-can-view-money" className="cursor-pointer font-medium">Показывать суммы (деньги)</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground -mt-2">
+                    Если снять галочку, пользователь не увидит бюджеты и стоимости ни на дашборде, ни на таймлайне; переключатель «Деньги» для него недоступен.
+                  </p>
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="scope-full"

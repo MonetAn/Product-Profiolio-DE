@@ -16,6 +16,8 @@ interface InitiativePeekModalProps {
   onOpenChange: (open: boolean) => void;
   row: RawDataRow | null;
   selectedQuarters: string[];
+  /** If false, hide the cost section */
+  showMoney?: boolean;
   onGoToTimeline: (initiativeName: string) => void;
 }
 
@@ -24,6 +26,7 @@ export function InitiativePeekModal({
   onOpenChange,
   row,
   selectedQuarters,
+  showMoney = true,
   onGoToTimeline,
 }: InitiativePeekModalProps) {
   const handleGoToTimeline = () => {
@@ -54,17 +57,18 @@ export function InitiativePeekModal({
         ) : (
           <>
             <div className="flex-1 min-h-0 overflow-y-auto px-6 py-2 space-y-4">
-              {/* Cost */}
-              <section>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">
-                  Стоимость за выбранный период
-                </h3>
-                <p className="text-sm font-medium">
-                  {selectedQuarters.length > 0
-                    ? formatBudget(calculateBudget(row, selectedQuarters))
-                    : '—'}
-                </p>
-              </section>
+              {showMoney && (
+                <section>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-1">
+                    Стоимость за выбранный период
+                  </h3>
+                  <p className="text-sm font-medium">
+                    {selectedQuarters.length > 0
+                      ? formatBudget(calculateBudget(row, selectedQuarters))
+                      : '—'}
+                  </p>
+                </section>
+              )}
 
               {/* Description */}
               <section>

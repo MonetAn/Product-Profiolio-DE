@@ -44,6 +44,8 @@ interface FilterBarProps {
   onShowInitiativesChange: (val: boolean) => void;
   showMoney: boolean;
   onShowMoneyChange: (val: boolean) => void;
+  /** If false, money checkbox and cost filter are hidden; user cannot see money */
+  canViewMoney?: boolean;
   
   // Off-track modal
   onOfftrackClick: () => void;
@@ -103,6 +105,7 @@ const FilterBar = ({
   onShowInitiativesChange,
   showMoney,
   onShowMoneyChange,
+  canViewMoney = true,
   onOfftrackClick,
   hideNestingToggles = false,
   onResetFilters,
@@ -644,8 +647,8 @@ const FilterBar = ({
             )}
           </div>
 
-          {/* Cost filter - only shown for Timeline */}
-          {hideNestingToggles && onCostSortOrderChange && (
+          {/* Cost filter - only shown for Timeline when user can see money */}
+          {hideNestingToggles && onCostSortOrderChange && showMoney && (
             <div ref={costRef} className="relative">
               <button
                 onClick={() => setCostMenuOpen(!costMenuOpen)}
@@ -813,27 +816,29 @@ const FilterBar = ({
           {/* Nesting Toggles - hidden on Gantt */}
           {!hideNestingToggles && (
             <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                      <input
-                        type="checkbox"
-                        checked={showMoney}
-                        onChange={(e) => onShowMoneyChange(e.target.checked)}
-                        className="hidden"
-                      />
-                      <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showMoney ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                        {showMoney && <Check size={10} />}
-                      </span>
-                      <span>Деньги</span>
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    Показывать суммы на ячейках
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {canViewMoney && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                        <input
+                          type="checkbox"
+                          checked={showMoney}
+                          onChange={(e) => onShowMoneyChange(e.target.checked)}
+                          className="hidden"
+                        />
+                        <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showMoney ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                          {showMoney && <Check size={10} />}
+                        </span>
+                        <span>Деньги</span>
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      Показывать суммы на ячейках
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                 <input
                   type="checkbox"
@@ -899,7 +904,7 @@ const FilterBar = ({
           <div className="flex items-center gap-1.5 pl-1.5 border-l border-border">
             {(currentView === 'budget' || currentView === 'stakeholders') && (
               <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
-                <span className="font-bold">{formatBudgetCompact(totals.budget)}</span>
+                <span className="font-bold">{showMoney ? formatBudgetCompact(totals.budget) : '—'}</span>
               </div>
             )}
             <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
