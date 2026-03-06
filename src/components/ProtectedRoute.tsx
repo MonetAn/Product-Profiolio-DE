@@ -9,9 +9,10 @@ import { ServerUnavailableStub } from '@/components/ServerUnavailableStub';
 import Header from '@/components/Header';
 import { INITIATIVES_QUERY_KEY, fetchInitiatives } from '@/hooks/useInitiatives';
 
-const MIN_LOADING_DISPLAY_MS = 400;
+/** Show loader only after this many ms of loading (avoids flash when load is fast). */
+const LOADER_DELAY_MS = 300;
 
-function LoadingWithHeader() {
+function LoadingWithHeader({ showSpinner = true }: { showSpinner?: boolean }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header
@@ -21,7 +22,7 @@ function LoadingWithHeader() {
         isAdmin={false}
       />
       <div className="flex-1 flex items-center justify-center pt-14">
-        <LogoLoader className="h-8 w-8" />
+        {showSpinner ? <LogoLoader className="h-8 w-8" /> : null}
       </div>
     </div>
   );
@@ -35,8 +36,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading, isDodoEmployee } = useAuth();
   const { canAccess, accessLoading, accessError, retryAccess } = useAccess();
   const queryClient = useQueryClient();
-  const loaderShownAtRef = useRef<number | null>(null);
-  const [allowChildren, setAllowChildren] = useState(false);
+  const [showLoader, setShowLoader] = useState(false);
+  const delayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Параллельно с проверкой доступа начинаем загрузку инициатив — к моменту входа данные уже в кэше
   useEffect(() => {
@@ -44,41 +45,26 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     queryClient.prefetchQuery({ queryKey: INITIATIVES_QUERY_KEY, queryFn: fetchInitiatives });
   }, [user, isDodoEmployee, queryClient]);
 
-  // Record when loader is first shown (do not reset when leaving, so we can measure min display time)
+  // Delayed loader: show spinner only if loading takes longer than LOADER_DELAY_MS
   useEffect(() => {
     if (loading || accessLoading) {
-      if (loaderShownAtRef.current === null) loaderShownAtRef.current = Date.now();
+      const t = setTimeout(() => setShowLoader(true), LOADER_DELAY_MS);
+      delayTimeoutRef.current = t;
+      return () => {
+        clearTimeout(t);
+        delayTimeoutRef.current = null;
+      };
+    } else {
+      setShowLoader(false);
+      if (delayTimeoutRef.current) {
+        clearTimeout(delayTimeoutRef.current);
+        delayTimeoutRef.current = null;
+      }
     }
   }, [loading, accessLoading]);
 
-  // When ready (auth + access done), keep showing loader at least MIN_LOADING_DISPLAY_MS
-  const ready = !loading && !!user && isDodoEmployee && !accessLoading && canAccess;
-  useEffect(() => {
-    if (!ready) {
-      setAllowChildren(false);
-      return;
-    }
-    const start = loaderShownAtRef.current;
-    if (start === null) {
-      setAllowChildren(true);
-      return;
-    }
-    const elapsed = Date.now() - start;
-    if (elapsed >= MIN_LOADING_DISPLAY_MS) {
-      loaderShownAtRef.current = null;
-      setAllowChildren(true);
-      return;
-    }
-    const remaining = MIN_LOADING_DISPLAY_MS - elapsed;
-    const t = setTimeout(() => {
-      loaderShownAtRef.current = null;
-      setAllowChildren(true);
-    }, remaining);
-    return () => clearTimeout(t);
-  }, [ready]);
-
   if (loading) {
-    return <LoadingWithHeader />;
+    return <LoadingWithHeader showSpinner={showLoader} />;
   }
 
   if (!user) {
@@ -90,7 +76,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (accessLoading) {
-    return <LoadingWithHeader />;
+    return <LoadingWithHeader showSpinner={showLoader} />;
   }
 
   if (!canAccess) {
@@ -98,10 +84,6 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       return <ServerUnavailableStub onRetry={retryAccess} />;
     }
     return <NoAccessStub />;
-  }
-
-  if (ready && !allowChildren) {
-    return <LoadingWithHeader />;
   }
 
   return <>{children}</>;
