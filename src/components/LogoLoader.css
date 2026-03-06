@@ -1,0 +1,42 @@
+/* Logo loader: sequential opacity pulse (wave). Black logo, no movement. */
+
+@keyframes logo-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.logo-loader-petal {
+  animation: logo-loader-pulse 1.4s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.logo-loader-petal-1 {
+  animation-delay: 0s;
+}
+.logo-loader-petal-2 {
+  animation-delay: 0.23s;
+}
+.logo-loader-petal-3 {
+  animation-delay: 0.46s;
+}
+.logo-loader-petal-4 {
+  animation-delay: 0.69s;
+}
+.logo-loader-petal-5 {
+  animation-delay: 0.92s;
+}
+.logo-loader-petal-6 {
+  animation-delay: 1.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-loader-petal {
+    animation: none;
+    opacity: 1;
+  }
+}

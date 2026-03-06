@@ -8,6 +8,7 @@ import BudgetTreemap from '@/components/BudgetTreemap';
 import StakeholdersTreemap from '@/components/StakeholdersTreemap';
 import GanttView from '@/components/GanttView';
 import { InitiativePeekModal } from '@/components/InitiativePeekModal';
+import { LogoLoader } from '@/components/LogoLoader';
 import { ActivityContext } from '@/contexts/ActivityContext';
 import {
   parseCSV,
@@ -591,8 +592,8 @@ const Index = () => {
         className="mt-[116px] h-[calc(100vh-116px)] overflow-hidden"
       >
         {(rawData.length === 0 && (isLoading || (dbData && dbData.length > 0))) || (rawData.length > 0 && !treeReady) ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            Загрузка…
+          <div className="flex items-center justify-center h-full">
+            <LogoLoader className="h-10 w-10" />
           </div>
         ) : (
           <>

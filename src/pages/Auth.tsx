@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
+import { LogoLoader } from '@/components/LogoLoader';
+import Header from '@/components/Header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 
@@ -31,8 +33,16 @@ export default function Auth() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header
+          currentView="budget"
+          onViewChange={() => {}}
+          onSearchClick={() => {}}
+          isAdmin={false}
+        />
+        <div className="flex-1 flex items-center justify-center pt-14">
+          <LogoLoader className="h-8 w-8" />
+        </div>
       </div>
     );
   }
