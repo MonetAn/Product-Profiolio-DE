@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { ClipboardList } from 'lucide-react';
-import { LogoLoader } from '@/components/LogoLoader';
+import { Loader2, ClipboardList } from 'lucide-react';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
@@ -177,7 +176,7 @@ export default function AdminPeople() {
   if (peopleLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <LogoLoader className="h-8 w-8" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, UserPlus, Trash2, User, ShieldCheck } from 'lucide-react';
-import { LogoLoader } from '@/components/LogoLoader';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import AdminHeader from '@/components/admin/AdminHeader';
@@ -336,7 +335,7 @@ export default function AdminAccess() {
             <h2 className="text-lg font-semibold shrink-0">Пользователи с доступом</h2>
             {loading ? (
               <div className="flex items-center justify-center py-12 flex-1">
-                <LogoLoader className="h-8 w-8" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Пока никого нет. Добавьте первого пользователя выше.</p>

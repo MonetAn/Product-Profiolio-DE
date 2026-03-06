@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAccess } from '@/hooks/useAccess';
-import { LogoLoader } from '@/components/LogoLoader';
+import { Loader2 } from 'lucide-react';
 
 interface AdminRouteProps {
   children: ReactNode;
@@ -14,7 +14,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
   if (accessLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <LogoLoader className="h-8 w-8" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
