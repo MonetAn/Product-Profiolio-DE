@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { LogoLoader } from '@/components/LogoLoader';
 import { cn } from '@/lib/utils';
 
 const BASE = import.meta.env.BASE_URL;
@@ -45,7 +45,7 @@ export function MascotsLoadingScreen({ className }: MascotsLoadingScreenProps) {
       )}
     >
       {imagesOk === false ? (
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <LogoLoader className="h-8 w-8" />
       ) : (
         <div
           className="flex items-center justify-center w-32 h-32 sm:w-40 sm:h-40"

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
-import { Upload, ClipboardList, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Upload, ClipboardList, AlertCircle, RefreshCw } from 'lucide-react';
+import { LogoLoader } from '@/components/LogoLoader';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { useToast } from '@/hooks/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
@@ -167,7 +168,7 @@ const Admin = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <LogoLoader className="h-8 w-8" />
           <p className="text-muted-foreground">Загрузка данных...</p>
         </div>
       </div>
