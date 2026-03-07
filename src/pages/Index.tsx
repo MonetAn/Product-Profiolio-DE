@@ -591,12 +591,36 @@ const Index = () => {
       <main
         className="mt-[116px] h-[calc(100vh-116px)] overflow-hidden"
       >
-        {(rawData.length === 0 && (isLoading || (dbData && dbData.length > 0))) || (rawData.length > 0 && !treeReady) ? (
-          <div className="flex items-center justify-center h-full">
-            <LogoLoader className="h-10 w-10" />
-          </div>
-        ) : (
-          <>
+        {(() => {
+          const showLoader =
+            (rawData.length === 0 && (isLoading || (dbData && dbData.length > 0))) ||
+            (rawData.length > 0 && !treeReady);
+          const showContent = rawData.length > 0 && treeReady;
+
+          return (
+            <div className="relative h-full">
+              {/* Loader layer — crossfade out when content is ready */}
+              <div
+                className="absolute inset-0 flex items-center justify-center transition-opacity duration-300 ease-out"
+                style={{
+                  opacity: showLoader ? 1 : 0,
+                  pointerEvents: showLoader ? 'auto' : 'none',
+                }}
+                aria-hidden={!showLoader}
+              >
+                <LogoLoader className="h-10 w-10" />
+              </div>
+
+              {/* Content layer — mounted when data exists, crossfade in when tree ready */}
+              {rawData.length > 0 && (
+                <div
+                  className="absolute inset-0 transition-opacity duration-300 ease-out"
+                  style={{
+                    opacity: showContent ? 1 : 0,
+                    pointerEvents: showContent ? 'auto' : 'none',
+                  }}
+                  aria-hidden={!showContent}
+                >
         {currentView === 'budget' && (
           <BudgetTreemap
             viewKey="budget"
@@ -679,8 +703,11 @@ const Index = () => {
             costType={costType}
           />
         )}
-          </>
-        )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </main>
 
       {/* Initiative peek modal (from treemap click) */}
