@@ -381,15 +381,36 @@ const Index = () => {
   const initiativePeekRow = (() => {
     if (!initiativePeekPath || rawData.length === 0) return null;
     const parts = initiativePeekPath.split('/');
-    const unit = parts.length >= 3 ? parts[parts.length - 3] : '';
-    const teamRaw = parts.length >= 3 ? parts[parts.length - 2] : '';
-    const initiative = parts.length >= 3 ? parts[parts.length - 1] : '';
-    const team = teamRaw === 'Без команды' ? '' : teamRaw;
+    let unit = '';
+    let team = '';
+    let initiative = '';
+    if (parts.length === 2) {
+      // Budget: Unit/Initiative (no teams)
+      unit = parts[0];
+      initiative = parts[1];
+    } else if (parts.length === 3 && currentView === 'budget') {
+      // Budget: Unit/Team/Initiative
+      const teamRaw = parts[1];
+      unit = parts[0];
+      team = teamRaw === 'Без команды' ? '' : teamRaw;
+      initiative = parts[2];
+    } else if (parts.length === 3 && currentView === 'stakeholders') {
+      // Stakeholders: Stakeholder/Unit/Initiative (no teams)
+      unit = parts[1];
+      initiative = parts[2];
+    } else if (parts.length >= 4) {
+      // Stakeholders: Stakeholder/Unit/Team/Initiative
+      const teamRaw = parts[2];
+      unit = parts[1];
+      team = teamRaw === 'Без команды' ? '' : teamRaw;
+      initiative = parts[3];
+    }
+    if (!unit && !initiative) return null;
     return rawData.find(
       (r) =>
         r.unit === unit &&
-        (r.team || 'Без команды') === (team || 'Без команды') &&
-        r.initiative === initiative
+        r.initiative === initiative &&
+        (team !== '' ? (r.team || 'Без команды') === (team || 'Без команды') : true)
     ) ?? null;
   })();
 
