@@ -3,7 +3,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { memo } from 'react';
-import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, getEffectiveDuration } from './types';
+import { TreemapLayoutNode, AnimationType, getEffectiveDuration, TREEMAP_EASE, TEXT_OPACITY_TRANSITION_MS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
 // Calculate relative luminance for WCAG contrast
@@ -44,6 +44,8 @@ interface TreemapNodeProps {
   visibleNodeCount?: number;
   /** If false, only percentage is shown on leaf cells (no money) */
   showMoney?: boolean;
+  /** When true (e.g. prefers-reduced-motion), use short fixed duration for enter/exit */
+  reduceMotion?: boolean;
 }
 
 interface TreemapNodeContentProps {
@@ -138,8 +140,14 @@ const TreemapNode = memo(({
   selectedUnitsCount = 0,
   visibleNodeCount,
   showMoney = true,
+  reduceMotion = false,
 }: TreemapNodeProps) => {
-  const duration = animationType === 'initial' ? 0 : getEffectiveDuration(animationType, visibleNodeCount) / 1000;
+  const duration = reduceMotion
+    ? 0.15
+    : (animationType === 'initial' ? 0 : getEffectiveDuration(animationType, visibleNodeCount) / 1000);
+  const exitDuration = reduceMotion
+    ? 0.15
+    : (animationType === 'initial' ? 0.3 : getEffectiveDuration(animationType, visibleNodeCount) / 1000);
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
@@ -165,17 +173,16 @@ const TreemapNode = memo(({
 
   const skipInitial = animationType === 'initial';
 
-  const isDrilldown = animationType === 'drilldown' || animationType === 'drilldown-fast';
+  const isDrilldown = animationType === 'drilldown';
   const initialOpacity = isDrilldown ? 1 : 0;
 
-  /** При zoom-in дочерние карточки текущего уровня — лёгкий fade-in (opacity 0 → 1), без useTransform */
-  const isDirectChildOnDrilldown =
+  /** При zoom-in все ноды нового уровня (depth === focusedPath.length) делают fade-in; родители с useFromLayout остаются видимыми */
+  const shouldFadeInOnDrilldown =
     isDrilldown &&
-    focusedPath &&
+    focusedPath != null &&
     focusedPath.length > 0 &&
-    node.path.startsWith(focusedPath.join('/') + '/') &&
-    node.path.split('/').length === focusedPath.length + 1;
-  const initialOpacityForVariant = isDirectChildOnDrilldown ? 0 : initialOpacity;
+    node.depth === focusedPath.length;
+  const initialOpacityForVariant = shouldFadeInOnDrilldown ? 0 : initialOpacity;
 
   // При первом zoom-in с root: анимировать от старых позиций/размеров к новым (настоящий zoom)
   const fromNode = fromLayoutNodes?.length ? fromLayoutNodes.find(n => n.key === node.key) : undefined;
@@ -194,11 +201,11 @@ const TreemapNode = memo(({
       height: node.height,
       transition: {
         duration,
-        ease: [0.4, 0, 0.2, 1] as [number, number, number, number],
+        ease: [...TREEMAP_EASE] as [number, number, number, number],
         scale: { duration: duration * 0.8 },
       },
     },
-    exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
+    exit: { opacity: 0, scale: 0.92, transition: { duration: exitDuration } },
   };
 
   const content = (
@@ -252,6 +259,7 @@ const TreemapNode = memo(({
           focusedPath={focusedPath}
           textVisible={textVisible}
           visibleNodeCount={visibleNodeCount}
+          reduceMotion={reduceMotion}
           parentX={node.x0}
           parentY={node.y0}
           onClick={onClick}
@@ -301,7 +309,7 @@ const TreemapNode = memo(({
         className="absolute inset-0"
         style={{
           opacity: textVisible ? 1 : 0,
-          transition: 'opacity 0.22s ease-out',
+          transition: `opacity ${TEXT_OPACITY_TRANSITION_MS}ms ease-out`,
         }}
       >
         {content}

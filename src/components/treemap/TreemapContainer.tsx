@@ -6,7 +6,7 @@ import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
-import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, DRILLDOWN_TEXT_VISIBLE_AT_RATIO, getEffectiveDuration } from './types';
+import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, getEffectiveDuration, TEXT_VISIBLE_AT_RATIO } from './types';
 import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
@@ -260,7 +260,7 @@ const TreemapContainer = ({
     ) {
       useInitialForRunsLeftRef.current -= 1;
       // Не перезаписывать только что отыгравший navigate-up при выходе на корень — иначе обрежем анимацию
-      if (prevAnimationTypeRef.current === 'navigate-up' || prevAnimationTypeRef.current === 'navigate-up-fast' || prevAnimationTypeRef.current === 'drilldown' || prevAnimationTypeRef.current === 'drilldown-fast') {
+      if (prevAnimationTypeRef.current === 'navigate-up' || prevAnimationTypeRef.current === 'drilldown') {
         newAnimationType = prevAnimationTypeRef.current;
       } else {
         newAnimationType = 'initial';
@@ -275,14 +275,7 @@ const TreemapContainer = ({
         if (focusedPath.length > prevFocusedPathRef.current.length) {
           newAnimationType = 'drilldown';
         } else {
-          const prevLastName = prevFocusedPathRef.current[prevFocusedPathRef.current.length - 1];
-          const returningNode = prevLastName ? layoutNodes.find(n => n.name === prevLastName) : null;
-          if (returningNode) {
-            const ar = returningNode.width / returningNode.height;
-            newAnimationType = (ar > 5 || ar < 1/5) ? 'navigate-up-fast' : 'navigate-up';
-          } else {
-            newAnimationType = 'navigate-up';
-          }
+          newAnimationType = 'navigate-up';
         }
       } else if (prevShowTeamsRef.current !== showTeams ||
                  prevShowInitiativesRef.current !== showInitiatives) {
@@ -309,15 +302,13 @@ const TreemapContainer = ({
     prevAnimationTypeRef.current = newAnimationType;
     setAnimationType(newAnimationType);
 
-    // Text visibility: hide during transition; show toward end for drilldown, at end for others
-    if (!reduceMotion && !isFirstRenderRef.current && newAnimationType !== 'initial') {
+    if (newAnimationType === 'initial') {
+      setTextVisible(true);
+    } else if (!reduceMotion) {
       setTextVisible(false);
       if (textVisibleTimerRef.current) clearTimeout(textVisibleTimerRef.current);
       const fullDuration = getEffectiveDuration(newAnimationType, nodeCountForAnimation);
-      const isDrilldown = newAnimationType === 'drilldown' || newAnimationType === 'drilldown-fast';
-      const textShowDelay = isDrilldown
-        ? Math.round(fullDuration * DRILLDOWN_TEXT_VISIBLE_AT_RATIO)
-        : fullDuration;
+      const textShowDelay = Math.round(fullDuration * TEXT_VISIBLE_AT_RATIO);
       textVisibleTimerRef.current = setTimeout(() => {
         textVisibleTimerRef.current = null;
         setTextVisible(true);
@@ -330,7 +321,7 @@ const TreemapContainer = ({
         textVisibleTimerRef.current = null;
       }
     };
-  }, [data.name, contentKey, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, targetRenderDepth, nodeCountForAnimation, reduceMotion, viewKey]);
+  }, [data.name, contentKey, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, dimensions.height, focusedPath, layoutNodes, viewKey, nodeCountForAnimation, reduceMotion]);
   
   // Delayed render depth: when decreasing, keep old value during exit animation
   const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
@@ -377,10 +368,7 @@ const TreemapContainer = ({
       }
       
       // Detect extreme aspect ratio for fast drilldown
-      const aspectRatio = node.width / node.height;
-      const isExtreme = aspectRatio > 5 || aspectRatio < (1 / 5);
-      const drilldownType: AnimationType = isExtreme ? 'drilldown-fast' : 'drilldown';
-      setAnimationType(drilldownType);
+      setAnimationType('drilldown');
       const newFocusedPath = node.path.split('/');
       isAnimatingRef.current = true;
       setTimeout(() => {
@@ -390,12 +378,11 @@ const TreemapContainer = ({
           pendingClickRef.current = null;
           handleNodeClick(pending);
         }
-      }, ANIMATION_DURATIONS[drilldownType] + 80);
-      if (!reduceMotion) setTextVisible(false);
+      }, ANIMATION_DURATIONS['drilldown'] + 80);
       setFocusedPath(newFocusedPath);
       onFocusedPathChange?.(newFocusedPath);
     }
-  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange, onTrackTreemapAction, reduceMotion, viewKey]);
+  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange, onTrackTreemapAction, viewKey]);
   
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {
@@ -411,13 +398,12 @@ const TreemapContainer = ({
         onAutoDisableTeams?.();
       }
 
-      if (!reduceMotion) setTextVisible(false);
       setFocusedPath(newPath);
       onFocusedPathChange?.(newPath);
     } else if (onNavigateBack) {
       onNavigateBack();
     }
-  }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives, reduceMotion]);
+  }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives]);
 
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
@@ -548,10 +534,11 @@ const TreemapContainer = ({
                 key={node.key}
                 node={node}
                 animationType={animationType}
-                fromLayoutNodes={focusedPath.length === 1 && (animationType === 'drilldown' || animationType === 'drilldown-fast') ? prevLayoutAtRootRef.current : undefined}
+                fromLayoutNodes={focusedPath.length === 1 && animationType === 'drilldown' ? prevLayoutAtRootRef.current : undefined}
                 focusedPath={focusedPath}
                 textVisible={reduceMotion ? true : textVisible}
                 visibleNodeCount={nodeCountForAnimation}
+                reduceMotion={reduceMotion}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}

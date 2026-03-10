@@ -51,16 +51,18 @@ export interface TreemapLayoutNode {
 }
 
 // Animation type determines duration and behavior
-export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigate-up' | 'navigate-up-fast' | 'resize' | 'initial';
+export type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize' | 'initial';
 
-// Animation durations in ms — zoom-in aligned with zoom-out, can be longer when needed
+// Easing curve for treemap layout transitions (ease-in-out: soft start and end to avoid "jump" on zoom and other transitions)
+export const TREEMAP_EASE = [0.65, 0, 0.35, 1] as const;
+
+// Animation durations in ms — zoom-in aligned with zoom-out
+// initial: no animation (first paint, tab switch). drilldown: zoom-in. navigate-up: zoom-out. filter: toggles (teams/initiatives). resize: container size change.
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 380,
-  'drilldown': 960,
-  'drilldown-fast': 400,
-  'navigate-up': 900,
-  'navigate-up-fast': 400,
+  'drilldown': 800,
+  'navigate-up': 800,
   'resize': 420
 };
 
@@ -77,16 +79,11 @@ export function getEffectiveDuration(animationType: AnimationType, visibleNodeCo
   return base;
 }
 
-// При zoom-in показывать текст ближе к концу анимации (меньше лагов при многих узлах)
-export const DRILLDOWN_TEXT_VISIBLE_AT_RATIO = 0.95;
-
-// Content fade: movement threshold (px) above which text fades out/in during layout animation
-export const CONTENT_FADE_MOVEMENT_THRESHOLD_PX = 24;
-// Share of animation duration for fade-out (start) and fade-in (end)
-export const CONTENT_FADE_OUT_RATIO = 0.08;
-export const CONTENT_FADE_IN_RATIO = 0.08;
-// New nodes: text stays hidden until movement is done, then fades in in the last 5%
-export const CONTENT_FADE_NEW_IN_START = 0.95;
+// Text visibility during layout transitions: hide at start, show near end so text is not read while moving
+/** Share of layout duration after which to show text (0–1). e.g. 0.9 = show at 90% of transition */
+export const TEXT_VISIBLE_AT_RATIO = 0.9;
+/** Duration in ms for the opacity transition of the text wrapper (fade-out and fade-in) */
+export const TEXT_OPACITY_TRANSITION_MS = 150;
 
 // Container dimensions
 export interface ContainerDimensions {
