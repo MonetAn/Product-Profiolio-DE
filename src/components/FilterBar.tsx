@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown } from 'lucide-react';
+import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
 import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
@@ -49,8 +49,8 @@ interface FilterBarProps {
   
   // Off-track modal
   onOfftrackClick: () => void;
-  showOnlyStub?: boolean;
-  onShowOnlyStubChange?: (val: boolean) => void;
+  hideStubs?: boolean;
+  onHideStubsChange?: (val: boolean) => void;
   onStubClick?: () => void;
   
   // Hide nesting toggles (for Timeline view)
@@ -88,8 +88,8 @@ const FilterBar = ({
   onSupportFilterChange,
   showOnlyOfftrack,
   onShowOnlyOfftrackChange,
-  showOnlyStub = false,
-  onShowOnlyStubChange,
+  hideStubs = false,
+  onHideStubsChange,
   onStubClick,
   allStakeholders,
   selectedStakeholders,
@@ -223,7 +223,7 @@ const FilterBar = ({
       if (supportFilter === 'exclude' && isSupport) return acc;
       if (supportFilter === 'only' && !isSupport) return acc;
       if (showOnlyOfftrack && !isOffTrack) return acc;
-      if (showOnlyStub && !row.isTimelineStub) return acc;
+      if (hideStubs && row.isTimelineStub) return acc;
       if (selectedStakeholders.length > 0) {
         const rowParts = parseStakeholderParts(row.stakeholders);
         if (!rowParts.some(p => selectedStakeholders.includes(p))) return acc;
@@ -889,14 +889,15 @@ const FilterBar = ({
             <button
               onClick={onStubClick}
               className={`flex items-center gap-1 px-2 py-1 border rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
-                showOnlyStub
+                hideStubs
                   ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
                   : 'bg-muted border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground'
               }`}
-              title="Показать только заглушки (сводная стоимость команд). Повторный клик — сброс."
+              title={hideStubs ? 'Показать заглушки в выдаче' : 'Скрыть заглушки из выдачи'}
             >
               <span className="font-bold">{totals.stubs}</span>
-              <span className="hidden sm:inline">Заглушка</span>
+              {hideStubs ? <EyeOff size={12} className="flex-shrink-0" /> : <Eye size={12} className="flex-shrink-0" />}
+              <span className="hidden sm:inline">Заглушки</span>
               <div className="legend-stub-sample-sm" />
             </button>
           )}

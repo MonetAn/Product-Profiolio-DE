@@ -402,7 +402,7 @@ export interface BuildTreeOptions {
   selectedQuarters: string[];
   supportFilter: SupportFilter;
   showOnlyOfftrack: boolean;
-  showOnlyStub?: boolean;
+  hideStubs?: boolean;
   selectedStakeholders: string[];
   unitFilter: string;
   teamFilter: string;
@@ -448,7 +448,7 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions, budget: nu
   if (options.supportFilter === 'exclude' && isSupport) return false;
   if (options.supportFilter === 'only' && !isSupport) return false;
   if (options.showOnlyOfftrack && !isOffTrack) return false;
-  if (options.showOnlyStub && !row.isTimelineStub) return false;
+  if (options.hideStubs && row.isTimelineStub) return false;
   if (options.selectedStakeholders.length > 0) {
     const rowParts = parseStakeholderParts(row.stakeholders);
     const hasMatch = rowParts.some(p => options.selectedStakeholders.includes(p));

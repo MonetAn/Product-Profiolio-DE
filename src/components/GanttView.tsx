@@ -35,7 +35,7 @@ interface GanttViewProps {
   selectedQuarters: string[];
   supportFilter: SupportFilter;
   showOnlyOfftrack: boolean;
-  showOnlyStub?: boolean;
+  hideStubs?: boolean;
   selectedUnits: string[];
   selectedTeams: string[];
   selectedStakeholders: string[];
@@ -56,7 +56,7 @@ const GanttView = ({
   selectedQuarters,
   supportFilter,
   showOnlyOfftrack,
-  showOnlyStub = false,
+  hideStubs = false,
   selectedUnits,
   selectedTeams,
   selectedStakeholders,
@@ -112,7 +112,7 @@ const GanttView = ({
       if (supportFilter === 'exclude' && isSupport) return false;
       if (supportFilter === 'only' && !isSupport) return false;
       if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
-      if (showOnlyStub && !row.isTimelineStub) return false;
+      if (hideStubs && row.isTimelineStub) return false;
       if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return false;
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
       if (selectedStakeholders.length > 0) {
@@ -151,7 +151,7 @@ const GanttView = ({
     result = [...nonStubs, ...stubs];
 
     return result;
-  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, showOnlyStub, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
 
   // Calculate Support/Development budget breakdown
   const { supportTotal, developmentTotal, grandTotal, supportPercent } = useMemo(() => {
@@ -764,7 +764,7 @@ const GanttView = ({
       {/* Quarter detail popup */}
       {renderQuarterPopup()}
 
-      {/* Legend: only bar types and stats (Off-track / Заглушка explained by FilterBar buttons) */}
+      {/* Legend: only bar types and stats (Off-track / Без заглушек explained by FilterBar buttons) */}
       <div className="gantt-legend">
         <div className="gantt-legend-item">
           <div className="gantt-legend-color development"></div>
