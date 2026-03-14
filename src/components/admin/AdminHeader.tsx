@@ -28,6 +28,9 @@ interface AdminHeaderProps {
   onDownloadFiltered?: () => void;
   onRetry?: () => void;
   onImportPeople?: () => void;
+  onExitQuick?: () => void;
+  onBack?: () => void;
+  backLabel?: 'dashboard' | 'back';
 }
 
 const AdminHeader = ({
@@ -43,9 +46,13 @@ const AdminHeader = ({
   onDownloadAll,
   onDownloadFiltered,
   onRetry,
-  onImportPeople
+  onImportPeople,
+  onExitQuick,
+  onBack,
+  backLabel = 'dashboard',
 }: AdminHeaderProps) => {
   const [searchParams] = useSearchParams();
+  const isQuickMode = currentView === 'initiatives' && searchParams.get('mode') === 'quick';
   
   // Build URLs preserving current filters
   const initiativesUrl = useMemo(() => {
@@ -126,13 +133,20 @@ const AdminHeader = ({
 
   return (
     <header className="h-14 bg-card border-b border-border flex items-center px-6 shrink-0">
-      {/* Back to Dashboard */}
-      <Link to="/">
-        <Button variant="ghost" size="sm" className="gap-2">
+      {/* Back: one step inside Initiatives or to Dashboard */}
+      {currentView === 'initiatives' && onBack ? (
+        <Button variant="ghost" size="sm" className="gap-2" onClick={onBack} aria-label={backLabel === 'back' ? 'Назад' : 'На дашборд'}>
           <ArrowLeft size={16} />
-          <span className="hidden sm:inline">Дашборд</span>
+          <span className="hidden sm:inline">{backLabel === 'back' ? 'Назад' : 'Дашборд'}</span>
         </Button>
-      </Link>
+      ) : (
+        <Link to="/">
+          <Button variant="ghost" size="sm" className="gap-2">
+            <ArrowLeft size={16} />
+            <span className="hidden sm:inline">Дашборд</span>
+          </Button>
+        </Link>
+      )}
 
       {/* Logo & Title */}
       <div className="flex items-center gap-2 font-semibold text-foreground ml-4">
@@ -214,6 +228,11 @@ const AdminHeader = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
+        {isQuickMode && onExitQuick && (
+          <Button variant="outline" size="sm" onClick={onExitQuick}>
+            Полная таблица
+          </Button>
+        )}
         {currentView === 'initiatives' && (
           <UnifiedSettingsMenu
             onImportInitiatives={onImportClick}

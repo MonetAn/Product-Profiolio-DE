@@ -1,7 +1,16 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { parseAdminCSV, AdminDataRow, normalizeSupportCascade } from '@/lib/adminDataManager';
+import {
+  parseAdminCSV,
+  parseCostOnlyCSV,
+  AdminDataRow,
+  AdminQuarterData,
+  normalizeSupportCascade,
+  createEmptyQuarterData,
+  type CostOnlyRow,
+} from '@/lib/adminDataManager';
+import { quarterlyDataToJson } from '@/hooks/useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 
 interface ImportResult {
@@ -9,6 +18,33 @@ interface ImportResult {
   updated: number;
   skipped: number;
   errors: string[];
+}
+
+interface CostOnlyImportResult {
+  updated: number;
+  notFound: number;
+  errors: string[];
+}
+
+function rawQuarterlyDataToAdmin(raw: unknown): Record<string, AdminQuarterData> {
+  const out: Record<string, AdminQuarterData> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  const obj = raw as Record<string, unknown>;
+  Object.entries(obj).forEach(([key, value]) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const v = value as Record<string, unknown>;
+    out[key] = {
+      cost: typeof v.cost === 'number' ? v.cost : 0,
+      otherCosts: typeof v.otherCosts === 'number' ? v.otherCosts : 0,
+      support: typeof v.support === 'boolean' ? v.support : false,
+      onTrack: typeof v.onTrack === 'boolean' ? v.onTrack : true,
+      metricPlan: typeof v.metricPlan === 'string' ? v.metricPlan : '',
+      metricFact: typeof v.metricFact === 'string' ? v.metricFact : '',
+      comment: typeof v.comment === 'string' ? v.comment : '',
+      effortCoefficient: typeof v.effortCoefficient === 'number' ? v.effortCoefficient : 0,
+    };
+  });
+  return out;
 }
 
 export function useCSVImport() {
@@ -168,8 +204,127 @@ export function useCSVImport() {
     return result;
   }, [queryClient, toast]);
 
+  const importCostOnlyCSV = useCallback(
+    async (file: File): Promise<CostOnlyImportResult> => {
+      setIsImporting(true);
+      setProgress(0);
+
+      const result: CostOnlyImportResult = { updated: 0, notFound: 0, errors: [] };
+
+      try {
+        const text = await file.text();
+        const { rows: costRows, quarters } = parseCostOnlyCSV(text);
+
+        if (costRows.length === 0) {
+          throw new Error('CSV пустой или не содержит строк с инициативами и кварталами');
+        }
+
+        if (quarters.length === 0) {
+          throw new Error('Не найдены колонки кварталов (ожидаются Q1 25, Q2 25, … или 25_Q1, 26_Q2, …)');
+        }
+
+        setProgress(10);
+
+        const { data: existing, error: fetchError } = await supabase
+          .from('initiatives')
+          .select('id, unit, team, initiative, quarterly_data');
+
+        if (fetchError) throw fetchError;
+
+        const byKey = new Map<string, { id: string; quarterly_data: unknown }>();
+        const byName = new Map<string, { id: string; unit: string; team: string; quarterly_data: unknown }[]>();
+        (existing || []).forEach((e) => {
+          const key = `${e.unit}|${e.team}|${e.initiative}`;
+          byKey.set(key, { id: e.id, quarterly_data: e.quarterly_data });
+          const list = byName.get(e.initiative) || [];
+          list.push({
+            id: e.id,
+            unit: e.unit,
+            team: e.team,
+            quarterly_data: e.quarterly_data,
+          });
+          byName.set(e.initiative, list);
+        });
+
+        setProgress(20);
+
+        const BATCH_SIZE = 25;
+        let done = 0;
+        for (let i = 0; i < costRows.length; i++) {
+          const row: CostOnlyRow = costRows[i];
+          let match: { id: string; quarterly_data: unknown } | null = null;
+
+          if (row.unit != null && row.team != null) {
+            match = byKey.get(`${row.unit}|${row.team}|${row.initiative}`) || null;
+          }
+          if (!match) {
+            const list = byName.get(row.initiative);
+            if (list?.length === 1) match = { id: list[0].id, quarterly_data: list[0].quarterly_data };
+            else if (list && list.length > 1) match = { id: list[0].id, quarterly_data: list[0].quarterly_data };
+          }
+
+          if (!match) {
+            result.notFound++;
+            continue;
+          }
+
+          const merged = rawQuarterlyDataToAdmin(match.quarterly_data);
+          Object.entries(row.costs).forEach(([q, cost]) => {
+            const prev = merged[q] || createEmptyQuarterData();
+            merged[q] = { ...prev, cost };
+          });
+
+          const { error: updateError } = await supabase
+            .from('initiatives')
+            .update({ quarterly_data: quarterlyDataToJson(merged) })
+            .eq('id', match.id);
+
+          if (updateError) {
+            result.errors.push(`${row.initiative}: ${updateError.message}`);
+          } else {
+            result.updated++;
+          }
+
+          done++;
+          if (done % BATCH_SIZE === 0) {
+            setProgress(20 + Math.round((done / costRows.length) * 70));
+          }
+        }
+
+        setProgress(95);
+        queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+
+        const parts = [
+          `Обновлено: ${result.updated}`,
+          `Не найдено: ${result.notFound}`,
+        ];
+        if (result.errors.length) parts.push(`Ошибок: ${result.errors.length}`);
+
+        toast({
+          title: 'Импорт стоимости завершён',
+          description: parts.join(', '),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+        result.errors.push(message);
+        toast({
+          title: 'Ошибка импорта стоимости',
+          description: message,
+          variant: 'destructive',
+        });
+      } finally {
+        setIsImporting(false);
+        setProgress(100);
+      }
+
+      return result;
+    },
+    [queryClient, toast]
+  );
+
   return {
     importCSV,
+    importCostOnlyCSV,
     isImporting,
     progress,
   };

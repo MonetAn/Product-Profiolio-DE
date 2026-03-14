@@ -27,6 +27,18 @@ import {
 import { Info } from 'lucide-react';
 import { INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
 
+export type NewInitiativeSubmitData = {
+  unit: string;
+  team: string;
+  initiative: string;
+  initiativeType: InitiativeType | '';
+  stakeholdersList: string[];
+  description: string;
+  documentationLink: string;
+  isTimelineStub?: boolean;
+  effortPercent?: number;
+};
+
 interface NewInitiativeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,16 +46,9 @@ interface NewInitiativeDialogProps {
   teams: string[];
   defaultUnit?: string;
   defaultTeam?: string;
-  onSubmit: (data: { 
-    unit: string; 
-    team: string; 
-    initiative: string; 
-    initiativeType: InitiativeType | '';
-    stakeholdersList: string[];
-    description: string; 
-    documentationLink: string;
-    isTimelineStub?: boolean;
-  }) => void;
+  mode?: 'full' | 'quick';
+  nextQuarter?: string;
+  onSubmit: (data: NewInitiativeSubmitData) => void;
 }
 
 const NewInitiativeDialog = ({
@@ -53,6 +58,8 @@ const NewInitiativeDialog = ({
   teams,
   defaultUnit = '',
   defaultTeam = '',
+  mode = 'full',
+  nextQuarter,
   onSubmit
 }: NewInitiativeDialogProps) => {
   const [unit, setUnit] = useState(defaultUnit);
@@ -63,27 +70,36 @@ const NewInitiativeDialog = ({
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
   const [isTimelineStub, setIsTimelineStub] = useState(false);
+  const [effortPercent, setEffortPercent] = useState<number>(0);
+
+  const isQuick = mode === 'quick';
 
   // Sync with filter selection when dialog opens
   useEffect(() => {
     if (open) {
       setUnit(defaultUnit);
       setTeam(defaultTeam);
+      setEffortPercent(0);
     }
   }, [open, defaultUnit, defaultTeam]);
 
   const handleSubmit = () => {
-    if (!unit || !initiative) return;
-    onSubmit({ 
-      unit, 
-      team, 
-      initiative, 
+    const u = isQuick ? defaultUnit : unit;
+    const t = isQuick ? defaultTeam : team;
+    if (!u || !initiative) return;
+    if (isQuick && nextQuarter == null) return;
+    const payload: NewInitiativeSubmitData = {
+      unit: u,
+      team: t,
+      initiative,
       initiativeType,
       stakeholdersList,
-      description, 
+      description,
       documentationLink,
       isTimelineStub,
-    });
+    };
+    if (isQuick) payload.effortPercent = effortPercent ?? 0;
+    onSubmit(payload);
     // Reset form
     setInitiative('');
     setInitiativeType('');
@@ -91,6 +107,7 @@ const NewInitiativeDialog = ({
     setDescription('');
     setDocumentationLink('');
     setIsTimelineStub(false);
+    setEffortPercent(0);
     onOpenChange(false);
   };
 
@@ -111,40 +128,50 @@ const NewInitiativeDialog = ({
         <DialogHeader>
           <DialogTitle>Новая инициатива</DialogTitle>
           <DialogDescription>
-            Создайте новую инициативу. Она будет добавлена с пустыми квартальными данными.
+            {isQuick
+              ? `Заполните данные инициативы и % усилий на ${nextQuarter}.`
+              : 'Создайте новую инициативу. Она будет добавлена с пустыми квартальными данными.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
-          {/* Unit */}
-          <div className="grid gap-2">
-            <Label htmlFor="unit">Unit *</Label>
-            <Select value={unit} onValueChange={setUnit}>
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите юнит" />
-              </SelectTrigger>
-              <SelectContent>
-                {units.map(u => (
-                  <SelectItem key={u} value={u}>{u}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {isQuick ? (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              Unit: {defaultUnit || '—'} · Команда: {defaultTeam || '—'}
+            </div>
+          ) : (
+            <>
+              {/* Unit */}
+              <div className="grid gap-2">
+                <Label htmlFor="unit">Unit *</Label>
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите юнит" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {units.map(u => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Team */}
-          <div className="grid gap-2">
-            <Label htmlFor="team">Team</Label>
-            <Select value={team} onValueChange={setTeam} disabled={!unit}>
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите команду (опционально)" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableTeams.map(t => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Team */}
+              <div className="grid gap-2">
+                <Label htmlFor="team">Team</Label>
+                <Select value={team} onValueChange={setTeam} disabled={!unit}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите команду (опционально)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTeams.map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
 
           {/* Initiative name */}
           <div className="grid gap-2">
@@ -248,14 +275,33 @@ const NewInitiativeDialog = ({
               onCheckedChange={(checked) => setIsTimelineStub(checked === true)}
             />
           </div>
+
+          {isQuick && nextQuarter && (
+            <div className="grid gap-2">
+              <Label htmlFor="quick-effort">% усилий на {nextQuarter}</Label>
+              <Input
+                id="quick-effort"
+                type="number"
+                min={0}
+                max={100}
+                value={effortPercent === 0 ? '' : effortPercent}
+                onChange={(e) => setEffortPercent(parseInt(e.target.value, 10) || 0)}
+                placeholder="0"
+                className="w-24 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>
-          <Button onClick={handleSubmit} disabled={!unit || !initiative}>
-            Создать
+          <Button
+            onClick={handleSubmit}
+            disabled={isQuick ? !defaultUnit || !initiative : !unit || !initiative}
+          >
+            {isQuick ? 'Добавить' : 'Создать'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -378,6 +378,25 @@ export function useInitiativeMutations() {
     });
   }, [updateMutation, queryClient]);
 
+  // Async version for awaiting in quick-flow save (no optimistic update; caller manages state)
+  const updateQuarterDataBulkAsync = useCallback(async (
+    id: string,
+    quarterlyData: Record<string, AdminQuarterData>
+  ) => {
+    setSyncStatus('saving');
+    setLastError(null);
+    await updateMutation.mutateAsync({
+      id,
+      field: 'quarterlyData',
+      value: quarterlyDataToJson(quarterlyData),
+    });
+    queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) =>
+      (old || []).map(row =>
+        row.id === id ? { ...row, quarterlyData } : row
+      )
+    );
+  }, [updateMutation, queryClient]);
+
   // Immediate update (no debounce)
   const immediateUpdate = useCallback((
     id: string,
@@ -408,7 +427,9 @@ export function useInitiativeMutations() {
     updateInitiative: debouncedUpdate,
     updateQuarterData,
     updateQuarterDataBulk,
+    updateQuarterDataBulkAsync,
     immediateUpdate,
+    syncAssignments,
     
     // CRUD operations
     createInitiative: createMutation.mutateAsync,

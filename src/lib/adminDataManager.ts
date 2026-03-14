@@ -122,6 +122,92 @@ function detectPeriodsFromHeaders(headers: string[]): string[] {
   return Array.from(quarterSet).sort();
 }
 
+/** Detect quarter from "cost-only" style headers: "Q1 25", "Q2 25", "25_Q1", "26_Q2" */
+function parseCostOnlyQuarterHeader(header: string): string | null {
+  const trimmed = header.trim();
+  // "Q1 25", "Q2 26"
+  const qSpace = trimmed.match(/Q(\d)\s*(\d{2})/i);
+  if (qSpace) {
+    const year = '20' + qSpace[2];
+    return year + '-Q' + qSpace[1];
+  }
+  // "25_Q1", "26_Q2"
+  const underscore = trimmed.match(/(\d{2})_Q(\d)/i);
+  if (underscore) {
+    const year = '20' + underscore[1];
+    return year + '-Q' + underscore[2];
+  }
+  return null;
+}
+
+export interface CostOnlyRow {
+  initiative: string;
+  unit?: string;
+  team?: string;
+  costs: Record<string, number>;
+}
+
+/**
+ * Parse CSV that contains only initiative name and quarter cost columns.
+ * Headers: "Инициатива" or "Initiative", optional "Unit"/"Team", then "Q1 25", "Q2 25", ... or "25_Q1", ...
+ */
+export function parseCostOnlyCSV(text: string): { rows: CostOnlyRow[]; quarters: string[] } {
+  const rows = parseCSVToRows(text);
+  if (rows.length < 2) {
+    return { rows: [], quarters: [] };
+  }
+
+  const headers = rows[0];
+  const initiativeIdx = headers.findIndex(
+    (h) => h.toLowerCase().includes('инициатива') || h.trim().toLowerCase() === 'initiative'
+  );
+  const unitIdx = headers.findIndex(
+    (h) => h.toLowerCase().includes('unit') || h.trim().toLowerCase() === 'юнит'
+  );
+  const teamIdx = headers.findIndex(
+    (h) => h.toLowerCase().includes('team') || h.trim().toLowerCase() === 'команда'
+  );
+
+  const quarterKeys: string[] = [];
+  const headerToQuarter = new Map<string, string>();
+  headers.forEach((h, idx) => {
+    if (idx === initiativeIdx || idx === unitIdx || idx === teamIdx) return;
+    const q = parseCostOnlyQuarterHeader(h);
+    if (q) {
+      if (!headerToQuarter.has(h)) {
+        quarterKeys.push(q);
+        headerToQuarter.set(h, q);
+      }
+    }
+  });
+  const quarters = Array.from(new Set(quarterKeys)).sort();
+
+  const data: CostOnlyRow[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const values = rows[i];
+    const initiative =
+      initiativeIdx >= 0 ? values[initiativeIdx]?.trim() || '' : values[0]?.trim() || '';
+    if (!initiative) continue;
+
+    const costs: Record<string, number> = {};
+    headers.forEach((h, colIdx) => {
+      const q = parseCostOnlyQuarterHeader(h);
+      if (q && values[colIdx] !== undefined) {
+        costs[q] = parseNumber(values[colIdx]);
+      }
+    });
+
+    data.push({
+      initiative,
+      unit: unitIdx >= 0 ? values[unitIdx]?.trim() || undefined : undefined,
+      team: teamIdx >= 0 ? values[teamIdx]?.trim() || undefined : undefined,
+      costs,
+    });
+  }
+
+  return { rows: data, quarters };
+}
+
 // ===== ADMIN CSV PARSING =====
 export function parseAdminCSV(text: string): {
   data: AdminDataRow[];
@@ -300,6 +386,41 @@ export function filterData(
   });
 }
 
+export interface UnitSummaryTeam {
+  team: string;
+  initiativeCount: number;
+}
+
+export interface UnitSummaryItem {
+  unit: string;
+  teams: UnitSummaryTeam[];
+}
+
+/** Summary of teams and initiative counts per unit (for "only unit selected" screen). */
+export function getUnitSummary(
+  data: AdminDataRow[],
+  unitIds: string[]
+): UnitSummaryItem[] {
+  if (unitIds.length === 0) return [];
+  const byUnit = new Map<string, Map<string, number>>();
+  for (const row of data) {
+    if (!unitIds.includes(row.unit)) continue;
+    const unitMap = byUnit.get(row.unit) ?? new Map<string, number>();
+    const team = row.team || '';
+    unitMap.set(team, (unitMap.get(team) ?? 0) + 1);
+    byUnit.set(row.unit, unitMap);
+  }
+  return unitIds
+    .filter(u => byUnit.has(u))
+    .map(unit => {
+      const teamMap = byUnit.get(unit)!;
+      const teams: UnitSummaryTeam[] = Array.from(teamMap.entries())
+        .map(([team, initiativeCount]) => ({ team, initiativeCount }))
+        .sort((a, b) => a.team.localeCompare(b.team));
+      return { unit, teams };
+    });
+}
+
 export function createEmptyQuarterData(): AdminQuarterData {
   return {
     cost: 0,
@@ -338,6 +459,48 @@ export function createNewInitiative(
     quarterlyData,
     isNew: true
   };
+}
+
+/** Whether plan/fact are required for this quarter (not support, and cost > 0). */
+export function quarterRequiresPlanFact(qData: AdminQuarterData): boolean {
+  if (qData.support) return false;
+  const totalCost = (qData.cost ?? 0) + (qData.otherCosts ?? 0);
+  return totalCost > 0;
+}
+
+/** Missing required fields at initiative level (same rules as InitiativeTable). */
+export function getMissingInitiativeFields(row: AdminDataRow): string[] {
+  const missing: string[] = [];
+  if (!row.initiativeType) missing.push('Тип');
+  if (!row.stakeholdersList || row.stakeholdersList.length === 0) missing.push('Стейкх.');
+  if (!row.description) missing.push('Описание');
+  return missing;
+}
+
+/** Validation issues for quick flow step 2: initiatives with effort > 0 on nextQuarter that have missing required fields. */
+export function getQuickFlowValidationIssues(
+  rows: AdminDataRow[],
+  nextQuarter: string
+): { id: string; initiativeName: string; missing: string[] }[] {
+  const result: { id: string; initiativeName: string; missing: string[] }[] = [];
+  for (const row of rows) {
+    const qd = row.quarterlyData[nextQuarter];
+    const effort = qd?.effortCoefficient ?? 0;
+    if (effort <= 0) continue;
+    const missing: string[] = [...getMissingInitiativeFields(row)];
+    if (qd && quarterRequiresPlanFact(qd)) {
+      if (!qd.metricPlan) missing.push('План метрики');
+      if (!qd.metricFact) missing.push('Факт метрики');
+    }
+    if (missing.length > 0) {
+      result.push({
+        id: row.id,
+        initiativeName: row.initiative || '—',
+        missing,
+      });
+    }
+  }
+  return result;
 }
 
 // ===== QUARTERLY EFFORT VALIDATION =====

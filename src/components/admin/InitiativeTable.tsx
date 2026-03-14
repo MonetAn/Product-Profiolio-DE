@@ -31,7 +31,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, createEmptyQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, createEmptyQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo, quarterRequiresPlanFact, getMissingInitiativeFields } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
@@ -48,22 +48,14 @@ interface InitiativeTableProps {
   hideUnitTeamColumns?: boolean;
 }
 
-// Get list of missing required fields for initiative (shortened names for compact display)
-const getMissingInitiativeFields = (row: AdminDataRow): string[] => {
-  const missing: string[] = [];
-  if (!row.initiativeType) missing.push('Тип');
-  if (!row.stakeholdersList || row.stakeholdersList.length === 0) missing.push('Стейкх.');
-  if (!row.description) missing.push('Описание');
-  return missing;
-};
-
 // Check if initiative has incomplete required fields
 const isInitiativeIncomplete = (row: AdminDataRow): boolean => {
   return getMissingInitiativeFields(row).length > 0;
 };
 
-// Check if quarter has incomplete required fields
+// Check if quarter has incomplete required fields (only when quarter requires plan/fact)
 const isQuarterIncomplete = (data: AdminQuarterData): boolean => {
+  if (!quarterRequiresPlanFact(data)) return false;
   return !data.metricPlan || !data.metricFact;
 };
 
@@ -105,6 +97,7 @@ const InitiativeTable = ({
 
   // Calculate effort sums for each quarter (for filtered data)
   const quarterEffortSums = getTeamQuarterEffortSums(allData, selectedUnits, selectedTeams, quarters);
+  const multipleTeamsSelected = selectedTeams.length > 1;
 
   const handleRowClick = (row: AdminDataRow) => {
     setSelectedId(row.id);
@@ -202,17 +195,29 @@ const InitiativeTable = ({
                     <TableHead key={q} className="min-w-[220px]">
                       <div className="flex flex-col gap-0.5">
                         <span>{q}</span>
-                        {/* Effort sum indicator */}
-                        <span className={`text-[10px] font-normal ${
-                          effortSum.total === 0 ? 'text-muted-foreground' :
-                          !effortSum.isValid ? 'text-red-600' : 
-                          effortSum.total < 80 ? 'text-muted-foreground' : 
-                          'text-green-600'
-                        }`}>
-                          {effortSum.total}%
-                          {!effortSum.isValid && ' ⚠'}
-                          {effortSum.isValid && effortSum.total >= 80 && ' ✓'}
-                        </span>
+                        {/* Effort sum: when multiple teams, do not show 100% validation */}
+                        {multipleTeamsSelected ? (
+                          <span className="text-[10px] font-medium text-muted-foreground">
+                            по {selectedTeams.length} командам
+                          </span>
+                        ) : (
+                          <>
+                            <span className={`text-[10px] font-medium ${
+                              effortSum.total === 0 ? 'text-muted-foreground' :
+                              !effortSum.isValid ? 'text-destructive' :
+                              effortSum.total < 80 ? 'text-muted-foreground' :
+                              'text-green-600 dark:text-green-500'
+                            }`}>
+                              {effortSum.total}%
+                              {!effortSum.isValid && ' ⚠'}
+                              {effortSum.isValid && effortSum.total === 100 && ' ✓'}
+                              {effortSum.isValid && effortSum.total >= 80 && effortSum.total < 100 && ' (не 100%)'}
+                            </span>
+                            {!effortSum.isValid && (
+                              <span className="text-[10px] text-destructive">Сумма {effortSum.total}%. Нужно 100%.</span>
+                            )}
+                          </>
+                        )}
                       </div>
                     </TableHead>
                   );
@@ -280,8 +285,13 @@ const InitiativeTable = ({
                     className={`sticky ${hideUnitTeamColumns ? 'left-[60px]' : 'left-[250px]'} bg-card z-10 p-2 cursor-pointer`}
                     onClick={() => handleRowClick(row)}
                   >
-                    <span className="text-xs text-primary hover:underline truncate block max-w-[150px]">
+                    <span className="text-xs text-primary hover:underline truncate block max-w-[150px] inline-flex items-center gap-1.5">
                       {row.initiative || <span className="text-muted-foreground italic">—</span>}
+                      {row.isNew && (
+                        <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-primary/15 text-primary">
+                          Новая
+                        </span>
+                      )}
                     </span>
                   </TableCell>
 

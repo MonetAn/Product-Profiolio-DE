@@ -1,18 +1,29 @@
-import { useCallback, useRef } from 'react';
-import { Upload, ClipboardList, AlertCircle, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Upload, ClipboardList, AlertCircle, RefreshCw, CalendarRange, Table2 } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { useToast } from '@/hooks/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import InitiativeTable from '@/components/admin/InitiativeTable';
-import NewInitiativeDialog from '@/components/admin/NewInitiativeDialog';
+import NewInitiativeDialog, { type NewInitiativeSubmitData } from '@/components/admin/NewInitiativeDialog';
 import CSVImportDialog from '@/components/admin/CSVImportDialog';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   getUniqueUnits,
   getTeamsForUnits,
   filterData,
+  getUnitSummary,
+  createEmptyQuarterData,
   AdminDataRow,
   AdminQuarterData,
   InitiativeType
@@ -21,10 +32,17 @@ import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
 import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
 import { useCSVExport } from '@/hooks/useCSVExport';
 import { useFilterParams } from '@/hooks/useFilterParams';
-import { useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { getPreviousQuarter, getNextQuarter } from '@/lib/quarterUtils';
+import AdminQuickFlow from '@/components/admin/AdminQuickFlow';
+import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
+import { AdminScenarioSelectDialog } from '@/components/admin/AdminScenarioSelectDialog';
+
+type InitiativesScreen = 'start' | 'unitSummary' | 'quickStep1' | 'quickStep2' | 'fullTable';
 
 const Admin = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Data from Supabase
@@ -36,8 +54,10 @@ const Admin = () => {
     updateInitiative, 
     updateQuarterData, 
     updateQuarterDataBulk,
+    updateQuarterDataBulkAsync,
     createInitiative, 
     deleteInitiative,
+    syncAssignments,
     syncStatus,
     pendingChanges,
     retry 
@@ -47,6 +67,7 @@ const Admin = () => {
   const { exportAll, exportFiltered } = useCSVExport({ quarters });
 
   // Filter state from URL
+  const [searchParams, setSearchParams] = useSearchParams();
   const { 
     selectedUnits, 
     selectedTeams, 
@@ -56,17 +77,168 @@ const Admin = () => {
     buildFilteredUrl 
   } = useFilterParams();
 
-  // UI state
-  const [newDialogOpen, setNewDialogOpen] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-
-  // Derived state
+  // Derived state (must be before canShowQuick / isQuickMode)
   const hasData = rawData.length > 0;
   const units = getUniqueUnits(rawData);
   const teams = getTeamsForUnits(rawData, selectedUnits);
   const filteredData = filterData(rawData, selectedUnits, selectedTeams);
   const needsSelection = hasData && selectedUnits.length === 0;
+  const onlyUnitSelected = hasData && selectedUnits.length > 0 && selectedTeams.length === 0;
+  const unitSummary = onlyUnitSelected ? getUnitSummary(rawData, selectedUnits) : [];
   const hideUnitTeamColumns = selectedUnits.length > 0;
+
+  const isQuickMode = searchParams.get('mode') === 'quick';
+  const canShowQuick = hasData && !needsSelection && !onlyUnitSelected;
+
+  // UI state
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
+  const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [createdInQuickSession, setCreatedInQuickSession] = useState<string[]>([]);
+  const [scenarioDialog, setScenarioDialog] = useState<'quick' | 'full' | null>(null);
+  const [quickFillInitiativeId, setQuickFillInitiativeId] = useState<string | null>(null);
+  const [quickDraftPatches, setQuickDraftPatches] = useState<Map<string, Record<string, Partial<AdminQuarterData>>>>(new Map());
+  const [isSavingQuickDraft, setIsSavingQuickDraft] = useState(false);
+  const [exitConfirmState, setExitConfirmState] = useState<{ onProceed: () => void } | null>(null);
+  const [quickStep, setQuickStep] = useState<1 | 2>(1);
+
+  // Reset quick step when entering quick mode
+  useEffect(() => {
+    if (isQuickMode && canShowQuick) setQuickStep(1);
+  }, [isQuickMode, canShowQuick]);
+
+  // Current Initiatives screen and previous (for Back button)
+  const currentInitiativesScreen = useMemo((): InitiativesScreen | null => {
+    if (!hasData) return null;
+    if (needsSelection) return 'start';
+    if (onlyUnitSelected) return 'unitSummary';
+    if (isQuickMode && canShowQuick) return quickStep === 2 ? 'quickStep2' : 'quickStep1';
+    return 'fullTable';
+  }, [hasData, needsSelection, onlyUnitSelected, isQuickMode, canShowQuick, quickStep]);
+
+  const previousInitiativesScreen = useMemo((): InitiativesScreen | null => {
+    const current = currentInitiativesScreen;
+    if (!current) return null;
+    switch (current) {
+      case 'fullTable': case 'quickStep1': case 'unitSummary': return 'start';
+      case 'quickStep2': return 'quickStep1';
+      case 'start': return null;
+      default: return null;
+    }
+  }, [currentInitiativesScreen]);
+
+  const handleInitiativesBack = useCallback(() => {
+    const prev = previousInitiativesScreen;
+    if (prev === null) {
+      navigate('/');
+      return;
+    }
+    if (prev === 'start') {
+      setSearchParams((prevParams) => {
+        const p = new URLSearchParams(prevParams);
+        p.delete('units');
+        p.delete('teams');
+        p.delete('mode');
+        return p;
+      });
+      return;
+    }
+    if (prev === 'quickStep1') {
+      setQuickStep(1);
+    }
+  }, [previousInitiativesScreen, navigate, setSearchParams]);
+
+  // Apply draft patches to rows (quick flow only)
+  const applyQuickDraftPatches = useCallback((
+    rows: AdminDataRow[],
+    patches: Map<string, Record<string, Partial<AdminQuarterData>>>
+  ): AdminDataRow[] => {
+    if (patches.size === 0) return rows;
+    return rows.map((row) => {
+      const byQuarter = patches.get(row.id);
+      if (!byQuarter) return row;
+      const quarterlyData = { ...row.quarterlyData };
+      for (const [q, patch] of Object.entries(byQuarter)) {
+        quarterlyData[q] = { ...createEmptyQuarterData(), ...row.quarterlyData[q], ...patch };
+      }
+      return { ...row, quarterlyData };
+    });
+  }, []);
+
+  const quickDisplayData = useMemo(
+    () => applyQuickDraftPatches(filteredData, quickDraftPatches),
+    [filteredData, quickDraftPatches, applyQuickDraftPatches]
+  );
+
+  const handleQuickDraftChange = useCallback((
+    id: string,
+    quarter: string,
+    field: keyof AdminQuarterData,
+    value: string | number | boolean
+  ) => {
+    setQuickDraftPatches((prev) => {
+      const next = new Map(prev);
+      const byQuarter = next.get(id) ?? {};
+      const quarterPatch = { ...(byQuarter[quarter] ?? {}), [field]: value };
+      next.set(id, { ...byQuarter, [quarter]: quarterPatch });
+      return next;
+    });
+  }, []);
+
+  const handleSaveQuickDraft = useCallback(async () => {
+    if (quickDraftPatches.size === 0) return;
+    setIsSavingQuickDraft(true);
+    try {
+      for (const [id, byQuarter] of quickDraftPatches) {
+        const row = rawData.find((r) => r.id === id);
+        if (!row) continue;
+        const merged = { ...row.quarterlyData };
+        for (const [q, patch] of Object.entries(byQuarter)) {
+          merged[q] = { ...createEmptyQuarterData(), ...row.quarterlyData[q], ...patch };
+        }
+        await updateQuarterDataBulkAsync(id, merged);
+        for (const [q, patch] of Object.entries(byQuarter)) {
+          if (patch.effortCoefficient !== undefined) {
+            const updatedRow = { ...row, quarterlyData: merged };
+            await syncAssignments(updatedRow, q, patch.effortCoefficient as number);
+          }
+        }
+      }
+      setQuickDraftPatches(new Map());
+      toast({ title: 'Данные сохранены' });
+    } catch (e) {
+      toast({
+        title: 'Ошибка сохранения',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingQuickDraft(false);
+    }
+  }, [quickDraftPatches, rawData, updateQuarterDataBulkAsync, syncAssignments, toast]);
+
+  const handleRequestExitQuick = useCallback((_action: 'fullTable' | 'backToStep1', onProceed: () => void) => {
+    if (quickDraftPatches.size === 0) {
+      onProceed();
+      return;
+    }
+    setExitConfirmState({ onProceed });
+  }, [quickDraftPatches.size]);
+
+  const handleExitConfirmSave = useCallback(async () => {
+    const onProceed = exitConfirmState?.onProceed;
+    if (!onProceed) return;
+    await handleSaveQuickDraft();
+    setExitConfirmState(null);
+    onProceed();
+  }, [exitConfirmState, handleSaveQuickDraft]);
+
+  const handleExitConfirmDiscard = useCallback(() => {
+    const onProceed = exitConfirmState?.onProceed;
+    setQuickDraftPatches(new Map());
+    setExitConfirmState(null);
+    onProceed?.();
+  }, [exitConfirmState]);
 
   // Data modification handlers
   const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
@@ -92,16 +264,7 @@ const Admin = () => {
   }, [updateQuarterDataBulk]);
 
   // New initiative handler
-  const handleAddInitiative = useCallback(async (data: {
-    unit: string;
-    team: string;
-    initiative: string;
-    initiativeType: InitiativeType | '';
-    stakeholdersList: string[];
-    description: string;
-    documentationLink: string;
-    isTimelineStub?: boolean;
-  }) => {
+  const handleAddInitiative = useCallback(async (data: NewInitiativeSubmitData) => {
     // Build quarterly data for all quarters
     const quarterlyData: Record<string, AdminQuarterData> = {};
     quarters.forEach(q => {
@@ -139,6 +302,63 @@ const Admin = () => {
       console.error('Failed to create initiative:', err);
     }
   }, [quarters, createInitiative, toast]);
+
+  // Quick flow: create initiative with full payload (from NewInitiativeDialog in quick mode)
+  const handleCreateInitiativeQuick = useCallback(
+    async (data: NewInitiativeSubmitData) => {
+      const nextQ = getNextQuarter();
+      const effortPercent = data.effortPercent ?? 0;
+      const quarterlyData: Record<string, AdminQuarterData> = {};
+      quarters.forEach((q) => {
+        quarterlyData[q] = {
+          ...createEmptyQuarterData(),
+          effortCoefficient: q === nextQ ? effortPercent : 0,
+        };
+      });
+      const u = data.unit || (selectedUnits[0] ?? '');
+      const t = data.team || (selectedTeams[0] ?? '');
+      try {
+        const result = await createInitiative({
+          unit: u,
+          team: t,
+          initiative: data.initiative,
+          initiativeType: data.initiativeType || '',
+          stakeholdersList: data.stakeholdersList ?? [],
+          description: data.description ?? '',
+          documentationLink: data.documentationLink ?? '',
+          stakeholders: '',
+          isTimelineStub: data.isTimelineStub ?? false,
+          quarterlyData,
+        });
+        const createdId = (result as { id?: string })?.id;
+        if (createdId) setCreatedInQuickSession((prev) => [...prev, createdId]);
+        toast({
+          title: 'Инициатива добавлена',
+          description: `«${data.initiative}» с ${effortPercent}% на ${nextQ}`,
+        });
+      } catch (err) {
+        console.error('Failed to create initiative:', err);
+      }
+    },
+    [quarters, selectedUnits, selectedTeams, createInitiative, toast]
+  );
+
+  const handleGoToFullTable = useCallback(() => {
+    setCreatedInQuickSession([]);
+    setSearchParams((prev) => {
+      const n = new URLSearchParams(prev);
+      n.delete('mode');
+      return n;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const handleEnterQuickMode = useCallback(() => {
+    setSearchParams((prev) => {
+      const n = new URLSearchParams(prev);
+      n.set('mode', 'quick');
+      return n;
+    }, { setSearchParams });
+  }, [setSearchParams]);
 
   // Delete initiative handler
   const handleDeleteInitiative = useCallback(async (id: string) => {
@@ -205,6 +425,9 @@ const Admin = () => {
         onDownloadAll={handleDownloadAll}
         onDownloadFiltered={handleDownloadFiltered}
         onRetry={retry}
+        onExitQuick={isQuickMode ? handleGoToFullTable : undefined}
+        onBack={hasData ? handleInitiativesBack : undefined}
+        backLabel={previousInitiativesScreen == null ? 'dashboard' : 'back'}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -233,44 +456,156 @@ const Admin = () => {
         ) : (
           /* Data view */
           <div className="flex-1 flex flex-col overflow-hidden">
-            <ScopeSelector
-              units={units}
-              teams={teams}
-              selectedUnits={selectedUnits}
-              selectedTeams={selectedTeams}
-              onUnitsChange={setSelectedUnits}
-              onTeamsChange={setSelectedTeams}
-              onFiltersChange={setFilters}
-              allData={rawData}
-            />
-
-            {needsSelection ? (
-              /* Placeholder when no Unit selected */
-              <div className="flex-1 flex flex-col items-center justify-center p-8">
-                <div className="border border-dashed border-border rounded-xl p-12 text-center max-w-md">
-                  <ClipboardList size={48} className="mx-auto text-muted-foreground mb-4" />
-                  <h2 className="text-xl font-semibold mb-2">Выберите Unit и Team</h2>
-                  <p className="text-muted-foreground">
-                    Для просмотра и редактирования инициатив выберите Unit и Team в фильтрах выше
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-hidden">
-                <InitiativeTable
-                  data={filteredData}
-                  allData={rawData}
-                  quarters={quarters}
+            {!needsSelection && (
+              <div className="shrink-0">
+                <ScopeSelector
+                  units={units}
+                  teams={teams}
                   selectedUnits={selectedUnits}
                   selectedTeams={selectedTeams}
-                  onDataChange={handleDataChange}
-                  onQuarterDataChange={handleQuarterDataChange}
-                  onQuarterlyDataBulkChange={handleQuarterlyDataBulkChange}
-                  onAddInitiative={() => setNewDialogOpen(true)}
-                  onDeleteInitiative={handleDeleteInitiative}
-                  modifiedIds={new Set()}
-                  hideUnitTeamColumns={hideUnitTeamColumns}
+                  onUnitsChange={setSelectedUnits}
+                  onTeamsChange={setSelectedTeams}
+                  onFiltersChange={setFilters}
+                  allData={rawData}
                 />
+              </div>
+            )}
+
+            {needsSelection ? (
+              /* Two scenario buttons: open Unit/Team dialog, then go to quick or full table */
+              <div className="flex-1 overflow-auto flex flex-col items-center justify-center p-6 sm:p-8">
+                <div className="w-full max-w-xl mx-auto text-center space-y-6">
+                  <div className="space-y-2">
+                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+                      Что вы хотите сделать?
+                    </h1>
+                    <p className="text-muted-foreground text-sm sm:text-base max-w-md mx-auto leading-relaxed">
+                      По клику откроется выбор Unit и команды
+                    </p>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
+                    <Button
+                      size="lg"
+                      variant="secondary"
+                      className="h-auto flex flex-col items-center justify-center gap-1.5 py-6 px-8 text-center min-h-[120px] sm:min-h-[128px] border-primary/30 bg-primary/5 hover:bg-primary/10 overflow-visible"
+                      onClick={() => setScenarioDialog('quick')}
+                    >
+                      <CalendarRange size={24} className="shrink-0" />
+                      <span className="font-semibold text-sm sm:text-base leading-tight whitespace-normal text-balance">
+                        Заполнить информацию на следующие кварталы
+                      </span>
+                      <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center w-full">
+                        Пошаговое заполнение для лидера
+                      </span>
+                    </Button>
+
+                    <Button
+                      size="lg"
+                      variant="secondary"
+                      className="h-auto flex flex-col items-center justify-center gap-1.5 py-6 px-8 text-center min-h-[120px] sm:min-h-[128px] overflow-visible"
+                      onClick={() => setScenarioDialog('full')}
+                    >
+                      <Table2 size={24} className="shrink-0" />
+                      <span className="font-semibold text-sm sm:text-base leading-tight whitespace-normal text-balance">
+                        Посмотреть полную таблицу
+                      </span>
+                      <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center w-full">
+                        Все кварталы и инициативы
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : onlyUnitSelected ? (
+              /* Only Unit selected: hint + unit summary (no table to avoid 100% sum across teams) */
+              <div className="flex-1 flex flex-col overflow-auto p-8">
+                <div className="max-w-2xl mx-auto space-y-6">
+                  <div className="border border-dashed border-border rounded-xl p-8 text-center">
+                    <ClipboardList size={40} className="mx-auto text-muted-foreground mb-3" />
+                    <h2 className="text-lg font-semibold mb-2">Выберите одну или несколько команд</h2>
+                    <p className="text-muted-foreground text-sm">
+                      Чтобы редактировать инициативы и проценты по кварталам, выберите команды в фильтрах выше
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground">Сводка по юнитам</h3>
+                    {unitSummary.map(({ unit, teams: unitTeams }) => (
+                      <div key={unit} className="rounded-lg border border-border bg-card p-4">
+                        <div className="font-medium mb-3">{unit}</div>
+                        <ul className="space-y-2">
+                          {unitTeams.map(({ team, initiativeCount }) => (
+                            <li key={team} className="flex justify-between text-sm items-center">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTeams([team])}
+                                className="text-primary hover:underline text-left"
+                              >
+                                {team || '—'}
+                              </button>
+                              <span className="text-muted-foreground">{initiativeCount} инициатив</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : isQuickMode && canShowQuick ? (
+              <AdminQuickFlow
+                filteredData={quickDisplayData}
+                quarters={quarters}
+                previousQuarter={getPreviousQuarter()}
+                nextQuarter={getNextQuarter()}
+                unit={selectedUnits[0] ?? ''}
+                team={selectedTeams[0] ?? ''}
+                createdInQuickSession={createdInQuickSession}
+                step={quickStep}
+                setStep={setQuickStep}
+                onQuarterDataChange={handleQuickDraftChange}
+                onCreateInitiativeQuick={handleCreateInitiativeQuick}
+                onOpenAddInitiative={() => setQuickAddDialogOpen(true)}
+                onGoToFullTable={handleGoToFullTable}
+                onOpenFillInitiative={setQuickFillInitiativeId}
+                hasQuickDraft={quickDraftPatches.size > 0}
+                onSaveQuickDraft={handleSaveQuickDraft}
+                isSavingQuickDraft={isSavingQuickDraft}
+                onRequestExitQuick={handleRequestExitQuick}
+              />
+            ) : (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {canShowQuick && (
+                  <div className="px-4 py-2 border-b border-border flex flex-wrap items-center justify-between gap-2 bg-muted/30">
+                    <span className="text-sm text-muted-foreground">
+                      Заполнить информацию на следующие кварталы
+                      {selectedUnits.length === 1 && selectedTeams.length === 1 && (
+                        <span className="ml-2 text-xs text-muted-foreground/90">
+                          — Рекомендуется для быстрого ввода по одной команде
+                        </span>
+                      )}
+                    </span>
+                    <Button size="sm" variant="secondary" onClick={handleEnterQuickMode}>
+                      Заполнить информацию на следующие кварталы
+                    </Button>
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden">
+                  <InitiativeTable
+                    data={filteredData}
+                    allData={rawData}
+                    quarters={quarters}
+                    selectedUnits={selectedUnits}
+                    selectedTeams={selectedTeams}
+                    onDataChange={handleDataChange}
+                    onQuarterDataChange={handleQuarterDataChange}
+                    onQuarterlyDataBulkChange={handleQuarterlyDataBulkChange}
+                    onAddInitiative={() => setNewDialogOpen(true)}
+                    onDeleteInitiative={handleDeleteInitiative}
+                    modifiedIds={new Set()}
+                    hideUnitTeamColumns={hideUnitTeamColumns}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -283,7 +618,7 @@ const Admin = () => {
         onOpenChange={setImportDialogOpen}
       />
 
-      {/* New Initiative Dialog */}
+      {/* New Initiative Dialog (full table) */}
       <NewInitiativeDialog
         open={newDialogOpen}
         onOpenChange={setNewDialogOpen}
@@ -292,6 +627,78 @@ const Admin = () => {
         defaultUnit={selectedUnits[0] || ''}
         defaultTeam={selectedTeams[0] || ''}
         onSubmit={handleAddInitiative}
+      />
+
+      {/* New Initiative Dialog (quick flow: full form + % for next quarter) */}
+      {isQuickMode && (
+        <NewInitiativeDialog
+          open={quickAddDialogOpen}
+          onOpenChange={setQuickAddDialogOpen}
+          units={units}
+          teams={teams}
+          defaultUnit={selectedUnits[0] || ''}
+          defaultTeam={selectedTeams[0] || ''}
+          mode="quick"
+          nextQuarter={getNextQuarter()}
+          onSubmit={handleCreateInitiativeQuick}
+        />
+      )}
+
+      {/* Quick flow: exit confirm when draft has changes */}
+      <AlertDialog open={!!exitConfirmState} onOpenChange={(open) => !open && setExitConfirmState(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Несохранённые изменения</AlertDialogTitle>
+            <AlertDialogDescription>
+              Есть несохранённые изменения. Сохранить их перед выходом?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <Button variant="outline" onClick={handleExitConfirmDiscard}>
+              Не сохранять
+            </Button>
+            <Button onClick={handleExitConfirmSave} disabled={isSavingQuickDraft}>
+              {isSavingQuickDraft ? 'Сохранение…' : 'Сохранить'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Quick flow: fill-in dialog for validation step */}
+      {isQuickMode && quickFillInitiativeId && (
+        <InitiativeDetailDialog
+          initiative={rawData.find((r) => r.id === quickFillInitiativeId) ?? null}
+          allData={rawData}
+          quarters={quarters}
+          open={!!quickFillInitiativeId}
+          onOpenChange={(open) => !open && setQuickFillInitiativeId(null)}
+          onDataChange={handleDataChange}
+          onQuarterDataChange={handleQuarterDataChange}
+        />
+      )}
+
+      {/* Scenario selection: Unit + Team → quick flow or full table */}
+      <AdminScenarioSelectDialog
+        open={scenarioDialog !== null}
+        onOpenChange={(open) => !open && setScenarioDialog(null)}
+        mode={scenarioDialog ?? 'quick'}
+        units={units}
+        rawData={rawData}
+        onConfirm={(unit, teamsList) => {
+          if (scenarioDialog === 'quick') {
+            setSearchParams((prev) => {
+              const n = new URLSearchParams(prev);
+              n.set('units', unit);
+              n.set('teams', teamsList.join(','));
+              n.set('mode', 'quick');
+              return n;
+            });
+          } else {
+            setFilters([unit], teamsList);
+          }
+          setScenarioDialog(null);
+        }}
       />
     </div>
   );

@@ -14,7 +14,7 @@ import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
 import QuarterSelector from '@/components/admin/people/QuarterSelector';
-import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
+import { getUniqueUnits, getTeamsForUnits, filterData, getUnitSummary } from '@/lib/adminDataManager';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
 
 type GroupMode = 'person' | 'initiative';
@@ -174,6 +174,9 @@ export default function AdminPeople() {
   const peopleCount = filteredPeople.length;
   const initiativeCount = filteredInitiatives.length;
 
+  const onlyUnitSelected = selectedUnits.length > 0 && selectedTeams.length === 0;
+  const unitSummary = onlyUnitSelected ? getUnitSummary(initiatives, selectedUnits) : [];
+
   if (peopleLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -229,6 +232,34 @@ export default function AdminPeople() {
               <p className="text-muted-foreground">
                 Для просмотра и редактирования привязок людей к инициативам выберите Unit в фильтрах выше
               </p>
+            </div>
+          </div>
+        ) : onlyUnitSelected ? (
+          <div className="flex-1 flex flex-col overflow-auto p-8">
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div className="border border-dashed border-border rounded-xl p-8 text-center">
+                <ClipboardList size={40} className="mx-auto text-muted-foreground mb-3" />
+                <h2 className="text-lg font-semibold mb-2">Выберите одну или несколько команд</h2>
+                <p className="text-muted-foreground text-sm">
+                  Чтобы просматривать и редактировать привязки людей, выберите команды в фильтрах выше
+                </p>
+              </div>
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Сводка по юнитам</h3>
+                {unitSummary.map(({ unit, teams: unitTeams }) => (
+                  <div key={unit} className="rounded-lg border border-border bg-card p-4">
+                    <div className="font-medium mb-3">{unit}</div>
+                    <ul className="space-y-2">
+                      {unitTeams.map(({ team, initiativeCount: count }) => (
+                        <li key={team} className="flex justify-between text-sm">
+                          <span>{team || '—'}</span>
+                          <span className="text-muted-foreground">{count} инициатив</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ) : (

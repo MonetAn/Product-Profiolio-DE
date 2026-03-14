@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { AdminDataRow } from '@/lib/adminDataManager';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ScopeSelectorProps {
   units: string[];
@@ -79,19 +85,9 @@ const ScopeSelector = ({
         onTeamsChange(newTeams);
       }
     } else {
-      // Adding a unit → auto-select all its teams
+      // Adding a unit — do NOT auto-select teams; user picks teams from unit summary
       const newUnits = [...selectedUnits, u];
-      
-      const teamsFromNewUnit = [...new Set(
-        allData
-          .filter(r => r.unit === u)
-          .map(r => r.team)
-          .filter(Boolean)
-      )];
-      
-      const newTeams = [...new Set([...selectedTeams, ...teamsFromNewUnit])];
-      
-      // Use atomic update if available, otherwise sequential
+      const newTeams = selectedTeams; // keep current team selection (often empty)
       if (onFiltersChange) {
         onFiltersChange(newUnits, newTeams);
       } else {
@@ -195,12 +191,21 @@ const ScopeSelector = ({
               >
                 Выбрать все
               </button>
-              <button 
-                className="text-xs text-primary hover:underline" 
-                onClick={() => onTeamsChange([])}
-              >
-                Сброс
-              </button>
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
+                      className="text-xs text-primary hover:underline" 
+                      onClick={() => onTeamsChange([])}
+                    >
+                      Сброс
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[200px]">
+                    <p className="text-xs">Показать сводку по юниту без таблицы</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className="max-h-[240px] overflow-y-auto p-1">
               {teams.length === 0 ? (

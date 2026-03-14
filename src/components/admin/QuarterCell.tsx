@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AdminQuarterData } from '@/lib/adminDataManager';
+import { AdminQuarterData, quarterRequiresPlanFact } from '@/lib/adminDataManager';
 
 interface QuarterCellProps {
   quarter: string;
@@ -27,8 +27,9 @@ interface QuarterCellProps {
   onSupportChange?: (value: boolean) => void;
 }
 
-// Get list of missing required fields
+// Get list of missing required fields (only when quarter requires plan/fact: not support, cost > 0)
 const getMissingFields = (data: AdminQuarterData): string[] => {
+  if (!quarterRequiresPlanFact(data)) return [];
   const missing: string[] = [];
   if (!data.metricPlan) missing.push('План метрики');
   if (!data.metricFact) missing.push('Факт метрики');
@@ -54,7 +55,7 @@ const QuarterCell = ({
     return value.toString();
   };
 
-  const totalCost = data.cost + data.otherCosts;
+  const totalCost = (data.cost ?? 0) + (data.otherCosts ?? 0);
 
   // Local state for save-on-blur fields
   const [localEffort, setLocalEffort] = useState(data.effortCoefficient || 0);
@@ -138,15 +139,14 @@ const QuarterCell = ({
                   {/* Effort Input */}
                   <Input
                     type="number"
-                    value={effortValue || ''}
-                    onChange={(e) => setLocalEffort(parseInt(e.target.value) || 0)}
+                    value={effortValue === 0 ? '' : effortValue}
+                    onChange={(e) => setLocalEffort(parseInt(e.target.value, 10) || 0)}
                     onBlur={() => onChange('effortCoefficient', localEffort)}
                     onClick={(e) => e.stopPropagation()}
                     onFocus={(e) => effortValue === 0 && e.target.select()}
                     min={0}
                     max={100}
-                    step={5}
-                    className="w-14 h-7 text-sm"
+                    className="w-14 h-7 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0"
                   />
                   <span className="text-xs text-muted-foreground">%</span>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Info, Check } from 'lucide-react';
+import { ExternalLink, Info, Check, Pencil } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType, validateTeamQuarterEffort } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType, validateTeamQuarterEffort, quarterRequiresPlanFact } from '@/lib/adminDataManager';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -68,13 +68,15 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
     onQuarterDataChange(initiativeId, quarter, field, value);
 
   const otherCosts = useBlurField(qData.otherCosts, save('otherCosts'));
+  const costValue = useBlurField(qData.cost ?? 0, save('cost'));
   const metricPlan = useBlurField(qData.metricPlan, save('metricPlan'));
   const metricFact = useBlurField(qData.metricFact, save('metricFact'));
   const comment = useBlurField(qData.comment, save('comment'));
   const effort = useBlurField(qData.effortCoefficient || 0, save('effortCoefficient'));
 
-  const totalCost = qData.cost + qData.otherCosts;
+  const totalCost = (qData.cost ?? 0) + qData.otherCosts;
   const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
+  const requiresPlanFact = quarterRequiresPlanFact(qData);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
@@ -85,7 +87,7 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
   return (
     <div
       className={`rounded-lg border p-4 space-y-4 ${
-        qData.onTrack ? 'border-border' : 'border-destructive/50 bg-destructive/5'
+        qData.support ? 'opacity-75 border-muted' : qData.onTrack ? 'border-border' : 'border-destructive/50 bg-destructive/5'
       }`}
     >
       {/* Quarter Header */}
@@ -133,10 +135,17 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
 
       {/* Quarter Fields */}
       <div className="grid grid-cols-2 gap-4">
-        {/* Cost (read-only) */}
+        {/* Cost (editable) */}
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Стоимость (из CSV)</Label>
-          <Input value={formatCurrency(qData.cost)} disabled className="bg-muted/50" />
+          <Input
+            type="number"
+            min={0}
+            value={costValue.value ?? ''}
+            onChange={(e) => costValue.onChange(parseFloat(e.target.value) || 0)}
+            onBlur={costValue.onBlur}
+            placeholder="0"
+          />
         </div>
 
         {/* Other Costs */}
@@ -153,25 +162,33 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
 
         {/* Metric Plan */}
         <div className="space-y-1">
-          <RequiredLabel className="text-xs text-muted-foreground">План метрики</RequiredLabel>
+          {requiresPlanFact ? (
+            <RequiredLabel className="text-xs text-muted-foreground">План метрики</RequiredLabel>
+          ) : (
+            <Label className="text-xs text-muted-foreground">План метрики</Label>
+          )}
           <Textarea
             value={metricPlan.value}
             onChange={(e) => metricPlan.onChange(e.target.value)}
             onBlur={metricPlan.onBlur}
             placeholder="Планируемое значение метрики..."
-            className={`min-h-[60px] resize-y ${!qData.metricPlan?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricPlan?.trim() ? 'ring-2 ring-amber-400' : ''}`}
           />
         </div>
 
         {/* Metric Fact */}
         <div className="space-y-1">
-          <RequiredLabel className="text-xs text-muted-foreground">Факт метрики</RequiredLabel>
+          {requiresPlanFact ? (
+            <RequiredLabel className="text-xs text-muted-foreground">Факт метрики</RequiredLabel>
+          ) : (
+            <Label className="text-xs text-muted-foreground">Факт метрики</Label>
+          )}
           <Textarea
             value={metricFact.value}
             onChange={(e) => metricFact.onChange(e.target.value)}
             onBlur={metricFact.onBlur}
             placeholder="Фактическое значение метрики..."
-            className={`min-h-[60px] resize-y ${!qData.metricFact?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricFact?.trim() ? 'ring-2 ring-amber-400' : ''}`}
           />
         </div>
       </div>
@@ -246,13 +263,19 @@ const InitiativeDetailDialog = ({
             <Badge variant="outline">{initiative.team}</Badge>
           </div>
           <DialogTitle className="text-xl">
-            <Input
-              value={localName}
-              onChange={(e) => setLocalName(e.target.value)}
-              onBlur={() => onDataChange(initiative.id, 'initiative', localName)}
-              className="text-xl font-semibold border-none px-0 h-auto focus-visible:ring-0"
-              placeholder="Название инициативы"
-            />
+            <div className="flex items-center gap-2 group">
+              <Input
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={() => onDataChange(initiative.id, 'initiative', localName)}
+                className="text-xl font-semibold border border-transparent hover:border-input focus-visible:border-primary focus-visible:ring-1 px-2 py-1 -mx-2 -my-1 rounded min-w-0 flex-1"
+                placeholder="Название инициативы"
+                aria-label="Название инициативы (можно редактировать)"
+                autoFocus
+              />
+              <Pencil size={16} className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" aria-hidden />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Можно редактировать</p>
           </DialogTitle>
           <DialogDescription className="sr-only">
             Редактирование инициативы {initiative.initiative}

@@ -192,6 +192,17 @@ const TreemapContainer = ({
     prevLayoutAtRootRef.current = layoutNodes;
   }
 
+  // Clear tooltip when layout or filters change so it doesn't stay visible after re-layouts
+  useEffect(() => {
+    if (tooltipTimeoutRef.current !== null) {
+      clearTimeout(tooltipTimeoutRef.current);
+      tooltipTimeoutRef.current = null;
+    }
+    hoveredNodeRef.current = null;
+    hoveredDepthRef.current = -1;
+    setTooltipData(null);
+  }, [layoutNodes, contentKey, showTeams, showInitiatives, focusedPath]);
+
   // Measure container synchronously to avoid flash
   useLayoutEffect(() => {
     if (!containerRef.current) return;
