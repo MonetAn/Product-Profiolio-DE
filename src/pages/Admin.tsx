@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Upload, ClipboardList, AlertCircle, RefreshCw, CalendarRange, Table2 } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
@@ -89,6 +90,7 @@ const Admin = () => {
 
   const isQuickMode = searchParams.get('mode') === 'quick';
   const canShowQuick = hasData && !needsSelection && !onlyUnitSelected;
+  const reducedMotion = useReducedMotion();
 
   // UI state
   const [newDialogOpen, setNewDialogOpen] = useState(false);
@@ -472,50 +474,50 @@ const Admin = () => {
             )}
 
             {needsSelection ? (
-              /* Two scenario buttons: open Unit/Team dialog, then go to quick or full table */
-              <div className="flex-1 overflow-auto flex flex-col items-center justify-center p-6 sm:p-8">
-                <div className="w-full max-w-xl mx-auto text-center space-y-6">
-                  <div className="space-y-2">
-                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
-                      Что вы хотите сделать?
-                    </h1>
-                    <p className="text-muted-foreground text-sm sm:text-base max-w-md mx-auto leading-relaxed">
-                      По клику откроется выбор Unit и команды
-                    </p>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      className="h-auto flex flex-col items-center justify-center gap-1.5 py-6 px-8 text-center min-h-[120px] sm:min-h-[128px] border-primary/30 bg-primary/5 hover:bg-primary/10 overflow-visible"
-                      onClick={() => setScenarioDialog('quick')}
-                    >
-                      <CalendarRange size={24} className="shrink-0" />
-                      <span className="font-semibold text-sm sm:text-base leading-tight whitespace-normal text-balance">
-                        Заполнить информацию на следующие кварталы
-                      </span>
-                      <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center w-full">
-                        Пошаговое заполнение для лидера
-                      </span>
-                    </Button>
-
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      className="h-auto flex flex-col items-center justify-center gap-1.5 py-6 px-8 text-center min-h-[120px] sm:min-h-[128px] overflow-visible"
-                      onClick={() => setScenarioDialog('full')}
-                    >
-                      <Table2 size={24} className="shrink-0" />
-                      <span className="font-semibold text-sm sm:text-base leading-tight whitespace-normal text-balance">
-                        Посмотреть полную таблицу
-                      </span>
-                      <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center w-full">
-                        Все кварталы и инициативы
-                      </span>
-                    </Button>
-                  </div>
-                </div>
+              /* 50/50 split: gap, rounded cards, shadow+z hover (no scale), visual connection, stagger, reduced-motion (researched best practices) */
+              <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-3 p-3 md:gap-4 md:p-4">
+                <motion.div
+                  className="min-h-0 w-full h-full flex"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={reducedMotion ? { duration: 0 } : { duration: 0.25 }}
+                >
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className="relative min-h-0 w-full h-full rounded-xl flex flex-col items-center justify-center gap-2 py-8 px-6 text-center bg-card border border-border shadow-sm hover:shadow-lg hover:z-10 hover:bg-accent hover:border-primary/30 transition-shadow duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:shadow-lg focus-visible:z-10 focus-visible:border-primary/30"
+                    onClick={() => setScenarioDialog('quick')}
+                  >
+                    <CalendarRange size={32} className="shrink-0 text-primary/80" />
+                    <span className="font-semibold text-base sm:text-lg leading-tight whitespace-normal text-balance">
+                      Заполнить информацию на следующие кварталы
+                    </span>
+                    <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center max-w-sm">
+                      Пошаговое заполнение для лидера
+                    </span>
+                  </Button>
+                </motion.div>
+                <motion.div
+                  className="min-h-0 w-full h-full flex"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={reducedMotion ? { duration: 0 } : { duration: 0.25, delay: 0.1 }}
+                >
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className="relative min-h-0 w-full h-full rounded-xl flex flex-col items-center justify-center gap-2 py-8 px-6 text-center bg-card border border-border shadow-sm hover:shadow-lg hover:z-10 hover:bg-accent hover:border-primary/30 transition-shadow duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:shadow-lg focus-visible:z-10 focus-visible:border-primary/30"
+                    onClick={() => setScenarioDialog('full')}
+                  >
+                    <Table2 size={32} className="shrink-0 text-primary/80" />
+                    <span className="font-semibold text-base sm:text-lg leading-tight whitespace-normal text-balance">
+                      Посмотреть полную таблицу
+                    </span>
+                    <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center max-w-sm">
+                      Все кварталы и инициативы
+                    </span>
+                  </Button>
+                </motion.div>
               </div>
             ) : onlyUnitSelected ? (
               /* Only Unit selected: hint + unit summary (no table to avoid 100% sum across teams) */

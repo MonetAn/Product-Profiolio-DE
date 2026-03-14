@@ -167,7 +167,7 @@ const AdminHeader = ({
               className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
             >
               <ClipboardList className="h-4 w-4" />
-              <span className="hidden sm:inline">Инициативы</span>
+              <span className="hidden sm:inline">Заполнение</span>
             </ToggleGroupItem>
           </Link>
           <Link to={peopleUrl}>
