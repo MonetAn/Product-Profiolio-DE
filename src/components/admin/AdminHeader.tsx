@@ -1,5 +1,5 @@
 import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList, Shield, Activity } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,6 +51,7 @@ const AdminHeader = ({
   onBack,
   backLabel = 'dashboard',
 }: AdminHeaderProps) => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isQuickMode = currentView === 'initiatives' && searchParams.get('mode') === 'quick';
   
@@ -132,7 +133,7 @@ const AdminHeader = ({
   };
 
   return (
-    <header className="h-14 bg-card border-b border-border flex items-center px-6 shrink-0">
+    <header className="h-14 bg-header border-b border-border flex items-center px-6 shrink-0">
       {/* Back: one step inside Initiatives or to Dashboard */}
       {currentView === 'initiatives' && onBack ? (
         <Button variant="ghost" size="sm" className="gap-2" onClick={onBack} aria-label={backLabel === 'back' ? 'Назад' : 'На дашборд'}>
@@ -148,11 +149,16 @@ const AdminHeader = ({
         </Link>
       )}
 
-      {/* Logo & Title */}
-      <div className="flex items-center gap-2 font-semibold text-foreground ml-4">
-        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain" />
-        <span>Управление</span>
-      </div>
+      {/* Logo — переход на стартовую страницу с полным сбросом состояния */}
+      <button
+        type="button"
+        onClick={() => navigate('/', { state: { reset: true }, replace: true })}
+        className="flex items-center gap-2 font-semibold text-foreground ml-3 rounded-lg px-2 py-1.5 cursor-pointer bg-transparent border-0 hover:bg-secondary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-150"
+        aria-label="На стартовую страницу"
+      >
+        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain pointer-events-none" />
+        <span>Админка</span>
+      </button>
 
       {/* Navigation Toggle */}
       <div className="ml-6">

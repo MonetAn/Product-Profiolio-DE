@@ -25,12 +25,17 @@ const Header = ({
 }: HeaderProps) => {
   const navigate = useNavigate();
   return (
-    <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
-      {/* Logo */}
-      <div className="flex items-center gap-2 font-semibold text-foreground">
-        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain" />
+    <header className="h-14 bg-header border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
+      {/* Logo — переход на стартовую страницу с полным сбросом состояния */}
+      <button
+        type="button"
+        onClick={() => navigate('/', { state: { reset: true }, replace: true })}
+        className="flex items-center gap-2 font-semibold text-foreground rounded-lg px-2 py-1.5 -ml-1 cursor-pointer bg-transparent border-0 hover:bg-secondary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-150"
+        aria-label="На стартовую страницу"
+      >
+        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain pointer-events-none" />
         <span>Product Portfolio</span>
-      </div>
+      </button>
 
       {/* Tabs */}
       <nav className="flex gap-1 ml-12">
@@ -97,7 +102,7 @@ const Header = ({
                   onClick={() => navigate('/admin')}
                 >
                   <Sliders size={16} />
-                  <span className="hidden sm:inline">Управление</span>
+                  <span className="hidden sm:inline">Админка</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

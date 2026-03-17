@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useContext, DragEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, RefreshCw } from 'lucide-react';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,8 @@ import { useAccess } from '@/hooks/useAccess';
 import { toast } from 'sonner';
 
 const Index = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const activityContext = useContext(ActivityContext);
   const { isAdmin, canAccess, canViewMoney, scope } = useAccess();
   // Fetch data from database
@@ -109,6 +112,37 @@ const Index = () => {
       console.log('Данные загружены из базы:', result.rawData.length, 'инициатив');
     }
   }, [dbData, isUsingCSV]);
+
+  // По клику на логотип: полный сброс к начальному состоянию стартовой страницы
+  useEffect(() => {
+    if (location.state?.reset !== true) return;
+    setCurrentView('budget');
+    setNavigationStack([]);
+    setSelectedUnits([]);
+    setSelectedTeams([]);
+    setSupportFilter('all');
+    setShowOnlyOfftrack(false);
+    setHideStubs(false);
+    setSelectedStakeholders([]);
+    setShowTeams(false);
+    setShowInitiatives(false);
+    setShowMoney(true);
+    setHighlightedInitiative(null);
+    setClickedNodeName(null);
+    setCostSortOrder('none');
+    setCostFilterMin(null);
+    setCostFilterMax(null);
+    setCostType('period');
+    setShowSearch(false);
+    setShowShortcuts(false);
+    setShowOfftrackModal(false);
+    setInitiativePeekPath(null);
+    setSearchQuery('');
+    setZoomPath([]);
+    setResetZoomTrigger(prev => prev + 1);
+    autoEnabledRef.current = { teams: false, initiatives: false };
+    navigate('.', { replace: true, state: {} });
+  }, [location.state?.reset, navigate]);
 
   // Build tree whenever filters change
   const rebuildTree = useCallback(() => {
