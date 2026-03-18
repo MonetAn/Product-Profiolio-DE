@@ -27,6 +27,9 @@ interface AdminQuickFlowProps {
   onRequestExitQuick?: (action: 'fullTable' | 'backToStep1', onProceed: () => void) => void;
   step?: 1 | 2;
   setStep?: (step: 1 | 2) => void;
+  queueProgress?: { current: number; total: number; teamName: string };
+  onSaveAndContinueQueue?: () => void | Promise<void>;
+  queueActionLoading?: boolean;
 }
 
 export default function AdminQuickFlow({
@@ -47,6 +50,9 @@ export default function AdminQuickFlow({
   onRequestExitQuick,
   step: stepProp,
   setStep: setStepProp,
+  queueProgress,
+  onSaveAndContinueQueue,
+  queueActionLoading,
 }: AdminQuickFlowProps) {
   const [stepLocal, setStepLocal] = useState<1 | 2>(1);
   const step = stepProp ?? stepLocal;
@@ -110,16 +116,30 @@ export default function AdminQuickFlow({
     <div className="flex-1 overflow-auto p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Exit at top + step progress */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={handleExitClick}>
-              <ArrowLeft size={16} />
-              Выйти в полную таблицу
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Шаг {step} из 2
-            </span>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={handleExitClick}>
+                <ArrowLeft size={16} />
+                Выйти в полную таблицу
+              </Button>
+              <span className="text-sm text-muted-foreground">Шаг {step} из 2</span>
+            </div>
           </div>
+          {queueProgress && queueProgress.total > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+              <span className="font-semibold text-foreground">
+                Команда {queueProgress.current} из {queueProgress.total}
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <span className="font-medium">{queueProgress.teamName || '—'}</span>
+              {unit && (
+                <span className="text-xs text-muted-foreground w-full sm:w-auto sm:ml-auto">
+                  {unit}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {step === 1 ? (
@@ -376,21 +396,43 @@ export default function AdminQuickFlow({
               </ul>
             )}
 
-            <div className="flex flex-wrap items-center gap-2">
-              {hasQuickDraft && onSaveQuickDraft && (
-                <>
-                  <span className="text-xs text-muted-foreground">Есть несохранённые изменения</span>
-                  <Button onClick={onSaveQuickDraft} disabled={isSavingQuickDraft}>
-                    {isSavingQuickDraft ? 'Сохранение…' : 'Сохранить в базу'}
+            <div className="flex flex-col gap-3">
+              {queueProgress && onSaveAndContinueQueue && (
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                  <Button
+                    className="gap-1.5 sm:order-first"
+                    disabled={queueActionLoading || isSavingQuickDraft}
+                    onClick={() => void onSaveAndContinueQueue()}
+                  >
+                    {queueActionLoading || isSavingQuickDraft
+                      ? 'Сохранение…'
+                      : queueProgress.current < queueProgress.total
+                        ? 'Сохранить и перейти к следующей команде'
+                        : 'Сохранить и завершить'}
                   </Button>
-                </>
+                  <p className="text-xs text-muted-foreground sm:self-center">
+                    {queueProgress.current < queueProgress.total
+                      ? 'Сначала устраните замечания, при необходимости сохранятся черновики коэффициентов.'
+                      : 'После завершения вы вернётесь к выбору сценария.'}
+                  </p>
+                </div>
               )}
-              <Button variant="outline" onClick={handleExitClick}>
-                Перейти к полной таблице
-              </Button>
-              <Button onClick={handleBackToStep1} variant="ghost">
-                Назад к коэффициентам
-              </Button>
+              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+                {hasQuickDraft && onSaveQuickDraft && (
+                  <>
+                    <span className="text-xs text-muted-foreground">Несохранённые изменения</span>
+                    <Button onClick={() => void onSaveQuickDraft()} disabled={isSavingQuickDraft} variant="secondary" size="sm">
+                      {isSavingQuickDraft ? 'Сохранение…' : 'Только сохранить'}
+                    </Button>
+                  </>
+                )}
+                <Button variant="outline" onClick={handleExitClick}>
+                  Выйти в полную таблицу
+                </Button>
+                <Button onClick={handleBackToStep1} variant="ghost">
+                  Назад к коэффициентам
+                </Button>
+              </div>
             </div>
           </section>
         )}

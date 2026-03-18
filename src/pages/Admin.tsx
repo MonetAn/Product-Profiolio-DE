@@ -25,10 +25,18 @@ import {
   filterData,
   getUnitSummary,
   createEmptyQuarterData,
+  getQuickFlowValidationIssues,
   AdminDataRow,
   AdminQuarterData,
   InitiativeType
 } from '@/lib/adminDataManager';
+import {
+  readQuickTeamQueue,
+  writeQuickTeamQueue,
+  clearQuickTeamQueue,
+  initQuickTeamQueue,
+  type QuickTeamQueueState,
+} from '@/lib/adminQuickTeamQueue';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
 import { useAccess } from '@/hooks/useAccess';
 import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
@@ -38,7 +46,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getPreviousQuarter, getNextQuarter } from '@/lib/quarterUtils';
 import AdminQuickFlow from '@/components/admin/AdminQuickFlow';
 import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
-import { AdminScenarioSelectDialog } from '@/components/admin/AdminScenarioSelectDialog';
+import { AdminQuickFlowSetupScreen } from '@/components/admin/AdminQuickFlowSetupScreen';
 import {
   ScenarioFootstepsIllustration,
   ScenarioTableIllustrationSlot,
@@ -103,7 +111,9 @@ const Admin = () => {
   const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [createdInQuickSession, setCreatedInQuickSession] = useState<string[]>([]);
-  const [scenarioDialog, setScenarioDialog] = useState<'quick' | 'full' | null>(null);
+  const [showQuickSetup, setShowQuickSetup] = useState(false);
+  const [quickTeamQueue, setQuickTeamQueue] = useState<QuickTeamQueueState | null>(null);
+  const [queueActionLoading, setQueueActionLoading] = useState(false);
   const [quickFillInitiativeId, setQuickFillInitiativeId] = useState<string | null>(null);
   const [quickDraftPatches, setQuickDraftPatches] = useState<Map<string, Record<string, Partial<AdminQuarterData>>>>(new Map());
   const [isSavingQuickDraft, setIsSavingQuickDraft] = useState(false);
@@ -114,6 +124,18 @@ const Admin = () => {
   useEffect(() => {
     if (isQuickMode && canShowQuick) setQuickStep(1);
   }, [isQuickMode, canShowQuick]);
+
+  useEffect(() => {
+    if (!isQuickMode) {
+      setQuickTeamQueue(null);
+      return;
+    }
+    setQuickTeamQueue((prev) => {
+      if (prev) return prev;
+      const s = readQuickTeamQueue();
+      return s ?? null;
+    });
+  }, [isQuickMode]);
 
   // Current Initiatives screen and previous (for Back button)
   const currentInitiativesScreen = useMemo((): InitiativesScreen | null => {
@@ -142,6 +164,9 @@ const Admin = () => {
       return;
     }
     if (prev === 'start') {
+      clearQuickTeamQueue();
+      setQuickTeamQueue(null);
+      setShowQuickSetup(false);
       setSearchParams((prevParams) => {
         const p = new URLSearchParams(prevParams);
         p.delete('units');
@@ -194,7 +219,7 @@ const Admin = () => {
     });
   }, []);
 
-  const handleSaveQuickDraft = useCallback(async () => {
+  const handleSaveQuickDraft = useCallback(async (opts?: { silent?: boolean }) => {
     if (quickDraftPatches.size === 0) return;
     setIsSavingQuickDraft(true);
     try {
@@ -214,7 +239,7 @@ const Admin = () => {
         }
       }
       setQuickDraftPatches(new Map());
-      toast({ title: 'Данные сохранены' });
+      if (!opts?.silent) toast({ title: 'Данные сохранены' });
     } catch (e) {
       toast({
         title: 'Ошибка сохранения',
@@ -422,12 +447,82 @@ const Admin = () => {
 
   const handleGoToFullTable = useCallback(() => {
     setCreatedInQuickSession([]);
+    clearQuickTeamQueue();
+    setQuickTeamQueue(null);
     setSearchParams((prev) => {
       const n = new URLSearchParams(prev);
       n.delete('mode');
       return n;
     }, { replace: true });
   }, [setSearchParams]);
+
+  const handleSaveAndContinueOrFinish = useCallback(async () => {
+    const nq = getNextQuarter();
+    const issues = getQuickFlowValidationIssues(quickDisplayData, nq);
+    if (issues.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Сначала исправьте замечания',
+        description: 'Нажмите «Заполнить» у инициатив из списка выше.',
+      });
+      return;
+    }
+    const q = quickTeamQueue ?? readQuickTeamQueue();
+    setQueueActionLoading(true);
+    try {
+      if (quickDraftPatches.size > 0) {
+        await handleSaveQuickDraft({ silent: true });
+      }
+      if (!q || q.teams.length === 0) {
+        handleGoToFullTable();
+        toast({ title: 'Готово', description: 'Можно продолжить в полной таблице.' });
+        return;
+      }
+      const nextIdx = q.currentIndex + 1;
+      if (nextIdx >= q.teams.length) {
+        clearQuickTeamQueue();
+        setQuickTeamQueue(null);
+        setCreatedInQuickSession([]);
+        setQuickStep(1);
+        setQuickFillInitiativeId(null);
+        setSearchParams((prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('mode');
+          p.delete('units');
+          p.delete('teams');
+          p.delete('table');
+          return p;
+        });
+        toast({ title: 'Готово', description: 'Все выбранные команды пройдены.' });
+        return;
+      }
+      const updated = { ...q, currentIndex: nextIdx };
+      writeQuickTeamQueue(updated);
+      setQuickTeamQueue(updated);
+      setCreatedInQuickSession([]);
+      setQuickFillInitiativeId(null);
+      setQuickStep(1);
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('units', q.unit);
+        p.set('teams', q.teams[nextIdx]);
+        p.set('mode', 'quick');
+        p.delete('table');
+        return p;
+      });
+      toast({ title: 'Сохранено', description: `Следующая команда: ${q.teams[nextIdx]}` });
+    } finally {
+      setQueueActionLoading(false);
+    }
+  }, [
+    quickDisplayData,
+    quickDraftPatches,
+    quickTeamQueue,
+    handleSaveQuickDraft,
+    handleGoToFullTable,
+    toast,
+    setSearchParams,
+  ]);
 
   const handleEnterQuickMode = useCallback(() => {
     setSearchParams((prev) => {
@@ -436,6 +531,33 @@ const Admin = () => {
       return n;
     }, { setSearchParams });
   }, [setSearchParams]);
+
+  const handleQuickSetupStart = useCallback(
+    (unit: string, teamsInOrder: string[]) => {
+      const q = initQuickTeamQueue(unit, teamsInOrder);
+      writeQuickTeamQueue(q);
+      setQuickTeamQueue(q);
+      setShowQuickSetup(false);
+      setQuickStep(1);
+      setQuickDraftPatches(new Map());
+      setCreatedInQuickSession([]);
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('table');
+        p.set('units', unit);
+        p.set('teams', teamsInOrder[0]);
+        p.set('mode', 'quick');
+        return p;
+      });
+    },
+    [setSearchParams]
+  );
+
+  useEffect(() => {
+    if (!isQuickMode) return;
+    const s = readQuickTeamQueue();
+    if (s) setQuickTeamQueue((prev) => prev ?? s);
+  }, [isQuickMode]);
 
   // Delete initiative handler
   const handleDeleteInitiative = useCallback(async (id: string) => {
@@ -550,7 +672,16 @@ const Admin = () => {
             )}
 
             {needsSelection ? (
-              /* Two full-area blocks: edge-to-edge, no outer padding, 1px gap, outer rounding only */
+              showQuickSetup ? (
+                <AdminQuickFlowSetupScreen
+                  units={units}
+                  rawData={rawData}
+                  memberUnit={memberUnit}
+                  memberTeam={memberTeam}
+                  onBack={() => setShowQuickSetup(false)}
+                  onStart={handleQuickSetupStart}
+                />
+              ) : (
               <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-px p-0 bg-border">
                 <motion.div
                   className="min-h-0 w-full h-full flex rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none overflow-visible"
@@ -562,7 +693,7 @@ const Admin = () => {
                     size="lg"
                     variant="secondary"
                     className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-quick' : ''}`}
-                    onClick={() => setScenarioDialog('quick')}
+                    onClick={() => setShowQuickSetup(true)}
                   >
                     <div
                       className="w-full min-h-2 shrink-0 basis-0 grow-[0.38]"
@@ -617,6 +748,7 @@ const Admin = () => {
                   </Button>
                 </motion.div>
               </div>
+              )
             ) : onlyUnitSelected ? (
               /* Only Unit selected: hint + unit summary (no table to avoid 100% sum across teams) */
               <div className="flex-1 flex flex-col overflow-auto p-8">
@@ -664,7 +796,6 @@ const Admin = () => {
                 step={quickStep}
                 setStep={setQuickStep}
                 onQuarterDataChange={handleQuickDraftChange}
-                onCreateInitiativeQuick={handleCreateInitiativeQuick}
                 onOpenAddInitiative={() => setQuickAddDialogOpen(true)}
                 onGoToFullTable={handleGoToFullTable}
                 onOpenFillInitiative={setQuickFillInitiativeId}
@@ -672,6 +803,17 @@ const Admin = () => {
                 onSaveQuickDraft={handleSaveQuickDraft}
                 isSavingQuickDraft={isSavingQuickDraft}
                 onRequestExitQuick={handleRequestExitQuick}
+                queueProgress={
+                  quickTeamQueue && quickTeamQueue.teams.length > 0
+                    ? {
+                        current: quickTeamQueue.currentIndex + 1,
+                        total: quickTeamQueue.teams.length,
+                        teamName: quickTeamQueue.teams[quickTeamQueue.currentIndex] ?? '',
+                      }
+                    : undefined
+                }
+                onSaveAndContinueQueue={handleSaveAndContinueOrFinish}
+                queueActionLoading={queueActionLoading}
               />
             ) : (
               <div className="flex-1 flex flex-col overflow-hidden">
@@ -778,29 +920,6 @@ const Admin = () => {
         />
       )}
 
-      {/* Scenario selection: Unit + Team → quick flow or full table */}
-      <AdminScenarioSelectDialog
-        open={scenarioDialog !== null}
-        onOpenChange={(open) => !open && setScenarioDialog(null)}
-        mode={scenarioDialog ?? 'quick'}
-        units={units}
-        rawData={rawData}
-        onConfirm={(unit, teamsList) => {
-          if (scenarioDialog === 'quick') {
-            setSearchParams((prev) => {
-              const n = new URLSearchParams(prev);
-              n.delete('table');
-              n.set('units', unit);
-              n.set('teams', teamsList.join(','));
-              n.set('mode', 'quick');
-              return n;
-            });
-          } else {
-            scopeOnFiltersChange([unit], teamsList);
-          }
-          setScenarioDialog(null);
-        }}
-      />
     </div>
   );
 };
