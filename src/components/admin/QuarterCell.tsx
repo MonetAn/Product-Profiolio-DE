@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AdminQuarterData, quarterRequiresPlanFact } from '@/lib/adminDataManager';
+import { AdminQuarterData } from '@/lib/adminDataManager';
 
 interface QuarterCellProps {
   quarter: string;
@@ -26,15 +26,6 @@ interface QuarterCellProps {
   inheritedFromQuarter?: string;
   onSupportChange?: (value: boolean) => void;
 }
-
-// Get list of missing required fields (only when quarter requires plan/fact: not support, cost > 0)
-const getMissingFields = (data: AdminQuarterData): string[] => {
-  if (!quarterRequiresPlanFact(data)) return [];
-  const missing: string[] = [];
-  if (!data.metricPlan) missing.push('План метрики');
-  if (!data.metricFact) missing.push('Факт метрики');
-  return missing;
-};
 
 const QuarterCell = ({ 
   quarter, 
@@ -72,10 +63,6 @@ const QuarterCell = ({
   useEffect(() => { setLocalComment(data.comment || ''); }, [data.comment]);
 
   const effortValue = localEffort;
-
-  // Check if required fields are missing
-  const missingFields = getMissingFields(data);
-  const isIncomplete = missingFields.length > 0;
 
   const handleCellClick = (e: React.MouseEvent) => {
     // Don't toggle if clicking on interactive elements
@@ -124,12 +111,8 @@ const QuarterCell = ({
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
       <TooltipProvider delayDuration={100}>
-        <Tooltip>
-          <TooltipTrigger asChild>
             <div 
-              className={`rounded-md border p-2 space-y-2 cursor-pointer transition-colors hover:bg-muted/30 ${
-                isIncomplete ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20' : 'border-border'
-              }`}
+              className="rounded-md border border-border p-2 space-y-2 cursor-pointer transition-colors hover:bg-muted/30"
               onClick={handleCellClick}
             >
               
@@ -313,18 +296,6 @@ const QuarterCell = ({
                 </div>
               </CollapsibleContent>
             </div>
-          </TooltipTrigger>
-          {isIncomplete && (
-            <TooltipContent side="top" className="max-w-[200px]">
-              <p className="text-xs font-medium mb-1">Не заполнено:</p>
-              <ul className="text-xs list-disc list-inside">
-                {missingFields.map(field => (
-                  <li key={field}>{field}</li>
-                ))}
-              </ul>
-            </TooltipContent>
-          )}
-        </Tooltip>
       </TooltipProvider>
     </Collapsible>
   );

@@ -87,7 +87,7 @@ export function AdminQuickFlowSetupScreen({
 
         <header className="space-y-2 text-center sm:text-left">
           <p className="text-xs font-medium uppercase tracking-wider text-primary">Заполнение по шагам</p>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-balance">Настроим контекст</h1>
+          <h1 className="font-juneau font-medium text-2xl sm:text-3xl tracking-tight text-balance">Настроим контекст</h1>
           <p className="text-sm text-muted-foreground text-balance max-w-md mx-auto sm:mx-0">
             Юнит и команды. По каждой команде — два шага: коэффициенты и проверка полей.
           </p>
@@ -194,7 +194,7 @@ export function AdminQuickFlowSetupScreen({
                 Юнит: <span className="font-medium text-foreground">{unitChoice}</span>
               </p>
               {teamsForUnit.length === 0 ? (
-                <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded-lg p-3">
+                <p className="text-sm text-foreground bg-primary/10 border border-primary/15 rounded-lg p-3">
                   Нет команд в данных. Создайте инициативы в полной таблице.
                 </p>
               ) : (

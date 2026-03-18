@@ -1,7 +1,9 @@
-import { ReactNode } from 'react';
+import { ReactNode, useLayoutEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAccess } from '@/hooks/useAccess';
 import { LogoLoader } from '@/components/LogoLoader';
+
+const ADMIN_HTML_CLASS = 'admin-engineering';
 
 interface AdminRouteProps {
   children: ReactNode;
@@ -10,6 +12,11 @@ interface AdminRouteProps {
 /** Renders children only if current user is admin; otherwise redirects to home. Use inside ProtectedRoute. */
 export function AdminRoute({ children }: AdminRouteProps) {
   const { isAdmin, accessLoading } = useAccess();
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.add(ADMIN_HTML_CLASS);
+    return () => document.documentElement.classList.remove(ADMIN_HTML_CLASS);
+  }, []);
 
   if (accessLoading) {
     return (

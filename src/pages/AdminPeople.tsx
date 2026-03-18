@@ -228,7 +228,7 @@ export default function AdminPeople() {
           <div className="flex-1 flex flex-col items-center justify-center p-8">
             <div className="border border-dashed border-border rounded-xl p-12 text-center max-w-md">
               <ClipboardList size={48} className="mx-auto text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Выберите Unit</h2>
+              <h2 className="font-juneau font-medium text-xl mb-2">Выберите Unit</h2>
               <p className="text-muted-foreground">
                 Для просмотра и редактирования привязок людей к инициативам выберите Unit в фильтрах выше
               </p>
@@ -239,7 +239,7 @@ export default function AdminPeople() {
             <div className="max-w-2xl mx-auto space-y-6">
               <div className="border border-dashed border-border rounded-xl p-8 text-center">
                 <ClipboardList size={40} className="mx-auto text-muted-foreground mb-3" />
-                <h2 className="text-lg font-semibold mb-2">Выберите одну или несколько команд</h2>
+                <h2 className="font-juneau font-medium text-lg mb-2">Выберите одну или несколько команд</h2>
                 <p className="text-muted-foreground text-sm">
                   Чтобы просматривать и редактировать привязки людей, выберите команды в фильтрах выше
                 </p>

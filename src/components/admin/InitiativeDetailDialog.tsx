@@ -172,7 +172,7 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
             onChange={(e) => metricPlan.onChange(e.target.value)}
             onBlur={metricPlan.onBlur}
             placeholder="Планируемое значение метрики..."
-            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricPlan?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricPlan?.trim() ? 'ring-2 ring-primary/55' : ''}`}
           />
         </div>
 
@@ -188,7 +188,7 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
             onChange={(e) => metricFact.onChange(e.target.value)}
             onBlur={metricFact.onBlur}
             placeholder="Фактическое значение метрики..."
-            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricFact?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricFact?.trim() ? 'ring-2 ring-primary/55' : ''}`}
           />
         </div>
       </div>
@@ -291,7 +291,7 @@ const InitiativeDetailDialog = ({
                 value={initiative.initiativeType || ''}
                 onValueChange={(v) => onDataChange(initiative.id, 'initiativeType', v)}
               >
-                <SelectTrigger className={`w-full focus:ring-0 focus-visible:ring-0 ${!initiative.initiativeType ? 'ring-2 ring-amber-400' : ''}`}>
+                <SelectTrigger className={`w-full focus:ring-0 focus-visible:ring-0 ${!initiative.initiativeType ? 'ring-2 ring-primary/55' : ''}`}>
                   <SelectValue placeholder="Выберите тип" />
                 </SelectTrigger>
                 <SelectContent>
@@ -319,7 +319,7 @@ const InitiativeDetailDialog = ({
           <div className="space-y-2">
             <RequiredLabel>Стейкхолдеры</RequiredLabel>
             <div className={`flex flex-wrap gap-2 p-2 rounded-md transition-all ${
-              localStakeholders.length === 0 ? 'ring-2 ring-amber-400 bg-amber-50/50' : ''
+              localStakeholders.length === 0 ? 'ring-2 ring-primary/55 bg-primary/[0.08]' : ''
             }`}>
               {STAKEHOLDERS_LIST.map(stakeholder => {
                 const isSelected = localStakeholders.includes(stakeholder);
@@ -350,7 +350,7 @@ const InitiativeDetailDialog = ({
               onChange={(e) => setLocalDescription(e.target.value)}
               onBlur={() => onDataChange(initiative.id, 'description', localDescription)}
               placeholder="Подробное описание инициативы..."
-              className={`min-h-[100px] resize-y ${!initiative.description?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+              className={`min-h-[100px] resize-y ${!initiative.description?.trim() ? 'ring-2 ring-primary/55' : ''}`}
             />
           </div>
 

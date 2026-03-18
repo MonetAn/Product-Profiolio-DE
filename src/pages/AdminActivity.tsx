@@ -633,7 +633,7 @@ export default function AdminActivity() {
       <AdminHeader currentView="activity" />
 
       <main className="flex-1 flex flex-col overflow-auto p-6 min-h-0">
-        <h1 className="text-xl font-semibold shrink-0">Активность</h1>
+        <h1 className="font-juneau font-medium text-xl shrink-0">Активность</h1>
         <p className="text-sm text-muted-foreground mt-1 mb-4 shrink-0">
           Просмотры страниц, активность вкладки и клики по выбранному периоду. Выберите период и нажмите «Применить», чтобы обновить сводку и таблицы.
         </p>
@@ -1065,7 +1065,7 @@ export default function AdminActivity() {
                 {' '}({activityStats.table_size_pretty})
               </span>
               {needsCleanupHint && (
-                <span className="text-xs text-amber-600 dark:text-amber-500">Рекомендуется удалить часть событий</span>
+                <span className="text-xs text-primary font-medium">Рекомендуется удалить часть событий</span>
               )}
             </div>
           )}
@@ -1094,7 +1094,7 @@ export default function AdminActivity() {
                 size="sm"
                 onClick={() => pruneRangeValid && setPruneDialogOpen(true)}
                 disabled={pruning || !pruneRangeValid}
-                className="text-destructive hover:text-destructive"
+                className="border-red-600/35 text-red-700 bg-red-50/50 hover:bg-red-100/80 hover:text-red-800 dark:border-red-500/40 dark:text-red-400 dark:bg-red-950/30 dark:hover:bg-red-950/50"
               >
                 {pruning ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
                 Удалить за выбранный период

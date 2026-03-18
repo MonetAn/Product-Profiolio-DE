@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ExternalLink, Pencil, Eye, EyeOff, AlertCircle, AlertTriangle, Trash2 } from 'lucide-react';
+import { Plus, ExternalLink, Pencil, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -31,7 +31,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, createEmptyQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo, quarterRequiresPlanFact, getMissingInitiativeFields } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, createEmptyQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
@@ -47,17 +47,6 @@ interface InitiativeTableProps {
   modifiedIds: Set<string>;
   hideUnitTeamColumns?: boolean;
 }
-
-// Check if initiative has incomplete required fields
-const isInitiativeIncomplete = (row: AdminDataRow): boolean => {
-  return getMissingInitiativeFields(row).length > 0;
-};
-
-// Check if quarter has incomplete required fields (only when quarter requires plan/fact)
-const isQuarterIncomplete = (data: AdminQuarterData): boolean => {
-  if (!quarterRequiresPlanFact(data)) return false;
-  return !data.metricPlan || !data.metricFact;
-};
 
 const InitiativeTable = ({
   data,
@@ -132,12 +121,6 @@ const InitiativeTable = ({
     );
   }
 
-  // Count incomplete initiatives
-  const incompleteCount = data.filter(row => 
-    isInitiativeIncomplete(row) || 
-    quarters.some(q => isQuarterIncomplete(row.quarterlyData[q] || {} as AdminQuarterData))
-  ).length;
-
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
@@ -147,14 +130,6 @@ const InitiativeTable = ({
             <Plus size={16} />
             Новая инициатива
           </Button>
-          
-          {/* Legend for incomplete fields */}
-          {incompleteCount > 0 && (
-            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500">
-              <AlertCircle size={14} />
-              <span>Требуется заполнить ({incompleteCount})</span>
-            </div>
-          )}
         </div>
         
         {/* Expanded View Toggle */}
@@ -201,22 +176,9 @@ const InitiativeTable = ({
                             по {selectedTeams.length} командам
                           </span>
                         ) : (
-                          <>
-                            <span className={`text-[10px] font-medium ${
-                              effortSum.total === 0 ? 'text-muted-foreground' :
-                              !effortSum.isValid ? 'text-destructive' :
-                              effortSum.total < 80 ? 'text-muted-foreground' :
-                              'text-green-600 dark:text-green-500'
-                            }`}>
-                              {effortSum.total}%
-                              {!effortSum.isValid && ' ⚠'}
-                              {effortSum.isValid && effortSum.total === 100 && ' ✓'}
-                              {effortSum.isValid && effortSum.total >= 80 && effortSum.total < 100 && ' (не 100%)'}
-                            </span>
-                            {!effortSum.isValid && (
-                              <span className="text-[10px] text-destructive">Сумма {effortSum.total}%. Нужно 100%.</span>
-                            )}
-                          </>
+                          <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
+                            {effortSum.total}%
+                          </span>
                         )}
                       </div>
                     </TableHead>
@@ -225,17 +187,10 @@ const InitiativeTable = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((row) => {
-                const initiativeIncomplete = isInitiativeIncomplete(row);
-                const hasIncompleteQuarters = quarters.some(q => 
-                  isQuarterIncomplete(row.quarterlyData[q] || {} as AdminQuarterData)
-                );
-                const rowIncomplete = initiativeIncomplete || hasIncompleteQuarters;
-                
-                return (
+              {data.map((row) => (
                 <TableRow 
                   key={row.id} 
-                  className={`group ${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
+                  className="group hover:bg-muted/50 cursor-pointer"
                 >
                   {/* Row action buttons: edit + delete */}
                   <TableCell 
@@ -251,12 +206,6 @@ const InitiativeTable = ({
                       >
                         <Trash2 size={13} />
                       </button>
-                      {initiativeIncomplete && (
-                        <div className="flex items-center gap-0.5 text-amber-600 dark:text-amber-500">
-                          <AlertTriangle size={12} className="flex-shrink-0" />
-                          <span className="text-xs font-medium">{getMissingInitiativeFields(row).length}</span>
-                        </div>
-                      )}
                     </div>
                   </TableCell>
 
@@ -266,7 +215,7 @@ const InitiativeTable = ({
                       className="sticky left-[60px] bg-card z-10 p-2 cursor-pointer"
                       onClick={() => handleRowClick(row)}
                     >
-                      <span className="text-xs text-primary hover:underline">{row.unit}</span>
+                      <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{row.unit}</span>
                     </TableCell>
                   )}
 
@@ -276,7 +225,7 @@ const InitiativeTable = ({
                       className="sticky left-[150px] bg-card z-10 p-2 cursor-pointer"
                       onClick={() => handleRowClick(row)}
                     >
-                      <span className="text-xs text-primary hover:underline">{row.team || '—'}</span>
+                      <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{row.team || '—'}</span>
                     </TableCell>
                   )}
 
@@ -285,10 +234,10 @@ const InitiativeTable = ({
                     className={`sticky ${hideUnitTeamColumns ? 'left-[60px]' : 'left-[250px]'} bg-card z-10 p-2 cursor-pointer`}
                     onClick={() => handleRowClick(row)}
                   >
-                    <span className="text-xs text-primary hover:underline truncate block max-w-[150px] inline-flex items-center gap-1.5">
-                      {row.initiative || <span className="text-muted-foreground italic">—</span>}
+                    <span className="text-xs text-foreground font-medium truncate block max-w-[150px] inline-flex items-center gap-1.5 group-hover:underline decoration-muted-foreground/50">
+                      {row.initiative || <span className="text-muted-foreground font-normal italic">—</span>}
                       {row.isNew && (
-                        <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-primary/15 text-primary">
+                        <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                           Новая
                         </span>
                       )}
@@ -303,7 +252,7 @@ const InitiativeTable = ({
                     <TooltipProvider delayDuration={100}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="text-xs text-primary hover:underline">
+                          <span className="text-xs text-foreground/90 hover:underline decoration-muted-foreground/40">
                             {row.initiativeType ? INITIATIVE_TYPES.find(t => t.value === row.initiativeType)?.label : '—'}
                           </span>
                         </TooltipTrigger>
@@ -336,7 +285,7 @@ const InitiativeTable = ({
                           )}
                         </>
                       ) : (
-                        <span className="text-xs text-primary hover:underline">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </div>
                   </TableCell>
@@ -346,7 +295,7 @@ const InitiativeTable = ({
                     onClick={() => handleRowClick(row)}
                     className="p-2 cursor-pointer"
                   >
-                    <span className="block text-xs text-primary hover:underline truncate max-w-[100px]">
+                    <span className="block text-xs text-muted-foreground truncate max-w-[100px] group-hover:text-foreground transition-colors">
                       {row.description ? row.description.slice(0, 30) + (row.description.length > 30 ? '…' : '') : '—'}
                     </span>
                   </TableCell>
@@ -361,14 +310,14 @@ const InitiativeTable = ({
                         href={row.documentationLink} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-primary hover:underline text-xs"
+                        className="flex items-center gap-1 text-primary hover:text-primary/90 hover:underline text-xs font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <ExternalLink size={12} />
                         Ссылка
                       </a>
                     ) : (
-                      <span className="text-xs text-primary hover:underline">—</span>
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
 
@@ -423,8 +372,7 @@ const InitiativeTable = ({
                     );
                   })}
                 </TableRow>
-              );
-              })}
+              ))}
             </TableBody>
           </Table>
         </div>

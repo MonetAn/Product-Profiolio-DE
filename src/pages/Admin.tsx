@@ -635,7 +635,7 @@ const Admin = () => {
           <div className="flex-1 flex flex-col items-center justify-center p-8">
             <div className="border-2 border-dashed rounded-xl p-12 text-center max-w-md border-border">
               <Upload size={48} className="mx-auto text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Нет инициатив</h2>
+              <h2 className="font-juneau font-medium text-xl mb-2">Нет инициатив</h2>
               <p className="text-muted-foreground mb-6">
                 Импортируйте данные из CSV файла или создайте первую инициативу
               </p>
@@ -704,7 +704,7 @@ const Admin = () => {
                         <ScenarioFootstepsIllustration reducedMotion={!!reducedMotion} />
                       </div>
                       <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
-                        <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
+                        <span className="font-juneau font-medium text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
                           Заполни по шагам
                         </span>
                         <span className="text-sm text-muted-foreground font-normal line-clamp-3 break-words max-w-sm">
@@ -736,7 +736,7 @@ const Admin = () => {
                         <ScenarioTableIllustrationSlot reducedMotion={!!reducedMotion} />
                       </div>
                       <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
-                        <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
+                        <span className="font-juneau font-medium text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
                           Открой всю таблицу
                         </span>
                         <span className="text-sm text-muted-foreground font-normal line-clamp-3 break-words max-w-sm">
@@ -755,7 +755,7 @@ const Admin = () => {
                 <div className="max-w-2xl mx-auto space-y-6">
                   <div className="border border-dashed border-border rounded-xl p-8 text-center">
                     <ClipboardList size={40} className="mx-auto text-muted-foreground mb-3" />
-                    <h2 className="text-lg font-semibold mb-2">Выберите одну или несколько команд</h2>
+                    <h2 className="font-juneau font-medium text-lg mb-2">Выберите одну или несколько команд</h2>
                     <p className="text-muted-foreground text-sm">
                       Чтобы редактировать инициативы и проценты по кварталам, выберите команды в фильтрах выше
                     </p>

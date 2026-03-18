@@ -727,7 +727,7 @@ export default function AdminAccess() {
                     ) : (
                       <>
                         <div className="border-t border-border pt-4">
-                          <h4 className="text-sm font-semibold mb-2">Доступ к данным дашборда</h4>
+                          <h4 className="font-juneau font-medium text-sm mb-2">Доступ к данным дашборда</h4>
                           <p className="text-xs text-muted-foreground mb-4">
                             Юнит здесь — весь юнит. Команда — только выбранная пара. Пусто = полный доступ к данным.
                           </p>
@@ -829,7 +829,7 @@ export default function AdminAccess() {
                                   })}
                                 </div>
                                 {!scopeFullAccess && scopeSelectedUnits.length === 0 && scopeSelectedPairs.length === 0 && (
-                                  <p className="text-xs text-amber-600">
+                                  <p className="text-xs text-primary">
                                     Не выбрано — пользователь не увидит данные дашборда.
                                   </p>
                                 )}

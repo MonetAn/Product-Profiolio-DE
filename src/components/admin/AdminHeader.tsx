@@ -157,7 +157,7 @@ const AdminHeader = ({
         aria-label="На стартовую страницу"
       >
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain pointer-events-none" />
-        <span>Админка</span>
+        <span className="font-juneau font-medium tracking-tight">Админка</span>
       </button>
 
       {/* Navigation Toggle */}

@@ -107,6 +107,82 @@
   }
 }
 
+/* Juneau (Demo files — заменить на лицензию для продакшена) */
+@font-face {
+  font-family: "Juneau";
+  src: url("/fonts/juneau/Juneau-Light-Demo.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Juneau";
+  src: url("/fonts/juneau/Juneau-Semi-Light-Demo.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Juneau";
+  src: url("/fonts/juneau/Juneau-Medium-Demo.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Juneau";
+  src: url("/fonts/juneau/Juneau-Bold-Demo.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Dodo Engineering — админка, вариант A (светлый shell).
+ * Класс на <html> в AdminRoute. Акцент: индиго DE #694BFB; без оранжевого Brands.
+ */
+html.admin-engineering {
+  --background: 220 18% 97%;
+  --foreground: 240 8% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 8% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 8% 12%;
+  --primary: 252 92% 58%;
+  --primary-foreground: 0 0% 100%;
+  --primary-light: 252 85% 68%;
+  --primary-hover: 252 88% 52%;
+  --secondary: 240 6% 94%;
+  --secondary-foreground: 240 8% 12%;
+  --muted: 240 8% 95%;
+  --muted-foreground: 220 9% 42%;
+  --accent: 252 40% 96%;
+  --accent-foreground: 252 70% 35%;
+  /* Красный для опасных действий (не оранжевый Brands) */
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 14% 90%;
+  --input: 220 14% 90%;
+  --ring: 252 92% 58%;
+  --radius: 0.5rem;
+  --header-bg: 220 16% 97%;
+  --header-height: 56px;
+  --breadcrumbs-height: 40px;
+  --development: 252 92% 58%;
+  --support-color: 215 16% 52%;
+  --welcome-gradient-end: 252 60% 96%;
+  --sidebar-background: 0 0% 99%;
+  --sidebar-foreground: 240 6% 28%;
+  --sidebar-primary: 252 92% 58%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 252 35% 96%;
+  --sidebar-accent-foreground: 240 8% 12%;
+  --sidebar-border: 220 14% 90%;
+  --sidebar-ring: 252 92% 58%;
+}
+
+/* Админка: основной текст — Inter (наследуется с body). Juneau — класс .font-juneau */
+
 @layer base {
   * {
     @apply border-border;
@@ -339,7 +415,7 @@
     inset 0 1px 0 hsl(var(--foreground) / 0.05);
 }
 
-/* Hover: мягкий бренд — обводка primary, лёгкая заливка, не сплошной оранжевый */
+/* Hover: акцент primary (индиго в админке DE) */
 .admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print,
 .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print {
   transform: scale(1.04);
