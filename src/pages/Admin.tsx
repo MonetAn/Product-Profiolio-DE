@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Upload, ClipboardList, AlertCircle, RefreshCw, CalendarRange, Table2 } from 'lucide-react';
+import { Upload, ClipboardList, AlertCircle, RefreshCw } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { useToast } from '@/hooks/use-toast';
@@ -38,6 +38,10 @@ import { getPreviousQuarter, getNextQuarter } from '@/lib/quarterUtils';
 import AdminQuickFlow from '@/components/admin/AdminQuickFlow';
 import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
 import { AdminScenarioSelectDialog } from '@/components/admin/AdminScenarioSelectDialog';
+import {
+  ScenarioFootstepsIllustration,
+  ScenarioTableIllustrationSlot,
+} from '@/components/admin/AdminScenarioIllustrations';
 
 type InitiativesScreen = 'start' | 'unitSummary' | 'quickStep1' | 'quickStep2' | 'fullTable';
 
@@ -474,10 +478,10 @@ const Admin = () => {
             )}
 
             {needsSelection ? (
-              /* 50/50 split: gap, rounded cards, shadow+z hover (no scale), visual connection, stagger, reduced-motion (researched best practices) */
-              <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-3 p-3 md:gap-4 md:p-4">
+              /* Two full-area blocks: edge-to-edge, no outer padding, 1px gap, outer rounding only */
+              <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-px p-0 bg-border">
                 <motion.div
-                  className="min-h-0 w-full h-full flex"
+                  className="min-h-0 w-full h-full flex rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none overflow-visible"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={reducedMotion ? { duration: 0 } : { duration: 0.25 }}
@@ -485,20 +489,28 @@ const Admin = () => {
                   <Button
                     size="lg"
                     variant="secondary"
-                    className="relative min-h-0 w-full h-full rounded-xl flex flex-col items-center justify-center gap-2 py-8 px-6 text-center bg-card border border-border shadow-sm hover:shadow-lg hover:z-10 hover:bg-accent hover:border-primary/30 transition-shadow duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:shadow-lg focus-visible:z-10 focus-visible:border-primary/30"
+                    className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-quick' : ''}`}
                     onClick={() => setScenarioDialog('quick')}
                   >
-                    <CalendarRange size={32} className="shrink-0 text-primary/80" />
-                    <span className="font-semibold text-base sm:text-lg leading-tight whitespace-normal text-balance">
-                      Заполнить информацию на следующие кварталы
-                    </span>
-                    <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center max-w-sm">
-                      Пошаговое заполнение для лидера
-                    </span>
+                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
+                    <div className="w-full flex flex-col items-center shrink-0">
+                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-stretch justify-center overflow-hidden mb-4 sm:mb-5">
+                        <ScenarioFootstepsIllustration reducedMotion={!!reducedMotion} />
+                      </div>
+                      <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
+                        <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
+                          Заполни по шагам
+                        </span>
+                        <span className="text-sm text-muted-foreground font-normal line-clamp-2 break-words max-w-sm">
+                          Проценты по кварталам для одной команды
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
                   </Button>
                 </motion.div>
                 <motion.div
-                  className="min-h-0 w-full h-full flex"
+                  className="min-h-0 w-full h-full flex rounded-b-2xl md:rounded-r-2xl md:rounded-bl-none overflow-hidden"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={reducedMotion ? { duration: 0 } : { duration: 0.25, delay: 0.1 }}
@@ -506,16 +518,22 @@ const Admin = () => {
                   <Button
                     size="lg"
                     variant="secondary"
-                    className="relative min-h-0 w-full h-full rounded-xl flex flex-col items-center justify-center gap-2 py-8 px-6 text-center bg-card border border-border shadow-sm hover:shadow-lg hover:z-10 hover:bg-accent hover:border-primary/30 transition-shadow duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:shadow-lg focus-visible:z-10 focus-visible:border-primary/30"
+                    className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-full' : ''}`}
                     onClick={() => setScenarioDialog('full')}
                   >
-                    <Table2 size={32} className="shrink-0 text-primary/80" />
-                    <span className="font-semibold text-base sm:text-lg leading-tight whitespace-normal text-balance">
-                      Посмотреть полную таблицу
-                    </span>
-                    <span className="text-xs text-muted-foreground font-normal line-clamp-2 break-words text-center max-w-sm">
-                      Все кварталы и инициативы
-                    </span>
+                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
+                    <div className="w-full flex flex-col items-center gap-3 sm:gap-4 shrink-0">
+                      <div className="w-full min-h-[10.25rem] sm:min-h-[11.5rem] flex items-center justify-center overflow-hidden px-0">
+                        <ScenarioTableIllustrationSlot reducedMotion={!!reducedMotion} />
+                      </div>
+                      <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
+                        Открой всю таблицу
+                      </span>
+                      <span className="text-sm text-muted-foreground font-normal line-clamp-2 break-words max-w-sm">
+                        Все кварталы и инициативы
+                      </span>
+                    </div>
+                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
                   </Button>
                 </motion.div>
               </div>

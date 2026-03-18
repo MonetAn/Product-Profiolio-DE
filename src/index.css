@@ -41,6 +41,9 @@
 
     --radius: 0.5rem;
 
+    /* Nav zone: light gray (option A), no beige */
+    --header-bg: 220 12% 97%;
+
     /* Custom variables for dashboard */
     --header-height: 56px;
     --breadcrumbs-height: 40px;
@@ -90,6 +93,8 @@
     --ring: 18 95% 60%;
 
     --welcome-gradient-end: 0 50% 10%;
+
+    --header-bg: 220 15% 12%;
 
     --sidebar-background: 240 6% 10%;
     --sidebar-foreground: 240 5% 96%;
@@ -269,4 +274,271 @@
 }
 .description-content li {
   margin: 0.125em 0;
+}
+
+/* Админка: 5 лап — 3 пальца + ступня, зазор между ними, каскад 280ms */
+.admin-scenario-bird-trail {
+  isolation: isolate;
+}
+.admin-scenario-step-rotate {
+  transition: transform 0.26s ease-out;
+}
+.admin-scenario-step-print {
+  transition: transform 0.26s ease-out, filter 0.26s ease-out;
+  transition-delay: 0ms;
+}
+/* Пальцы: градиент + обводка */
+.admin-scenario-step-toe {
+  background: linear-gradient(
+    155deg,
+    hsl(var(--muted) / 0.62) 0%,
+    hsl(var(--muted) / 0.42) 100%
+  );
+  border: 2px solid hsl(var(--card));
+  box-shadow:
+    0 0 0 1px hsl(var(--foreground) / 0.1),
+    0 2px 5px hsl(var(--foreground) / 0.06),
+    inset 0 1px 0 hsl(var(--background) / 0.35);
+  transition:
+    background 0.26s ease-out,
+    border-color 0.26s ease-out,
+    box-shadow 0.26s ease-out;
+  transition-delay: inherit;
+}
+.dark .admin-scenario-step-toe {
+  background: linear-gradient(155deg, hsl(var(--muted) / 0.58) 0%, hsl(var(--muted) / 0.38) 100%);
+  border-color: hsl(var(--card));
+  box-shadow:
+    0 0 0 1px hsl(var(--foreground) / 0.16),
+    0 2px 6px hsl(0 0% 0% / 0.18),
+    inset 0 1px 0 hsl(var(--foreground) / 0.06);
+}
+.admin-scenario-step-pad {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--muted) / 0.9) 0%,
+    hsl(var(--muted) / 0.72) 55%,
+    hsl(var(--muted) / 0.65) 100%
+  );
+  border: 2px solid hsl(var(--foreground) / 0.12);
+  box-shadow:
+    0 3px 6px hsl(var(--foreground) / 0.06),
+    inset 0 1px 0 hsl(var(--background) / 0.3),
+    inset 0 -1px 0 hsl(var(--foreground) / 0.04);
+  transition:
+    background 0.26s ease-out,
+    border-color 0.26s ease-out,
+    box-shadow 0.26s ease-out;
+  transition-delay: inherit;
+}
+.dark .admin-scenario-step-pad {
+  background: linear-gradient(180deg, hsl(var(--muted) / 0.55) 0%, hsl(var(--muted) / 0.4) 100%);
+  border-color: hsl(var(--foreground) / 0.2);
+  box-shadow:
+    0 2px 10px hsl(0 0% 0% / 0.22),
+    inset 0 1px 0 hsl(var(--foreground) / 0.05);
+}
+
+/* Hover: мягкий бренд — обводка primary, лёгкая заливка, не сплошной оранжевый */
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 0ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 0ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 280ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 280ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 560ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 560ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 840ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 840ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 1120ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 1120ms;
+}
+
+.admin-scenario-table-cell {
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(1),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(1) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 0ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(2),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(2) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 35ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(3),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(3) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 70ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(4),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(4) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 105ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(5),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(5) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 140ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(6),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(6) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 175ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(7),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(7) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 210ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(8),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(8) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 245ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(9),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(9) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 280ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(10),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(10) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 315ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(11),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(11) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 350ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(12),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(12) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transition-delay: 385ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-scenario-step-print,
+  .admin-scenario-step-pad,
+  .admin-scenario-step-toe {
+    transition: none;
+  }
+  .admin-scenario-quick:hover .admin-scenario-bird-trail > div .admin-scenario-step-print,
+  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div .admin-scenario-step-print {
+    transform: none;
+    filter: none;
+  }
+  .admin-scenario-table-cell {
+    transition: none;
+  }
 }
