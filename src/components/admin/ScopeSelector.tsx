@@ -17,6 +17,8 @@ interface ScopeSelectorProps {
   onTeamsChange: (teams: string[]) => void;
   onFiltersChange?: (units: string[], teams: string[]) => void;
   allData: AdminDataRow[];
+  /** Режим «вся таблица заполнения» без выбора юнита в URL */
+  adminViewAll?: boolean;
 }
 
 const ScopeSelector = ({
@@ -27,7 +29,8 @@ const ScopeSelector = ({
   onUnitsChange,
   onTeamsChange,
   onFiltersChange,
-  allData
+  allData,
+  adminViewAll = false,
 }: ScopeSelectorProps) => {
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
@@ -48,6 +51,7 @@ const ScopeSelector = ({
   }, []);
 
   const getUnitLabel = () => {
+    if (adminViewAll && selectedUnits.length === 0) return 'Все юниты';
     if (selectedUnits.length === 0) return 'Выберите юнит';
     if (selectedUnits.length === 1) return selectedUnits[0];
     return `${selectedUnits.length} юнитов`;

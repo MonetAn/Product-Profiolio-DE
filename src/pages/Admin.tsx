@@ -30,6 +30,7 @@ import {
   InitiativeType
 } from '@/lib/adminDataManager';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
+import { useAccess } from '@/hooks/useAccess';
 import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
 import { useCSVExport } from '@/hooks/useCSVExport';
 import { useFilterParams } from '@/hooks/useFilterParams';
@@ -48,6 +49,7 @@ type InitiativesScreen = 'start' | 'unitSummary' | 'quickStep1' | 'quickStep2' |
 const Admin = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { memberUnit, memberTeam } = useAccess();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Data from Supabase
@@ -76,18 +78,18 @@ const Admin = () => {
   const { 
     selectedUnits, 
     selectedTeams, 
-    setSelectedUnits, 
-    setSelectedTeams,
-    setFilters,
     buildFilteredUrl 
   } = useFilterParams();
 
   // Derived state (must be before canShowQuick / isQuickMode)
   const hasData = rawData.length > 0;
+  const adminTableAll = searchParams.get('table') === 'all';
   const units = getUniqueUnits(rawData);
   const teams = getTeamsForUnits(rawData, selectedUnits);
-  const filteredData = filterData(rawData, selectedUnits, selectedTeams);
-  const needsSelection = hasData && selectedUnits.length === 0;
+  const filteredData = adminTableAll
+    ? rawData
+    : filterData(rawData, selectedUnits, selectedTeams);
+  const needsSelection = hasData && selectedUnits.length === 0 && !adminTableAll;
   const onlyUnitSelected = hasData && selectedUnits.length > 0 && selectedTeams.length === 0;
   const unitSummary = onlyUnitSelected ? getUnitSummary(rawData, selectedUnits) : [];
   const hideUnitTeamColumns = selectedUnits.length > 0;
@@ -145,6 +147,7 @@ const Admin = () => {
         p.delete('units');
         p.delete('teams');
         p.delete('mode');
+        p.delete('table');
         return p;
       });
       return;
@@ -245,6 +248,74 @@ const Admin = () => {
     setExitConfirmState(null);
     onProceed?.();
   }, [exitConfirmState]);
+
+  /** Таблица заполнения (админка): без юнита — все строки; юнит без команды — все команды юнита; юнит+команда — узкий фильтр. */
+  const handleOpenFullFillTable = useCallback(() => {
+    const u = memberUnit?.trim();
+    const t = memberTeam?.trim();
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.delete('mode');
+      if (!u) {
+        p.set('table', 'all');
+        p.delete('units');
+        p.delete('teams');
+        return p;
+      }
+      p.delete('table');
+      p.set('units', u);
+      if (t) {
+        p.set('teams', t);
+      } else {
+        const unitTeams = getTeamsForUnits(rawData, [u]);
+        if (unitTeams.length > 0) {
+          p.set('teams', unitTeams.join(','));
+        } else {
+          p.delete('teams');
+        }
+      }
+      return p;
+    });
+  }, [memberUnit, memberTeam, rawData, setSearchParams]);
+
+  const scopeOnUnitsChange = useCallback(
+    (next: string[]) => {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('table');
+        if (next.length > 0) p.set('units', next.join(','));
+        else p.delete('units');
+        return p;
+      });
+    },
+    [setSearchParams]
+  );
+  const scopeOnTeamsChange = useCallback(
+    (next: string[]) => {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('table');
+        if (next.length > 0) p.set('teams', next.join(','));
+        else p.delete('teams');
+        return p;
+      });
+    },
+    [setSearchParams]
+  );
+  const scopeOnFiltersChange = useCallback(
+    (nextU: string[], nextT: string[]) => {
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('table');
+        if (nextU.length > 0) p.set('units', nextU.join(','));
+        else p.delete('units');
+        if (nextT.length > 0) p.set('teams', nextT.join(','));
+        else p.delete('teams');
+        return p;
+      });
+    },
+    [setSearchParams]
+  );
 
   // Data modification handlers
   const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
@@ -469,10 +540,11 @@ const Admin = () => {
                   teams={teams}
                   selectedUnits={selectedUnits}
                   selectedTeams={selectedTeams}
-                  onUnitsChange={setSelectedUnits}
-                  onTeamsChange={setSelectedTeams}
-                  onFiltersChange={setFilters}
+                  onUnitsChange={scopeOnUnitsChange}
+                  onTeamsChange={scopeOnTeamsChange}
+                  onFiltersChange={scopeOnFiltersChange}
                   allData={rawData}
+                  adminViewAll={adminTableAll}
                 />
               </div>
             )}
@@ -522,7 +594,7 @@ const Admin = () => {
                     size="lg"
                     variant="secondary"
                     className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-full' : ''}`}
-                    onClick={() => setScenarioDialog('full')}
+                    onClick={handleOpenFullFillTable}
                   >
                     <div
                       className="w-full min-h-2 shrink-0 basis-0 grow-[0.38]"
@@ -566,7 +638,7 @@ const Admin = () => {
                             <li key={team} className="flex justify-between text-sm items-center">
                               <button
                                 type="button"
-                                onClick={() => setSelectedTeams([team])}
+                                onClick={() => scopeOnTeamsChange([team])}
                                 className="text-primary hover:underline text-left"
                               >
                                 {team || '—'}
@@ -717,13 +789,14 @@ const Admin = () => {
           if (scenarioDialog === 'quick') {
             setSearchParams((prev) => {
               const n = new URLSearchParams(prev);
+              n.delete('table');
               n.set('units', unit);
               n.set('teams', teamsList.join(','));
               n.set('mode', 'quick');
               return n;
             });
           } else {
-            setFilters([unit], teamsList);
+            scopeOnFiltersChange([unit], teamsList);
           }
           setScenarioDialog(null);
         }}
