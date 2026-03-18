@@ -451,80 +451,118 @@
   transition-delay: 1120ms;
 }
 
+/* 5×3: задержки = 90ms×строка + 42ms×столбец (чтение слева направо, сверху вниз) */
 .admin-scenario-table-cell {
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transform: scale(1);
+  transition:
+    background-color 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+    border-color 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+    transform 0.24s cubic-bezier(0.33, 1, 0.68, 1);
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(1),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(1) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
+  transform: scale(1.04);
   transition-delay: 0ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(2),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(2) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 35ms;
+  transform: scale(1.04);
+  transition-delay: 42ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(3),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(3) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 70ms;
+  transform: scale(1.04);
+  transition-delay: 84ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(4),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(4) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 105ms;
+  transform: scale(1.04);
+  transition-delay: 126ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(5),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(5) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 140ms;
+  transform: scale(1.04);
+  transition-delay: 168ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(6),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(6) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 175ms;
+  transform: scale(1.04);
+  transition-delay: 90ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(7),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(7) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 210ms;
+  transform: scale(1.04);
+  transition-delay: 132ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(8),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(8) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 245ms;
+  transform: scale(1.04);
+  transition-delay: 174ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(9),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(9) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 280ms;
+  transform: scale(1.04);
+  transition-delay: 216ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(10),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(10) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 315ms;
+  transform: scale(1.04);
+  transition-delay: 258ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(11),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(11) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 350ms;
+  transform: scale(1.04);
+  transition-delay: 180ms;
 }
 .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(12),
 .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(12) {
   background-color: hsl(var(--primary) / 0.22);
   border-color: hsl(var(--primary) / 0.45);
-  transition-delay: 385ms;
+  transform: scale(1.04);
+  transition-delay: 222ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(13),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(13) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transform: scale(1.04);
+  transition-delay: 264ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(14),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(14) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transform: scale(1.04);
+  transition-delay: 306ms;
+}
+.admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(15),
+.admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell:nth-child(15) {
+  background-color: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.45);
+  transform: scale(1.04);
+  transition-delay: 348ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -540,5 +578,10 @@
   }
   .admin-scenario-table-cell {
     transition: none;
+    transform: none;
+  }
+  .admin-scenario-full:hover .admin-scenario-table-grid .admin-scenario-table-cell,
+  .admin-scenario-full:focus-visible .admin-scenario-table-grid .admin-scenario-table-cell {
+    transform: none;
   }
 }

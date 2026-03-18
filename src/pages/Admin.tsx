@@ -492,7 +492,10 @@ const Admin = () => {
                     className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-quick' : ''}`}
                     onClick={() => setScenarioDialog('quick')}
                   >
-                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
+                    <div
+                      className="w-full min-h-2 shrink-0 basis-0 grow-[0.38]"
+                      aria-hidden
+                    />
                     <div className="w-full flex flex-col items-center shrink-0">
                       <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-stretch justify-center overflow-hidden mb-4 sm:mb-5">
                         <ScenarioFootstepsIllustration reducedMotion={!!reducedMotion} />
@@ -501,12 +504,12 @@ const Admin = () => {
                         <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
                           Заполни по шагам
                         </span>
-                        <span className="text-sm text-muted-foreground font-normal line-clamp-2 break-words max-w-sm">
-                          Проценты по кварталам для одной команды
+                        <span className="text-sm text-muted-foreground font-normal line-clamp-3 break-words max-w-sm">
+                          Для внесения и апдейта информации по портфелю
                         </span>
                       </div>
                     </div>
-                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
+                    <div className="w-full min-h-3 shrink-0 basis-0 grow" aria-hidden />
                   </Button>
                 </motion.div>
                 <motion.div
@@ -521,19 +524,24 @@ const Admin = () => {
                     className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-full' : ''}`}
                     onClick={() => setScenarioDialog('full')}
                   >
-                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
-                    <div className="w-full flex flex-col items-center gap-3 sm:gap-4 shrink-0">
-                      <div className="w-full min-h-[10.25rem] sm:min-h-[11.5rem] flex items-center justify-center overflow-hidden px-0">
+                    <div
+                      className="w-full min-h-2 shrink-0 basis-0 grow-[0.38]"
+                      aria-hidden
+                    />
+                    <div className="w-full flex flex-col items-center shrink-0">
+                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-center justify-center overflow-hidden px-0 mb-4 sm:mb-5">
                         <ScenarioTableIllustrationSlot reducedMotion={!!reducedMotion} />
                       </div>
-                      <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
-                        Открой всю таблицу
-                      </span>
-                      <span className="text-sm text-muted-foreground font-normal line-clamp-2 break-words max-w-sm">
-                        Все кварталы и инициативы
-                      </span>
+                      <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
+                        <span className="font-semibold text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
+                          Открой всю таблицу
+                        </span>
+                        <span className="text-sm text-muted-foreground font-normal line-clamp-3 break-words max-w-sm">
+                          Посмотреть все инициативы по всем командам и кварталам
+                        </span>
+                      </div>
                     </div>
-                    <div className="w-full flex-1 min-h-3 shrink-0" aria-hidden />
+                    <div className="w-full min-h-3 shrink-0 basis-0 grow" aria-hidden />
                   </Button>
                 </motion.div>
               </div>

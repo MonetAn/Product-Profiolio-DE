@@ -94,7 +94,7 @@ export function ScenarioFootstepsIllustration({ reducedMotion }: { reducedMotion
 export function ScenarioTableIllustrationSlot({ reducedMotion }: { reducedMotion: boolean }) {
   return (
     <div
-      className="flex h-full min-h-[10.25rem] sm:min-h-[11.5rem] w-full items-center justify-center pointer-events-none shrink-0 px-3 sm:px-4 box-border"
+      className="flex h-full min-h-[10.75rem] sm:min-h-[12rem] w-full items-center justify-center pointer-events-none shrink-0 px-3 sm:px-4 box-border"
       aria-hidden
     >
       <ScenarioTableGridIllustration reducedMotion={reducedMotion} />
@@ -102,13 +102,16 @@ export function ScenarioTableIllustrationSlot({ reducedMotion }: { reducedMotion
   );
 }
 
+const TABLE_GRID_COLS = 5;
+const TABLE_GRID_ROWS = 3;
+
 function ScenarioTableGridIllustration({ reducedMotion }: { reducedMotion: boolean }) {
-  const cells = Array.from({ length: 12 }, (_, i) => i);
+  const cells = Array.from({ length: TABLE_GRID_COLS * TABLE_GRID_ROWS }, (_, i) => i);
 
   if (reducedMotion) {
     return (
       <div
-        className="shrink-0 grid grid-cols-4 gap-1.5 w-[6.5rem] sm:w-32 [&>div]:aspect-square [&>div]:rounded-md [&>div]:border [&>div]:border-primary/35 [&>div]:bg-primary/15"
+        className="shrink-0 grid grid-cols-5 gap-2 w-[9.25rem] sm:w-[11.5rem] [&>div]:aspect-square [&>div]:rounded-md [&>div]:border [&>div]:border-primary/35 [&>div]:bg-primary/15"
         aria-hidden
       >
         {cells.map((i) => (
@@ -120,11 +123,14 @@ function ScenarioTableGridIllustration({ reducedMotion }: { reducedMotion: boole
 
   return (
     <div
-      className="shrink-0 grid grid-cols-4 gap-1.5 w-[6.5rem] sm:w-32 admin-scenario-table-grid"
+      className="shrink-0 grid grid-cols-5 gap-2 w-[9.25rem] sm:w-[11.5rem] admin-scenario-table-grid"
       aria-hidden
     >
       {cells.map((i) => (
-        <div key={i} className="admin-scenario-table-cell aspect-square rounded-md border border-border/70 bg-muted/25" />
+        <div
+          key={i}
+          className="admin-scenario-table-cell aspect-square rounded-md border border-border/70 bg-muted/25"
+        />
       ))}
     </div>
   );
