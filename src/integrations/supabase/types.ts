@@ -327,6 +327,9 @@ export type Database = {
           allowed_units: string[] | null
           allowed_team_pairs: Json | null
           can_view_money: boolean | null
+          display_name: string | null
+          member_unit: string | null
+          member_team: string | null
         }
         Insert: {
           id?: string
@@ -336,6 +339,9 @@ export type Database = {
           allowed_units?: string[] | null
           allowed_team_pairs?: Json | null
           can_view_money?: boolean | null
+          display_name?: string | null
+          member_unit?: string | null
+          member_team?: string | null
         }
         Update: {
           id?: string
@@ -345,6 +351,9 @@ export type Database = {
           allowed_units?: string[] | null
           allowed_team_pairs?: Json | null
           can_view_money?: boolean | null
+          display_name?: string | null
+          member_unit?: string | null
+          member_team?: string | null
         }
         Relationships: []
       }
