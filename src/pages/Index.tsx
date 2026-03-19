@@ -23,6 +23,7 @@ import {
   isInitiativeOffTrack,
   type SupportFilter,
 } from '@/lib/dataManager';
+import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import { useInitiatives } from '@/hooks/useInitiatives';
 import { useAccess } from '@/hooks/useAccess';
 import { toast } from 'sonner';
@@ -80,7 +81,6 @@ const Index = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
-  
   // Track which nesting levels were auto-enabled (vs manually toggled by user)
   const autoEnabledRef = useRef({ teams: false, initiatives: false });
   
@@ -400,6 +400,10 @@ const Index = () => {
     setNavigationStack([]);
     setCurrentRoot(portfolioData);
     setHighlightedInitiative(null);
+    // Treemap zoom path is tab-specific (budget: unit-first; clusters: stakeholder-first).
+    // Reuse would mislabel the stakeholder filter with the budget unit segment.
+    setZoomPath([]);
+    setResetZoomTrigger((prev) => prev + 1);
     activityContext?.send?.('view_switch', { from, to: view });
   };
 
@@ -414,7 +418,7 @@ const Index = () => {
   // Resolve initiative row from treemap path (Unit/Team/Initiative or Stakeholder/Unit/Team/Initiative)
   const initiativePeekRow = (() => {
     if (!initiativePeekPath || rawData.length === 0) return null;
-    const parts = initiativePeekPath.split('/');
+    const parts = splitTreemapEncodedPath(initiativePeekPath);
     let unit = '';
     let team = '';
     let initiative = '';
@@ -440,12 +444,14 @@ const Index = () => {
       initiative = parts[3];
     }
     if (!unit && !initiative) return null;
-    return rawData.find(
-      (r) =>
-        r.unit === unit &&
-        r.initiative === initiative &&
-        (team !== '' ? (r.team || 'Без команды') === (team || 'Без команды') : true)
-    ) ?? null;
+    return (
+      rawData.find(
+        (r) =>
+          r.unit === unit &&
+          r.initiative === initiative &&
+          (team !== '' ? (r.team || 'Без команды') === (team || 'Без команды') : true)
+      ) ?? null
+    );
   })();
 
   // Keyboard shortcuts
