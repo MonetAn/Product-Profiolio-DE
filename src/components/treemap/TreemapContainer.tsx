@@ -8,6 +8,7 @@ import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
 import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, getEffectiveDuration, TEXT_VISIBLE_AT_RATIO } from './types';
 import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
+import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import { perfMark } from '@/lib/perfDiagnostics';
 import '@/styles/treemap.css';
 
@@ -383,7 +384,7 @@ const TreemapContainer = ({
       // Detect extreme aspect ratio for fast drilldown
       setAnimationType('drilldown');
       perfMark('treemap-drilldown-start');
-      const newFocusedPath = node.path.split('/');
+      const newFocusedPath = splitTreemapEncodedPath(node.path);
       isAnimatingRef.current = true;
       setTimeout(() => {
         perfMark('treemap-drilldown-end');

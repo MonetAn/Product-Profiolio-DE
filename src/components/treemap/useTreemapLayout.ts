@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import * as d3 from 'd3';
 import { TreeNode, getUnitColor, adjustBrightness } from '@/lib/dataManager';
+import { encodeTreemapPathSegment } from '@/lib/treemapPathCodec';
 import { TreemapLayoutNode, ColorGetter, ContainerDimensions } from './types';
 
 interface UseTreemapLayoutOptions {
@@ -37,7 +38,8 @@ function flattenHierarchy(
 ): TreemapLayoutNode[] {
   const result: TreemapLayoutNode[] = [];
   
-  const path = parentPath ? `${parentPath}/${node.data.name}` : node.data.name;
+  const enc = encodeTreemapPathSegment(node.data.name);
+  const path = parentPath ? `${parentPath}/${enc}` : enc;
   const key = `d${depth}-${path}`;
   
   // Get color based on top-level ancestor
