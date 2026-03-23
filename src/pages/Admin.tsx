@@ -51,13 +51,14 @@ import {
   ScenarioFootstepsIllustration,
   ScenarioTableIllustrationSlot,
 } from '@/components/admin/AdminScenarioIllustrations';
+import { GoogleSheetsSyncStrip } from '@/components/admin/GoogleSheetsSyncStrip';
 
 type InitiativesScreen = 'start' | 'unitSummary' | 'quickStep1' | 'quickStep2' | 'fullTable';
 
 const Admin = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { memberUnit, memberTeam } = useAccess();
+  const { memberUnit, memberTeam, isAdmin } = useAccess();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Data from Supabase
@@ -628,6 +629,8 @@ const Admin = () => {
         onBack={hasData ? handleInitiativesBack : undefined}
         backLabel={previousInitiativesScreen == null ? 'dashboard' : 'back'}
       />
+
+      {isAdmin && hasData ? <GoogleSheetsSyncStrip onAfterImport={() => refetch()} /> : null}
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {!hasData ? (

@@ -813,6 +813,20 @@ export function adjustBrightness(hex: string, percent: number): string {
   return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
 }
 
+/** Смешение цвета группы с нейтральным серым (тримап: лист «поддержка», узнаваемый оттенок родителя). */
+export function mixHexWithNeutralGray(hex: string, grayWeight = 0.48): string {
+  const rgb = hexToRgb(hex);
+  const gr = 152;
+  const gg = 158;
+  const gb = 168;
+  const t = Math.min(1, Math.max(0, grayWeight));
+  return rgbToHex(
+    Math.round(rgb.r * (1 - t) + gr * t),
+    Math.round(rgb.g * (1 - t) + gg * t),
+    Math.round(rgb.b * (1 - t) + gb * t)
+  );
+}
+
 // ===== STAKEHOLDERS TREE BUILDING =====
 // Respects showTeams and showInitiatives toggles just like Budget tree
 export function buildStakeholdersTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {

@@ -1,1 +1,11 @@
+# Локальный ref может отличаться от прод-проекта — поправьте после `supabase link`.
 project_id = "byliicbvqxspugzhffek"
+
+# Шлюз Edge Functions по умолчанию проверяет JWT так, что это ломается с новыми ключами
+# `sb_publishable_…` и ES256 (см. docs: Securing Edge Functions / API keys).
+# Здесь проверку на шлюзе отключаем: доступ всё равно ограничен в коде через requireAdmin + get_my_access.
+[functions.sheets-export-initiatives]
+verify_jwt = false
+
+[functions.sheets-import-from-sheet]
+verify_jwt = false

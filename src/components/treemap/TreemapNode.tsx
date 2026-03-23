@@ -22,6 +22,17 @@ function getTextColorClass(bgColor: string): string {
   return luminance > 0.4 ? 'text-gray-900' : 'text-white';
 }
 
+function initiativeLeafBoxShadow(node: TreemapLayoutNode): string | undefined {
+  if (!node.isInitiative) return undefined;
+  if (node.unitStripeColor && node.isTimelineStub) {
+    return `inset 4px 0 0 0 ${node.unitStripeColor}, inset 0 0 0 1px rgba(255, 255, 255, 0.18)`;
+  }
+  if (node.unitStripeColor) {
+    return `inset 4px 0 0 0 ${node.unitStripeColor}`;
+  }
+  return undefined;
+}
+
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
@@ -219,6 +230,8 @@ const TreemapNode = memo(({
     />
   );
 
+  const leafShadow = initiativeLeafBoxShadow(node);
+
   const boxStyle: React.CSSProperties = {
     position: 'absolute',
     left: x,
@@ -230,6 +243,7 @@ const TreemapNode = memo(({
     overflow: 'hidden',
     cursor: 'pointer',
     zIndex: 1,
+    ...(leafShadow ? { boxShadow: leafShadow } : {}),
   };
 
   const eventHandlers = {
@@ -302,6 +316,7 @@ const TreemapNode = memo(({
         cursor: 'pointer',
         transformOrigin: 'center center',
         zIndex: 1,
+        ...(leafShadow ? { boxShadow: leafShadow } : {}),
       }}
       {...eventHandlers}
     >

@@ -54,6 +54,7 @@ npm run dev
 - Таблицы: `initiatives`, `people`, `person_initiative_assignments`, `initiative_history`, `person_assignment_history`, `profiles`, `team_quarter_snapshots`, `allowed_users` (вайтлист и роли).
 - Схема и RLS: **`supabase-schema.sql`**, затем **`supabase-migration-access-control.sql`** для доступа. Подробности — **`SUPABASE_SETUP.md`**.
 - Типы TypeScript для БД: **`src/integrations/supabase/types.ts`**.
+- **Google Sheets:** выгрузка/импорт инициатив через Edge Functions — см. **`docs/GOOGLE_SHEETS_SYNC.md`** (секреты, деплой, формат вкладок).
 
 ---
 

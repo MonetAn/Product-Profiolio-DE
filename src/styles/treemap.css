@@ -134,6 +134,18 @@
   /* border removed for cleaner look */
 }
 
+.tooltip-type-line {
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 10px;
+}
+
+.tooltip-type-line strong {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
 /* Tooltip */
 .treemap-tooltip {
   position: fixed;
@@ -178,17 +190,6 @@
 
 .tooltip-status.off-track {
   background: hsl(var(--destructive));
-}
-
-/* Stub initiative notice in tooltip */
-.tooltip-stub-notice {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-  padding: 8px 10px;
-  margin-bottom: 10px;
-  background: hsl(var(--muted) / 0.5);
-  border-radius: 6px;
-  border-left: 3px solid hsl(var(--muted-foreground) / 0.5);
 }
 
 .tooltip-path {

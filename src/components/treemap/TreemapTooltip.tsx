@@ -130,10 +130,12 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
       return html;
     }
     
-    // Initiative: only show "unallocated" note for stubs; period, metrics, stakeholders
+    // Initiative: заглушка / поддержка — короткие пометки; про «разработку» не пишем
     if (isInitiative) {
       if (node.isTimelineStub) {
-        html += `<div class="tooltip-stub-notice">Нераспределённая стоимость команды</div>`;
+        html += `<div class="tooltip-type-line">Заглушка — нераспределённая стоимость команды</div>`;
+      } else if (node.support) {
+        html += `<div class="tooltip-type-line">Инициатива в поддержке в выбранном периоде</div>`;
       }
       
       const quarterRange = formatQuarterRange(node.data.quarterlyData);

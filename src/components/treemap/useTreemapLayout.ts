@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import * as d3 from 'd3';
-import { TreeNode, getUnitColor, adjustBrightness } from '@/lib/dataManager';
+import { TreeNode, getUnitColor, adjustBrightness, mixHexWithNeutralGray } from '@/lib/dataManager';
 import { encodeTreemapPathSegment } from '@/lib/treemapPathCodec';
 import { TreemapLayoutNode, ColorGetter, ContainerDimensions } from './types';
 
@@ -57,7 +57,12 @@ function flattenHierarchy(
   } else if (depth === 2) {
     color = adjustBrightness(baseColor, -30);
   }
-  
+
+  let unitStripeColor: string | undefined;
+  if (node.data.isInitiative && node.data.support) {
+    color = mixHexWithNeutralGray(color, 0.46);
+  }
+
   const layoutNode: TreemapLayoutNode = {
     key,
     path,
@@ -72,6 +77,7 @@ function flattenHierarchy(
     depth,
     value: node.value || 0,
     color,
+    unitStripeColor,
     parentName: node.parent?.data.name,
     isUnit: node.data.isUnit,
     isTeam: node.data.isTeam,

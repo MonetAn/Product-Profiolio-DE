@@ -650,7 +650,7 @@ const Index = () => {
 
       {/* Main Content - full height without padding for immersive treemap */}
       <main
-        className="mt-[116px] h-[calc(100vh-116px)] overflow-hidden"
+        className="mt-[156px] h-[calc(100vh-156px)] overflow-hidden"
       >
         {(() => {
           const showLoader =

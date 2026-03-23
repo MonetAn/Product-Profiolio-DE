@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, calculateTotalBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -56,7 +56,7 @@ interface FilterBarProps {
   // Hide nesting toggles (for Timeline view)
   hideNestingToggles?: boolean;
 
-  // Current view (to show total cost only on treemap tabs)
+  /** Влияет на зум тримапы и на применение фильтра стоимости (только таймлайн) */
   currentView?: 'budget' | 'stakeholders' | 'timeline';
   
   // Reset filters
@@ -211,47 +211,90 @@ const FilterBar = ({
       })
     : teams;
 
-  // Calculate totals based on current filters
-  const totals = rawData.reduce(
-    (acc, row) => {
-      const budget = calculateBudget(row, selectedQuarters);
-      if (budget === 0) return acc;
-      
-      const isSupport = isInitiativeSupport(row, selectedQuarters);
-      const isOffTrack = isInitiativeOffTrack(row, selectedQuarters);
-      
-      if (supportFilter === 'exclude' && isSupport) return acc;
-      if (supportFilter === 'only' && !isSupport) return acc;
-      if (showOnlyOfftrack && !isOffTrack) return acc;
-      if (hideStubs && row.isTimelineStub) return acc;
-      if (selectedStakeholders.length > 0) {
-        const rowParts = parseStakeholderParts(row.stakeholders);
-        if (!rowParts.some(p => selectedStakeholders.includes(p))) return acc;
-      }
-      if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
-      if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return acc;
+  // Totals + quarterly Dev/Support split (matches Gantt cell coloring); timeline cost filter aligned with Gantt
+  const totals = useMemo(() => {
+    return rawData.reduce(
+      (acc, row) => {
+        const periodBudget = calculateBudget(row, selectedQuarters);
+        if (periodBudget === 0) return acc;
 
-      // Restrict to zoom path when on treemap and zoom is active for this tab
-      const zoomActive = (currentView === 'budget' || currentView === 'stakeholders') && zoomPath.length > 0 && zoomActiveTab === currentView;
-      if (zoomActive) {
-        if (zoomActiveTab === 'budget') {
-          if (row.unit !== zoomPath[0]) return acc;
-          if (zoomPath.length >= 2 && row.team !== zoomPath[1]) return acc;
-        } else {
-          if (getStakeholderSetKey(row.stakeholders || '') !== zoomPath[0]) return acc;
-          if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
-          if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
+        const isSupport = isInitiativeSupport(row, selectedQuarters);
+        const isOffTrack = isInitiativeOffTrack(row, selectedQuarters);
+
+        if (supportFilter === 'exclude' && isSupport) return acc;
+        if (supportFilter === 'only' && !isSupport) return acc;
+        if (showOnlyOfftrack && !isOffTrack) return acc;
+        if (hideStubs && row.isTimelineStub) return acc;
+        if (selectedStakeholders.length > 0) {
+          const rowParts = parseStakeholderParts(row.stakeholders);
+          if (!rowParts.some(p => selectedStakeholders.includes(p))) return acc;
         }
-      }
+        if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
+        if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return acc;
 
-      acc.count++;
-      acc.budget += budget;
-      if (isOffTrack) acc.offtrack++;
-      if (row.isTimelineStub) acc.stubs++;
-      return acc;
-    },
-    { count: 0, budget: 0, offtrack: 0, stubs: 0 }
-  );
+        const zoomActive =
+          (currentView === 'budget' || currentView === 'stakeholders') &&
+          zoomPath.length > 0 &&
+          zoomActiveTab === currentView;
+        if (zoomActive) {
+          if (zoomActiveTab === 'budget') {
+            if (row.unit !== zoomPath[0]) return acc;
+            if (zoomPath.length >= 2 && row.team !== zoomPath[1]) return acc;
+          } else {
+            if (getStakeholderSetKey(row.stakeholders || '') !== zoomPath[0]) return acc;
+            if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
+            if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
+          }
+        }
+
+        if (currentView === 'timeline') {
+          const costValue = costType === 'period' ? periodBudget : calculateTotalBudget(row);
+          if (costFilterMin !== null && costValue < costFilterMin) return acc;
+          if (costFilterMax !== null && costValue > costFilterMax) return acc;
+        }
+
+        acc.count++;
+        acc.budget += periodBudget;
+        if (isOffTrack) acc.offtrack++;
+        if (row.isTimelineStub) acc.stubs++;
+        selectedQuarters.forEach((q) => {
+          const qData = row.quarterlyData[q];
+          if (qData && qData.budget > 0) {
+            if (qData.support) acc.supportQuarterly += qData.budget;
+            else acc.developmentQuarterly += qData.budget;
+          }
+        });
+        return acc;
+      },
+      {
+        count: 0,
+        budget: 0,
+        offtrack: 0,
+        stubs: 0,
+        developmentQuarterly: 0,
+        supportQuarterly: 0,
+      }
+    );
+  }, [
+    rawData,
+    selectedQuarters,
+    supportFilter,
+    showOnlyOfftrack,
+    hideStubs,
+    selectedStakeholders,
+    selectedUnits,
+    selectedTeams,
+    currentView,
+    zoomPath,
+    zoomActiveTab,
+    costFilterMin,
+    costFilterMax,
+    costType,
+  ]);
+
+  const splitGrand = totals.developmentQuarterly + totals.supportQuarterly;
+  const supportPct = splitGrand > 0 ? Math.round((totals.supportQuarterly / splitGrand) * 100) : 0;
+  const devPct = splitGrand > 0 ? 100 - supportPct : 0;
 
   // Period label - shorter version
   const getPeriodLabel = () => {
@@ -430,11 +473,9 @@ const FilterBar = ({
 
   return (
     <div className="bg-header border-b border-border fixed top-14 left-0 right-0 z-40">
-      {/* Single responsive row */}
-      <div className="h-auto min-h-[44px] flex flex-wrap items-center px-4 py-1.5 gap-2">
-        {/* Zoom breadcrumb removed — now embedded in filter buttons */}
-        {/* Filters Group */}
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="px-4 py-2 flex flex-col gap-2">
+        {/* Строка 1: период и срез данных */}
+        <div className="flex flex-wrap items-center gap-2 min-h-[36px]">
           {/* Unit multi-select */}
           <div ref={unitRef} className="relative">
             <button
@@ -762,43 +803,52 @@ const FilterBar = ({
           )}
         </div>
 
-        {/* Separator */}
-        <div className="w-px h-5 bg-border hidden sm:block" />
+        {/* Строка 2: режим поддержки, тумблеры отображения, статусы и KPI */}
+        <div className="flex flex-wrap items-center gap-2 min-h-[36px] pt-1.5 border-t border-border/80">
+          <div className="flex items-center gap-0.5 rounded-md border border-border overflow-hidden text-[11px] shrink-0 bg-card">
+            {(['all', 'exclude', 'only'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onSupportFilterChange(mode)}
+                className={`px-2 py-1 min-w-0 transition-colors ${
+                  supportFilter === mode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted/40 text-foreground hover:bg-muted/70'
+                }`}
+              >
+                {mode === 'all' ? 'Все' : mode === 'exclude' ? 'Разработка' : 'Поддержка'}
+              </button>
+            ))}
+          </div>
 
-        {/* Toggles Group */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Support filter: All | Exclude | Only */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex items-center gap-0.5 rounded border border-border overflow-hidden text-[11px] text-muted-foreground">
-                  {(['all', 'exclude', 'only'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => onSupportFilterChange(mode)}
-                      className={`px-2 py-1 min-w-0 transition-colors ${
-                        supportFilter === mode
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-secondary'
-                      }`}
-                    >
-                      {mode === 'all' ? 'Все' : mode === 'exclude' ? 'Разработка' : 'Поддержка'}
-                    </button>
-                  ))}
-                  <HelpCircle size={10} className="text-muted-foreground/60 flex-shrink-0 mr-1 self-center" />
-                </div>
+                <button
+                  type="button"
+                  className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary shrink-0"
+                  aria-label="Справка: фильтр и цвета"
+                >
+                  <HelpCircle size={14} />
+                </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[260px] text-xs">
-                Все — показать все инициативы. Разработка — только инициативы в разработке (без поддержки). Поддержка — только инициативы на поддержке (по последнему кварталу периода).
+              <TooltipContent side="bottom" className="max-w-[288px] text-xs space-y-2">
+                <p>
+                  <strong>Все</strong> — все инициативы. <strong>Разработка</strong> — без кварталов поддержки в выбранном
+                  периоде. <strong>Поддержка</strong> — есть хотя бы один квартал поддержки в периоде.
+                </p>
+                <p className="text-muted-foreground">
+                  Таймлайн: цвет полосы — тип <strong>квартала</strong> (синий — разработка, серый — поддержка). Тримап:
+                  яркий цвет группы — разработка; тот же оттенок, приглушённый серым — поддержка (юнит или кластер).
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          {/* Reset Filters Button - only visible when filters are active */}
           {hasActiveFilters && onResetFilters && (
             <>
-              <div className="w-px h-4 bg-border" />
+              <div className="w-px h-4 bg-border hidden sm:block" />
               <button
                 onClick={onResetFilters}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
@@ -810,12 +860,11 @@ const FilterBar = ({
             </>
           )}
 
-          {/* Separator */}
-          {!hideNestingToggles && <div className="w-px h-4 bg-border" />}
-
-          {/* Nesting Toggles - hidden on Gantt */}
-          {!hideNestingToggles && (
+          {hideNestingToggles ? (
+            <div className="hidden sm:block w-[228px] shrink-0 min-h-[28px]" aria-hidden />
+          ) : (
             <>
+              <div className="w-px h-4 bg-border hidden sm:block" />
               {canViewMoney && (
                 <TooltipProvider>
                   <Tooltip>
@@ -865,52 +914,93 @@ const FilterBar = ({
               </label>
             </>
           )}
-        </div>
 
-        {/* Spacer */}
-        <div className="flex-1 min-w-[8px]" />
+          <div className="flex-1 min-w-[8px]" />
 
-        {/* Buttons left, KPIs right (flex-nowrap so they don't wrap) */}
-        <div className="flex flex-nowrap items-center gap-1.5 flex-shrink-0">
-          <button
-            onClick={onOfftrackClick}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
-              showOnlyOfftrack
-                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-            }`}
-            title="Показать только Off-track (повторный клик — сброс)"
-          >
-            <span className="font-bold">{totals.offtrack}</span>
-            <span className="hidden sm:inline">off-track</span>
-            <div className="legend-off-track-icon legend-off-track-icon-sm" />
-          </button>
-          {onStubClick && (
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <button
-              onClick={onStubClick}
-              className={`flex items-center gap-1 px-2 py-1 border rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
-                hideStubs
-                  ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
-                  : 'bg-muted border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              onClick={onOfftrackClick}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
+                showOnlyOfftrack
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
               }`}
-              title={hideStubs ? 'Показать заглушки в выдаче' : 'Скрыть заглушки из выдачи'}
+              title="Показать только Off-track (повторный клик — сброс)"
             >
-              <span className="font-bold">{totals.stubs}</span>
-              {hideStubs ? <EyeOff size={12} className="flex-shrink-0" /> : <Eye size={12} className="flex-shrink-0" />}
-              <span className="hidden sm:inline">Заглушки</span>
-              <div className="legend-stub-sample-sm" />
+              <span className="font-bold">{totals.offtrack}</span>
+              <span className="hidden sm:inline">off-track</span>
+              <div className="legend-off-track-icon legend-off-track-icon-sm" />
             </button>
-          )}
-          {/* KPIs pushed to the right */}
-          <div className="flex items-center gap-1.5 pl-1.5 border-l border-border">
-            {(currentView === 'budget' || currentView === 'stakeholders') && (
-              <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
-                <span className="font-bold">{showMoney ? formatBudgetCompact(totals.budget) : '—'}</span>
-              </div>
+            {onStubClick && (
+              <button
+                onClick={onStubClick}
+                className={`flex items-center gap-1 px-2 py-1 border rounded text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
+                  hideStubs
+                    ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
+                    : 'bg-muted border-border text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                }`}
+                title={hideStubs ? 'Показать заглушки в выдаче' : 'Скрыть заглушки из выдачи'}
+              >
+                <span className="font-bold">{totals.stubs}</span>
+                {hideStubs ? <EyeOff size={12} className="flex-shrink-0" /> : <Eye size={12} className="flex-shrink-0" />}
+                <span className="hidden sm:inline">Заглушки</span>
+                <div className="legend-stub-sample-sm" />
+              </button>
             )}
-            <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
-              <span className="font-bold">{totals.count}</span> иниц.
-            </div>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap text-left hover:bg-secondary/80 transition-colors border border-transparent hover:border-border"
+                  >
+                    {canViewMoney && showMoney && splitGrand > 0 && (
+                      <span className="font-bold tabular-nums shrink-0">{formatBudgetCompact(splitGrand)}</span>
+                    )}
+                    {canViewMoney && showMoney && splitGrand > 0 && supportPct > 0 && supportPct < 100 && (
+                      <span className="text-muted-foreground font-normal shrink-0">
+                        · {supportPct}% подд.
+                      </span>
+                    )}
+                    {canViewMoney && showMoney && splitGrand > 0 && (
+                      <span className="text-muted-foreground select-none shrink-0" aria-hidden>
+                        ·
+                      </span>
+                    )}
+                    <span className="font-bold tabular-nums shrink-0">{totals.count}</span>
+                    <span className="text-muted-foreground font-normal"> иниц.</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[300px] text-xs space-y-2 text-left">
+                  <p>
+                    <strong>{totals.count}</strong> инициатив с ненулевым бюджетом за выбранные кварталы, с учётом фильтров
+                    {currentView === 'timeline' ? ' и ограничений стоимости на таймлайне' : ''}.
+                  </p>
+                  {canViewMoney && showMoney && splitGrand > 0 ? (
+                    <>
+                      <p>
+                        Сумма за период (по кварталам в выборке): <strong>{formatBudget(splitGrand)}</strong>
+                      </p>
+                      {totals.developmentQuarterly > 0 && (
+                        <p className="text-muted-foreground">
+                          Разработка (кварталы): {formatBudget(totals.developmentQuarterly)} ({devPct}%) — на таймлайне
+                          синие полосы, на тримапе ячейки в цвете группы.
+                        </p>
+                      )}
+                      {totals.supportQuarterly > 0 && (
+                        <p className="text-muted-foreground">
+                          Поддержка (кварталы): {formatBudget(totals.supportQuarterly)} ({supportPct}%) — серые полосы на
+                          таймлайне; на тримапе тот же цвет группы, смешанный с серым.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">Включите «Деньги», чтобы видеть суммы в панели и на графиках.</p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </div>

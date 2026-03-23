@@ -11,16 +11,28 @@ if (import.meta.env.DEV && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
   );
 }
 
-// Однократная проверка доступности бэкенда в dev (диагностика pending)
-if (import.meta.env.DEV && SUPABASE_URL) {
-  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/`;
+// Однократная проверка в dev: PostgREST с publishable/anon ключом (а не /auth/v1/health — там часто 401 без service role)
+if (import.meta.env.DEV && SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) {
+  const base = SUPABASE_URL.replace(/\/$/, '');
+  const url = `${base}/rest/v1/`;
   const controller = new AbortController();
   const timeoutMs = 3000;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  fetch(url, { method: 'HEAD', signal: controller.signal })
-    .then(() => {
+  fetch(url, {
+    method: 'GET',
+    signal: controller.signal,
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    },
+  })
+    .then((res) => {
       clearTimeout(timeoutId);
-      console.info('[Supabase] Подключение к бэкенду доступно:', url);
+      if (res.ok) {
+        console.info('[Supabase] Подключение к бэкенду доступно:', base);
+      } else {
+        console.warn('[Supabase] rest/v1 ответил', res.status, '(проверьте ключи в .env):', url);
+      }
     })
     .catch((err) => {
       clearTimeout(timeoutId);
