@@ -572,22 +572,6 @@ const GanttView = ({
           </div>
         )}
 
-        {row.documentationLink?.trim() && (
-          <div className="gantt-name-popup-section">
-            <div className="gantt-name-popup-label">Документация</div>
-            <a
-              href={row.documentationLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="gantt-name-popup-doc-link"
-              aria-label="Открыть документацию в новой вкладке"
-            >
-              <ExternalLink size={14} aria-hidden />
-              <span>Открыть документацию</span>
-            </a>
-          </div>
-        )}
-
         {row.stakeholders && (
           <div className="gantt-name-popup-section">
             <div className="gantt-name-popup-label">Стейкхолдеры</div>
@@ -645,6 +629,19 @@ const GanttView = ({
                 >
                   {row.initiative}
                 </div>
+                {!row.isTimelineStub && row.documentationLink?.trim() && (
+                  <a
+                    href={row.documentationLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gantt-row-doc-link"
+                    aria-label="Открыть документацию в новой вкладке"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink size={12} aria-hidden />
+                    Документация
+                  </a>
+                )}
                 <div className="gantt-row-team">{row.unit} › {row.team || 'Без команды'}</div>
                 {showMoney && (
                   <div className="gantt-row-costs">
