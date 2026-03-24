@@ -46,6 +46,11 @@ export interface AdminDataRow {
   isModified?: boolean;
 }
 
+/** Ключи вида «2025-Q1». Не служебные вложения в quarterly_data (например sheet_out_itog_2025). */
+export function isQuarterPeriodKey(key: string): boolean {
+  return /^\d{4}-Q[1-4]$/.test(key);
+}
+
 // ===== CSV PARSING UTILITIES =====
 
 // RFC 4180-compliant CSV tokenizer: handles multiline quoted fields

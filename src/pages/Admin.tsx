@@ -25,7 +25,6 @@ import {
   filterData,
   getUnitSummary,
   createEmptyQuarterData,
-  getQuickFlowValidationIssues,
   AdminDataRow,
   AdminQuarterData,
   InitiativeType
@@ -52,8 +51,15 @@ import {
   ScenarioTableIllustrationSlot,
 } from '@/components/admin/AdminScenarioIllustrations';
 import { GoogleSheetsSyncStrip } from '@/components/admin/GoogleSheetsSyncStrip';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
-type InitiativesScreen = 'start' | 'unitSummary' | 'quickStep1' | 'quickStep2' | 'fullTable';
+type InitiativesScreen =
+  | 'start'
+  | 'unitSummary'
+  | 'quickStep1'
+  | 'quickStep2'
+  | 'quickStep3'
+  | 'fullTable';
 
 const Admin = () => {
   const { toast } = useToast();
@@ -119,7 +125,7 @@ const Admin = () => {
   const [quickDraftPatches, setQuickDraftPatches] = useState<Map<string, Record<string, Partial<AdminQuarterData>>>>(new Map());
   const [isSavingQuickDraft, setIsSavingQuickDraft] = useState(false);
   const [exitConfirmState, setExitConfirmState] = useState<{ onProceed: () => void } | null>(null);
-  const [quickStep, setQuickStep] = useState<1 | 2>(1);
+  const [quickStep, setQuickStep] = useState<1 | 2 | 3>(1);
 
   // Reset quick step when entering quick mode
   useEffect(() => {
@@ -143,7 +149,11 @@ const Admin = () => {
     if (!hasData) return null;
     if (needsSelection) return 'start';
     if (onlyUnitSelected) return 'unitSummary';
-    if (isQuickMode && canShowQuick) return quickStep === 2 ? 'quickStep2' : 'quickStep1';
+    if (isQuickMode && canShowQuick) {
+      if (quickStep === 3) return 'quickStep3';
+      if (quickStep === 2) return 'quickStep2';
+      return 'quickStep1';
+    }
     return 'fullTable';
   }, [hasData, needsSelection, onlyUnitSelected, isQuickMode, canShowQuick, quickStep]);
 
@@ -152,6 +162,7 @@ const Admin = () => {
     if (!current) return null;
     switch (current) {
       case 'fullTable': case 'quickStep1': case 'unitSummary': return 'start';
+      case 'quickStep3': return 'quickStep2';
       case 'quickStep2': return 'quickStep1';
       case 'start': return null;
       default: return null;
@@ -176,6 +187,10 @@ const Admin = () => {
         p.delete('table');
         return p;
       });
+      return;
+    }
+    if (prev === 'quickStep2') {
+      setQuickStep(2);
       return;
     }
     if (prev === 'quickStep1') {
@@ -251,6 +266,41 @@ const Admin = () => {
       setIsSavingQuickDraft(false);
     }
   }, [quickDraftPatches, rawData, updateQuarterDataBulkAsync, syncAssignments, toast]);
+
+  const handleSheetsPreviewCalculation = useCallback(async () => {
+    const nq = getNextQuarter();
+    const previewQuarterEfforts: Record<string, Record<string, number>> = {};
+    for (const row of quickDisplayData) {
+      const eff = row.quarterlyData[nq]?.effortCoefficient;
+      if (eff === undefined || eff === null) continue;
+      previewQuarterEfforts[row.id] = { [nq]: Number(eff) };
+    }
+    return invokeEdgeFunction('sheets-preview-calculation', {
+      previewQuarterEfforts,
+      maxWaitMs: 12000,
+    }) as Promise<{
+      preview?: { initiativeId: string; initiativeName?: string; itog: Record<string, number> }[];
+      pollStable?: boolean;
+      message?: string;
+    }>;
+  }, [quickDisplayData]);
+
+  const handleRestoreSheetsInFromDatabase = useCallback(async () => {
+    await invokeEdgeFunction('sheets-push-in', {});
+    toast({
+      title: 'Лист IN',
+      description: 'Восстановлен из базы (без черновых оверрайдов).',
+    });
+  }, [toast]);
+
+  const handleApplySheetCostsFromOut = useCallback(async () => {
+    await invokeEdgeFunction('sheets-pull-out', {});
+    await refetch();
+    toast({
+      title: 'Стоимости из OUT',
+      description: 'Записаны в базу (cost и sheet_out_itog_2025).',
+    });
+  }, [toast, refetch]);
 
   const handleRequestExitQuick = useCallback((_action: 'fullTable' | 'backToStep1', onProceed: () => void) => {
     if (quickDraftPatches.size === 0) {
@@ -458,16 +508,6 @@ const Admin = () => {
   }, [setSearchParams]);
 
   const handleSaveAndContinueOrFinish = useCallback(async () => {
-    const nq = getNextQuarter();
-    const issues = getQuickFlowValidationIssues(quickDisplayData, nq);
-    if (issues.length > 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Сначала исправьте замечания',
-        description: 'Нажмите «Заполнить» у инициатив из списка выше.',
-      });
-      return;
-    }
     const q = quickTeamQueue ?? readQuickTeamQueue();
     setQueueActionLoading(true);
     try {
@@ -516,7 +556,6 @@ const Admin = () => {
       setQueueActionLoading(false);
     }
   }, [
-    quickDisplayData,
     quickDraftPatches,
     quickTeamQueue,
     handleSaveQuickDraft,
@@ -703,8 +742,8 @@ const Admin = () => {
                       aria-hidden
                     />
                     <div className="w-full flex flex-col items-center shrink-0">
-                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-stretch justify-center overflow-hidden mb-4 sm:mb-5">
-                        <ScenarioFootstepsIllustration reducedMotion={!!reducedMotion} />
+                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-center justify-center overflow-visible px-0 mb-4 sm:mb-5">
+                        <ScenarioFootstepsIllustration />
                       </div>
                       <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
                         <span className="font-juneau font-medium text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
@@ -817,6 +856,10 @@ const Admin = () => {
                 }
                 onSaveAndContinueQueue={handleSaveAndContinueOrFinish}
                 queueActionLoading={queueActionLoading}
+                runSheetsPreviewCalculation={handleSheetsPreviewCalculation}
+                restoreSheetsInFromDatabase={handleRestoreSheetsInFromDatabase}
+                applySheetCostsFromOut={handleApplySheetCostsFromOut}
+                enableSheetsPreviewStep={!!isAdmin}
               />
             ) : (
               <div className="flex-1 flex flex-col overflow-hidden">

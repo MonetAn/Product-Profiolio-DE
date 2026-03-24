@@ -9,3 +9,12 @@ verify_jwt = false
 
 [functions.sheets-import-from-sheet]
 verify_jwt = false
+
+[functions.sheets-push-in]
+verify_jwt = false
+
+[functions.sheets-pull-out]
+verify_jwt = false
+
+[functions.sheets-preview-calculation]
+verify_jwt = false

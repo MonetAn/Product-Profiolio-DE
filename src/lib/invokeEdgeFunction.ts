@@ -17,7 +17,11 @@ function sleep(ms: number): Promise<void> {
  * Не используем supabase.functions.invoke: в новых версиях SDK добавляется x-supabase-client-platform,
  * и preflight падает, пока в облаке не задеплоен обновлённый CORS.
  */
-async function invokeViaFetch(functionName: string, accessToken: string): Promise<unknown> {
+async function invokeViaFetch(
+  functionName: string,
+  accessToken: string,
+  body: Record<string, unknown> | undefined
+): Promise<unknown> {
   const baseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '');
   const anon = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
   if (!baseUrl || !anon) {
@@ -36,7 +40,7 @@ async function invokeViaFetch(functionName: string, accessToken: string): Promis
         apikey: anon,
         'Content-Type': 'application/json',
       },
-      body: '{}',
+      body: body === undefined ? '{}' : JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -64,7 +68,10 @@ async function invokeViaFetch(functionName: string, accessToken: string): Promis
 /**
  * POST к Supabase Edge Function с JWT текущего пользователя.
  */
-export async function invokeEdgeFunction(functionName: string): Promise<unknown> {
+export async function invokeEdgeFunction(
+  functionName: string,
+  body?: Record<string, unknown>
+): Promise<unknown> {
   const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   if (!baseUrl?.trim()) {
     throw new Error('В .env не задан VITE_SUPABASE_URL');
@@ -84,7 +91,7 @@ export async function invokeEdgeFunction(functionName: string): Promise<unknown>
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return await invokeViaFetch(functionName, session.access_token);
+      return await invokeViaFetch(functionName, session.access_token, body);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
       if (attempt < maxAttempts - 1) {

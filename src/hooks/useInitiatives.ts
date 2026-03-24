@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { AdminDataRow, AdminQuarterData, normalizeSupportCascade } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, isQuarterPeriodKey, normalizeSupportCascade } from '@/lib/adminDataManager';
 import { Tables, Json } from '@/integrations/supabase/types';
 
 type DBInitiative = Tables<'initiatives'>;
@@ -88,6 +88,7 @@ export function extractQuartersFromData(data: AdminDataRow[]): string[] {
   
   data.forEach(row => {
     Object.keys(row.quarterlyData || {}).forEach(q => {
+      if (!isQuarterPeriodKey(q)) return;
       quarterSet.add(q);
     });
   });

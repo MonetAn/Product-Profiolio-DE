@@ -1,4 +1,4 @@
-import { AdminDataRow, AdminQuarterData } from './adminDataManager';
+import { AdminDataRow, AdminQuarterData, isQuarterPeriodKey } from './adminDataManager';
 
 // ===== DATA TYPES =====
 export interface QuarterData {
@@ -79,8 +79,8 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
 
   dbRows.forEach(row => {
     Object.keys(row.quarterlyData || {}).forEach(q => {
+      if (!isQuarterPeriodKey(q)) return;
       quarterSet.add(q);
-      // Extract year from quarter (e.g., "2025-Q1" -> "2025")
       const year = q.split('-')[0];
       if (year) yearSet.add(year);
     });
@@ -100,6 +100,7 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
     const quarterlyData: Record<string, QuarterData> = {};
     
     Object.entries(row.quarterlyData || {}).forEach(([quarter, qData]) => {
+      if (!isQuarterPeriodKey(quarter)) return;
       const adminQData = qData as AdminQuarterData;
       quarterlyData[quarter] = {
         budget: (adminQData.cost || 0) + (adminQData.otherCosts || 0),
