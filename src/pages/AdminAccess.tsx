@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, UserPlus, Trash2, User, ShieldCheck, Search, X } from 'lucide-react';
+import { Loader2, UserPlus, Trash2, User, ShieldCheck, Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,14 +7,6 @@ import AdminHeader from '@/components/admin/AdminHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -36,6 +28,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { Database } from '@/integrations/supabase/types';
+import { cn } from '@/lib/utils';
 
 type AllowedUserRow = Database['public']['Tables']['allowed_users']['Row'];
 
@@ -82,6 +75,7 @@ export default function AdminAccess() {
   const [list, setList] = useState<AllowedUserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [addEmail, setAddEmail] = useState('');
+  const [addRole, setAddRole] = useState<'admin' | 'user'>('user');
   const [adding, setAdding] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,6 +99,19 @@ export default function AdminAccess() {
   const [orgTeamFreeText, setOrgTeamFreeText] = useState(false);
 
   const [deleteConfirmRow, setDeleteConfirmRow] = useState<AllowedUserRow | null>(null);
+
+  const [wideLayout, setWideLayout] = useState(
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const apply = () => setWideLayout(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   const fetchOptions = useCallback(async () => {
     const [initRes, peopleRes] = await Promise.all([
@@ -250,7 +257,7 @@ export default function AdminAccess() {
       return;
     }
     setAdding(true);
-    const { error } = await supabase.from('allowed_users').insert({ email, role: 'user' });
+    const { error } = await supabase.from('allowed_users').insert({ email, role: addRole });
     if (error) {
       if (error.code === '23505') {
         toast({ title: 'Пользователь уже добавлен', description: email, variant: 'destructive' });
@@ -260,8 +267,9 @@ export default function AdminAccess() {
       setAdding(false);
       return;
     }
-    toast({ title: 'Добавлен', description: email });
+    toast({ title: 'Добавлен', description: `${email} — ${addRole === 'admin' ? 'админ' : 'пользователь'}` });
     setAddEmail('');
+    setAddRole('user');
     setAdding(false);
     fetchList();
   };
@@ -278,7 +286,20 @@ export default function AdminAccess() {
       toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Роль обновлена', description: `${row.email} — ${newRole === 'admin' ? 'Admin' : 'User'}` });
+    toast({ title: 'Роль обновлена', description: `${row.email} — ${newRole === 'admin' ? 'админ' : 'пользователь'}` });
+    if (scopeDialogUserId === id) {
+      const { data: fresh } = await supabase.from('allowed_users').select('*').eq('id', id).maybeSingle();
+      if (fresh) {
+        if (fresh.role === 'admin') {
+          setScopeFullAccess(true);
+          setScopeSelectedUnits([]);
+          setScopeSelectedPairs([]);
+          setScopeCanViewMoney(true);
+        } else {
+          openScopeDialog(fresh);
+        }
+      }
+    }
     fetchList();
   };
 
@@ -522,187 +543,222 @@ export default function AdminAccess() {
     <div className="flex flex-col h-screen bg-background">
       <AdminHeader currentView="access" />
 
-      <main className="flex-1 flex flex-col min-h-0 p-4 md:p-6 gap-4">
-        <div className="flex flex-wrap gap-3 items-end shrink-0">
-          <div className="flex-1 min-w-[200px] max-w-md">
-            <Label className="text-xs text-muted-foreground">Поиск (email / имя)</Label>
-            <div className="relative mt-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Найти…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+      <main className="flex-1 flex flex-col min-h-0 p-3 md:p-6 gap-2 md:gap-4">
+        <div className="shrink-0 rounded-lg border border-border bg-card p-3 flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[min(100%,200px)]">
+            <Label htmlFor="access-email-top" className="sr-only">
+              Email @dodobrands.io
+            </Label>
+            <Input
+              id="access-email-top"
+              type="email"
+              placeholder="Email @dodobrands.io"
+              value={addEmail}
+              onChange={(e) => setAddEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+              disabled={adding}
+              className="h-9"
+            />
           </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Дата с</Label>
-            <Input className="mt-1 w-[150px]" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Дата по</Label>
-            <Input className="mt-1 w-[150px]" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Юнит</Label>
-            <Select
-              value={filterUnit}
-              onValueChange={(v) => {
-                setFilterUnit(v);
-                setFilterTeam(ALL);
-              }}
-            >
-              <SelectTrigger className="mt-1 w-[180px]">
+          <div className="w-[min(100%,9rem)] sm:w-36">
+            <Label htmlFor="add-role" className="sr-only">
+              Роль при добавлении
+            </Label>
+            <Select value={addRole} onValueChange={(v) => setAddRole(v as 'admin' | 'user')} disabled={adding}>
+              <SelectTrigger id="add-role" className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>Все</SelectItem>
-                <SelectItem value={EMPTY}>Без юнита</SelectItem>
-                {unitsForFilters.map((u) => (
-                  <SelectItem key={u} value={u}>
-                    {u}
-                  </SelectItem>
-                ))}
+                <SelectItem value="user">
+                  <span className="flex items-center gap-2">
+                    <User size={14} /> Пользователь
+                  </span>
+                </SelectItem>
+                <SelectItem value="admin">
+                  <span className="flex items-center gap-2">
+                    <ShieldCheck size={14} /> Админ
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Команда</Label>
-            <Select value={filterTeam} onValueChange={setFilterTeam} disabled={filterUnit === EMPTY}>
-              <SelectTrigger className="mt-1 w-[180px]">
-                <SelectValue placeholder={filterUnit === EMPTY ? '—' : undefined} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Все</SelectItem>
-                <SelectItem value={EMPTY}>Без команды</SelectItem>
-                {teamsForFilterDropdown.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button type="button" variant="outline" size="sm" className="mb-0.5" onClick={resetFilters}>
-            <X className="h-4 w-4 mr-1" />
-            Сбросить фильтры
+          <Button onClick={handleAdd} disabled={adding || !addEmail.trim()} size="sm" className="h-9 shrink-0">
+            {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+            <span className="ml-1.5 hidden sm:inline">Добавить</span>
           </Button>
         </div>
 
-        <div className="flex-1 flex min-h-0 gap-4 md:gap-6 flex-col lg:flex-row overflow-hidden">
-          <div className="flex flex-col min-w-0 lg:w-[min(52%,560px)] lg:max-w-[560px] shrink-0 border border-border rounded-lg overflow-hidden">
-            <div className="p-4 border-b border-border space-y-3 shrink-0 bg-card">
-              <h2 className="text-lg font-semibold">Добавить пользователя</h2>
-              <p className="text-sm text-muted-foreground">
-                Email @dodobrands.io. Юнит/имя можно задать после выбора в списке.
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                <div className="flex-1 min-w-[180px]">
-                  <Label htmlFor="access-email" className="sr-only">
-                    Email
-                  </Label>
+        <div className="shrink-0 space-y-2">
+          {!wideLayout && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-between h-9"
+              onClick={() => setFiltersOpen((o) => !o)}
+            >
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                Фильтры и поиск
+              </span>
+              <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', filtersOpen && 'rotate-180')} />
+            </Button>
+          )}
+          {(wideLayout || filtersOpen) && (
+            <div className="rounded-lg border border-border bg-card p-2">
+              <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+                <div className="w-full min-[520px]:w-[min(100%,18rem)] min-[520px]:max-w-xs min-[520px]:shrink-0">
+                  <Label className="text-[11px] text-muted-foreground leading-none">Поиск</Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      className="pl-8 h-9 text-sm w-full"
+                      placeholder="Email или имя…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="w-full min-[420px]:w-[calc(50%-0.25rem)] min-[560px]:w-[12.5rem] shrink-0 min-w-0">
+                  <Label className="text-[11px] text-muted-foreground leading-none">Дата с</Label>
                   <Input
-                    id="access-email"
-                    type="email"
-                    placeholder="user@dodobrands.io"
-                    value={addEmail}
-                    onChange={(e) => setAddEmail(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                    disabled={adding}
+                    className="mt-1 h-9 w-full min-w-[10.5rem] text-sm pr-9 [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:mr-1 [&::-webkit-calendar-picker-indicator]:opacity-100"
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
                   />
                 </div>
-                <Button onClick={handleAdd} disabled={adding || !addEmail.trim()}>
-                  {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                  <span className="ml-2">Добавить</span>
+                <div className="w-full min-[420px]:w-[calc(50%-0.25rem)] min-[560px]:w-[12.5rem] shrink-0 min-w-0">
+                  <Label className="text-[11px] text-muted-foreground leading-none">Дата по</Label>
+                  <Input
+                    className="mt-1 h-9 w-full min-w-[10.5rem] text-sm pr-9 [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:mr-1 [&::-webkit-calendar-picker-indicator]:opacity-100"
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                  />
+                </div>
+                <div className="w-[calc(50%-0.25rem)] min-[520px]:w-[9.5rem] shrink-0">
+                  <Label className="text-[11px] text-muted-foreground leading-none">Юнит</Label>
+                  <Select
+                    value={filterUnit}
+                    onValueChange={(v) => {
+                      setFilterUnit(v);
+                      setFilterTeam(ALL);
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 h-9 w-full text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Все</SelectItem>
+                      <SelectItem value={EMPTY}>Без юнита</SelectItem>
+                      {unitsForFilters.map((u) => (
+                        <SelectItem key={u} value={u}>
+                          {u}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-[calc(50%-0.25rem)] min-[520px]:w-[9.5rem] shrink-0">
+                  <Label className="text-[11px] text-muted-foreground leading-none">Команда</Label>
+                  <Select value={filterTeam} onValueChange={setFilterTeam} disabled={filterUnit === EMPTY}>
+                    <SelectTrigger className="mt-1 h-9 w-full text-sm">
+                      <SelectValue placeholder={filterUnit === EMPTY ? '—' : undefined} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Все</SelectItem>
+                      <SelectItem value={EMPTY}>Без команды</SelectItem>
+                      {teamsForFilterDropdown.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0"
+                  onClick={resetFilters}
+                  title="Сбросить фильтры"
+                >
+                  <X className="h-4 w-4 mr-1.5" />
+                  Сбросить
                 </Button>
               </div>
             </div>
-            <div className="flex-1 min-h-0 flex flex-col p-2">
-              <div className="px-2 py-1 text-sm text-muted-foreground shrink-0">
-                Показано {filteredList.length} из {list.length}
-              </div>
+          )}
+        </div>
+
+        <div className="flex-1 flex min-h-0 gap-2 md:gap-4 flex-col lg:flex-row overflow-hidden min-h-[min(50vh,24rem)]">
+          <div className="flex flex-col min-w-0 lg:w-[min(40%,420px)] lg:max-w-[420px] shrink-0 border border-border rounded-lg overflow-hidden bg-card">
+            <div className="px-2.5 py-1.5 border-b border-border shrink-0 flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground truncate">
+                Список · {filteredList.length}/{list.length}
+              </span>
+            </div>
+            <div className="flex-1 min-h-0 flex flex-col px-1 pb-1">
               {loading ? (
                 <div className="flex items-center justify-center py-12 flex-1">
                   <LogoLoader className="h-8 w-8" />
                 </div>
               ) : list.length === 0 ? (
-                <p className="text-sm text-muted-foreground p-4">Пока никого нет.</p>
+                <p className="text-sm text-muted-foreground p-3">Пока никого нет.</p>
               ) : filteredList.length === 0 ? (
-                <p className="text-sm text-muted-foreground p-4">Никто не подходит под фильтры.</p>
+                <p className="text-sm text-muted-foreground p-3">Никто не подходит под фильтры.</p>
               ) : (
-                <ScrollArea className="flex-1 min-h-0 h-[320px] lg:h-full">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="min-w-[140px]">Email</TableHead>
-                        <TableHead className="hidden sm:table-cell w-[100px]">Имя</TableHead>
-                        <TableHead className="hidden md:table-cell w-[90px]">Юнит</TableHead>
-                        <TableHead className="hidden md:table-cell w-[90px]">Команда</TableHead>
-                        <TableHead className="w-[88px]">Дата</TableHead>
-                        <TableHead className="w-[130px]">Роль</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredList.map((row) => (
-                        <TableRow
-                          key={row.id}
-                          className={`cursor-pointer ${scopeDialogUserId === row.id ? 'bg-muted/50' : ''} hover:bg-muted/30`}
+                <ScrollArea className="flex-1 min-h-0 h-[min(40vh,280px)] lg:h-full">
+                  <ul className="divide-y divide-border">
+                    {filteredList.map((row) => (
+                      <li key={row.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`${row.email}, ${row.role === 'admin' ? 'администратор' : 'пользователь'}`}
+                          className={cn(
+                            'flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-sm cursor-pointer outline-none',
+                            'hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                            scopeDialogUserId === row.id && 'bg-muted/50'
+                          )}
                           onClick={() => selectUserForEditing(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selectUserForEditing(row);
+                            }
+                          }}
                         >
-                          <TableCell className="font-medium text-sm">
-                            <div className="flex items-center gap-1 min-w-0">
-                              <span className="truncate">{row.email}</span>
-                              {isSelf(row) && <span className="text-xs text-muted-foreground shrink-0">(вы)</span>}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive ml-auto"
-                                onClick={(e) => requestDelete(row, e)}
-                                disabled={isSelf(row) || (row.role === 'admin' && adminCount <= 1)}
-                                aria-label={`Удалить ${row.email}`}
-                              >
-                                <Trash2 size={14} />
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell text-sm text-muted-foreground truncate max-w-[100px]">
-                            {row.display_name || '—'}
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell text-sm truncate max-w-[90px]">
-                            {row.member_unit || '—'}
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell text-sm truncate max-w-[90px]">
-                            {row.member_team || '—'}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(row.created_at)}</TableCell>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Select
-                              value={row.role}
-                              onValueChange={(v) => handleRoleChange(row.id, v as 'admin' | 'user')}
-                              disabled={cannotDemoteSelf(row)}
-                            >
-                              <SelectTrigger className="h-8 w-[118px]" onClick={(e) => e.stopPropagation()}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">
-                                  <span className="flex items-center gap-2">
-                                    <ShieldCheck size={14} /> Admin
-                                  </span>
-                                </SelectItem>
-                                <SelectItem value="user">
-                                  <span className="flex items-center gap-2">
-                                    <User size={14} /> User
-                                  </span>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                          <span
+                            className="shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background"
+                            title={row.role === 'admin' ? 'Администратор' : 'Пользователь'}
+                          >
+                            {row.role === 'admin' ? (
+                              <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
+                            ) : (
+                              <User className="h-4 w-4 text-muted-foreground" aria-hidden />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1 font-medium text-sm truncate">
+                            {row.email}
+                            {isSelf(row) ? <span className="text-muted-foreground font-normal"> · вы</span> : null}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={(e) => requestDelete(row, e)}
+                            disabled={isSelf(row) || (row.role === 'admin' && adminCount <= 1)}
+                            aria-label={`Удалить ${row.email}`}
+                          >
+                            <Trash2 size={15} />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </ScrollArea>
               )}
             </div>
@@ -715,12 +771,38 @@ export default function AdminAccess() {
               </div>
             ) : (
               <>
-                <div className="shrink-0 p-4 border-b border-border">
-                  <h3 className="text-lg font-semibold break-all">{editingRow.email}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Добавлен: {formatDate(editingRow.created_at)}</p>
+                <div className="shrink-0 px-4 py-3 border-b border-border">
+                  <h3 className="text-base sm:text-lg font-semibold break-all leading-tight">{editingRow.email}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Добавлен: {formatDate(editingRow.created_at)}</p>
                 </div>
                 <ScrollArea className="flex-1 min-h-0">
                   <div className="p-4 space-y-6">
+                    <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                      <Label htmlFor="detail-role" className="text-sm font-medium">
+                        Роль
+                      </Label>
+                      <Select
+                        value={editingRow.role}
+                        onValueChange={(v) => handleRoleChange(editingRow.id, v as 'admin' | 'user')}
+                        disabled={cannotDemoteSelf(editingRow)}
+                      >
+                        <SelectTrigger id="detail-role" className="h-9 w-full max-w-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">
+                            <span className="flex items-center gap-2">
+                              <ShieldCheck size={14} /> Админ
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="user">
+                            <span className="flex items-center gap-2">
+                              <User size={14} /> Пользователь
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     {renderOrgForm()}
                     {editingRow.role === 'admin' ? (
                       <p className="text-sm text-muted-foreground">У админа полный доступ к данным дашборда.</p>
