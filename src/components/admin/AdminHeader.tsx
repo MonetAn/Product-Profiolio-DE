@@ -1,5 +1,5 @@
 import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList, Shield, Activity } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,7 +51,6 @@ const AdminHeader = ({
   onBack,
   backLabel = 'dashboard',
 }: AdminHeaderProps) => {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isQuickMode = currentView === 'initiatives' && searchParams.get('mode') === 'quick';
   
@@ -149,19 +148,8 @@ const AdminHeader = ({
         </Link>
       )}
 
-      {/* Logo — переход на стартовую страницу с полным сбросом состояния */}
-      <button
-        type="button"
-        onClick={() => navigate('/', { state: { reset: true }, replace: true })}
-        className="flex items-center gap-2 font-semibold text-foreground ml-3 rounded-lg px-2 py-1.5 cursor-pointer bg-transparent border-0 hover:bg-secondary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-150"
-        aria-label="На стартовую страницу"
-      >
-        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 object-contain pointer-events-none" />
-        <span className="font-juneau font-medium tracking-tight">Админка</span>
-      </button>
-
       {/* Navigation Toggle */}
-      <div className="ml-6">
+      <div className="ml-4">
         <ToggleGroup 
           type="single" 
           value={currentView} 
