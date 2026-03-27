@@ -77,6 +77,21 @@ interface FilterBarProps {
   zoomActiveTab?: 'budget' | 'stakeholders';
 }
 
+/** Доли 0–100 для трёх ведёр; сумма всегда 100 при total > 0 (метод наибольших дробных частей). */
+function threeBucketPercentages(a: number, b: number, c: number): [number, number, number] {
+  const total = a + b + c;
+  if (total <= 0) return [0, 0, 0];
+  const raw = [(a / total) * 100, (b / total) * 100, (c / total) * 100];
+  const floors = raw.map((r) => Math.floor(r));
+  let remainder = 100 - floors.reduce((s, x) => s + x, 0);
+  const byFrac = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((x, y) => y.frac - x.frac);
+  const out: [number, number, number] = [floors[0], floors[1], floors[2]];
+  for (let k = 0; k < remainder; k++) {
+    out[byFrac[k].i]++;
+  }
+  return out;
+}
+
 const FilterBar = ({
   units,
   teams,
@@ -260,7 +275,8 @@ const FilterBar = ({
         selectedQuarters.forEach((q) => {
           const qData = row.quarterlyData[q];
           if (qData && qData.budget > 0) {
-            if (qData.support) acc.supportQuarterly += qData.budget;
+            if (row.isTimelineStub) acc.stubsQuarterly += qData.budget;
+            else if (qData.support) acc.supportQuarterly += qData.budget;
             else acc.developmentQuarterly += qData.budget;
           }
         });
@@ -273,6 +289,7 @@ const FilterBar = ({
         stubs: 0,
         developmentQuarterly: 0,
         supportQuarterly: 0,
+        stubsQuarterly: 0,
       }
     );
   }, [
@@ -292,9 +309,13 @@ const FilterBar = ({
     costType,
   ]);
 
-  const splitGrand = totals.developmentQuarterly + totals.supportQuarterly;
-  const supportPct = splitGrand > 0 ? Math.round((totals.supportQuarterly / splitGrand) * 100) : 0;
-  const devPct = splitGrand > 0 ? 100 - supportPct : 0;
+  const splitGrand =
+    totals.developmentQuarterly + totals.supportQuarterly + totals.stubsQuarterly;
+  const [devPct, supportPct, stubPct] = threeBucketPercentages(
+    totals.developmentQuarterly,
+    totals.supportQuarterly,
+    totals.stubsQuarterly
+  );
 
   // Period label - shorter version
   const getPeriodLabel = () => {
@@ -953,23 +974,32 @@ const FilterBar = ({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="flex items-center gap-1 px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap text-left hover:bg-secondary/80 transition-colors border border-transparent hover:border-border"
+                    className="flex items-center gap-0 px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap text-left hover:bg-secondary/80 transition-colors border border-transparent hover:border-border"
                   >
                     {canViewMoney && showMoney && splitGrand > 0 && (
-                      <span className="font-bold tabular-nums shrink-0">{formatBudgetCompact(splitGrand)}</span>
+                      <>
+                        <span className="font-bold tabular-nums shrink-0">{formatBudgetCompact(splitGrand)}</span>
+                        <span
+                          className="w-px h-3.5 shrink-0 bg-border/70 mx-1.5 self-center"
+                          aria-hidden
+                        />
+                      </>
                     )}
-                    {canViewMoney && showMoney && splitGrand > 0 && supportPct > 0 && supportPct < 100 && (
-                      <span className="text-muted-foreground font-normal shrink-0">
-                        · {supportPct}% подд.
-                      </span>
-                    )}
+                    <span className="flex items-baseline shrink-0">
+                      <span className="font-bold tabular-nums">{totals.count}</span>
+                      <span className="text-muted-foreground font-normal"> иниц.</span>
+                    </span>
                     {canViewMoney && showMoney && splitGrand > 0 && (
-                      <span className="text-muted-foreground select-none shrink-0" aria-hidden>
-                        ·
-                      </span>
+                      <>
+                        <span
+                          className="w-px h-3.5 shrink-0 bg-border/70 mx-1.5 self-center"
+                          aria-hidden
+                        />
+                        <span className="text-muted-foreground font-normal shrink-0 tabular-nums">
+                          разр {devPct}% подд {supportPct}% загл {stubPct}%
+                        </span>
+                      </>
                     )}
-                    <span className="font-bold tabular-nums shrink-0">{totals.count}</span>
-                    <span className="text-muted-foreground font-normal"> иниц.</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-[300px] text-xs space-y-2 text-left">
@@ -982,18 +1012,18 @@ const FilterBar = ({
                       <p>
                         Сумма за период (по кварталам в выборке): <strong>{formatBudget(splitGrand)}</strong>
                       </p>
-                      {totals.developmentQuarterly > 0 && (
-                        <p className="text-muted-foreground">
-                          Разработка (кварталы): {formatBudget(totals.developmentQuarterly)} ({devPct}%) — на таймлайне
-                          синие полосы, на тримапе ячейки в цвете группы.
-                        </p>
-                      )}
-                      {totals.supportQuarterly > 0 && (
-                        <p className="text-muted-foreground">
-                          Поддержка (кварталы): {formatBudget(totals.supportQuarterly)} ({supportPct}%) — серые полосы на
-                          таймлайне; на тримапе тот же цвет группы, смешанный с серым.
-                        </p>
-                      )}
+                      <p className="text-muted-foreground">
+                        Разработка (без заглушек): {formatBudget(totals.developmentQuarterly)} ({devPct}%) — на таймлайне
+                        синие полосы, на тримапе ячейки в цвете группы.
+                      </p>
+                      <p className="text-muted-foreground">
+                        Поддержка (без заглушек): {formatBudget(totals.supportQuarterly)} ({supportPct}%) — серые полосы
+                        на таймлайне; на тримапе тот же цвет группы, смешанный с серым.
+                      </p>
+                      <p className="text-muted-foreground">
+                        Заглушки (кварталы): {formatBudget(totals.stubsQuarterly)} ({stubPct}%) — бюджет по кварталам у
+                        инициатив-заглушек, отдельно от разработки и поддержки.
+                      </p>
                     </>
                   ) : (
                     <p className="text-muted-foreground">Включите «Деньги», чтобы видеть суммы в панели и на графиках.</p>
