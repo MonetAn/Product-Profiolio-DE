@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
-import { ArrowLeft, ArrowRight, Building2, Users, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Building2, Users, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -10,225 +9,285 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getTeamsForUnits } from '@/lib/adminDataManager';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import { cn } from '@/lib/utils';
+import { usePeople } from '@/hooks/usePeople';
+import {
+  useTeamSnapshots,
+  getEffectiveTeamMembers,
+  compareQuarters,
+  getCurrentQuarter,
+} from '@/hooks/useTeamSnapshots';
+
+function pickReferenceQuarter(quarters: string[]): string {
+  if (quarters.length === 0) return getCurrentQuarter();
+  return [...quarters].sort(compareQuarters).at(-1)!;
+}
 
 type Props = {
   units: string[];
+  quarters: string[];
   rawData: AdminDataRow[];
   memberUnit: string | null;
   memberTeam: string | null;
   onBack: () => void;
-  onStart: (unit: string, teamsInOrder: string[]) => void;
+  onStart: (unit: string, teamsInOrder: string[], quarter: string) => void;
 };
 
 export function AdminQuickFlowSetupScreen({
   units,
+  quarters,
   rawData,
   memberUnit,
   memberTeam,
   onBack,
   onStart,
 }: Props) {
-  const [step, setStep] = useState<1 | 2>(1);
-  const [unitChoice, setUnitChoice] = useState<string>(() => memberUnit?.trim() || '');
-  const [showUnitPicker, setShowUnitPicker] = useState(!memberUnit?.trim());
+  const [unitChoice, setUnitChoice] = useState<string>(() => memberUnit?.trim() || units[0] || '');
   const [teamOrder, setTeamOrder] = useState<string[]>([]);
+  const [focusedTeam, setFocusedTeam] = useState<string | null>(null);
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(() => pickReferenceQuarter(quarters));
+
+  const { data: people = [], isLoading: peopleLoading } = usePeople();
 
   const teamsForUnit = useMemo(
     () => (unitChoice ? getTeamsForUnits(rawData, [unitChoice]) : []),
     [rawData, unitChoice]
   );
 
+  const { data: snapshots = [] } = useTeamSnapshots(
+    unitChoice ? [unitChoice] : [],
+    teamsForUnit
+  );
+
+  const sortedQuarters = useMemo(() => [...quarters].sort(compareQuarters), [quarters]);
+  const referenceQuarter = selectedQuarter;
+
   const selectedSet = useMemo(() => new Set(teamOrder), [teamOrder]);
 
-  const goToStep2 = useCallback(() => {
-    if (!unitChoice) return;
-    const tfu = getTeamsForUnits(rawData, [unitChoice]);
-    const mt = memberTeam?.trim();
-    if (mt && tfu.includes(mt)) setTeamOrder([mt]);
-    else setTeamOrder([]);
-    setStep(2);
-  }, [unitChoice, memberTeam, rawData]);
+  const teamsAndRosterActive = !!unitChoice.trim();
 
-  const toggleTeam = useCallback((t: string) => {
-    setTeamOrder((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
+  const roster = useMemo(() => {
+    if (!teamsAndRosterActive || !unitChoice || focusedTeam === null) return [];
+    return getEffectiveTeamMembers(
+      unitChoice,
+      focusedTeam,
+      referenceQuarter,
+      snapshots,
+      people,
+      sortedQuarters
+    ).people;
+  }, [
+    teamsAndRosterActive,
+    unitChoice,
+    focusedTeam,
+    referenceQuarter,
+    snapshots,
+    people,
+    sortedQuarters,
+  ]);
+
+  const selectUnit = useCallback(
+    (u: string) => {
+      setUnitChoice(u);
+      const allowed = new Set(getTeamsForUnits(rawData, [u]));
+      setTeamOrder((prev) => prev.filter((team) => allowed.has(team)));
+      setFocusedTeam((prev) => (prev && allowed.has(prev) ? prev : null));
+    },
+    [rawData]
+  );
+
+  const toggleTeamSelection = useCallback((t: string) => {
+    setTeamOrder((prev) => {
+      const next = prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t];
+      setFocusedTeam(t);
+      return next;
+    });
   }, []);
-
-  const handleConfirmUnitFromProfile = useCallback(() => {
-    const u = memberUnit?.trim();
-    if (!u) return;
-    setUnitChoice(u);
-    setShowUnitPicker(false);
-    const tfu = getTeamsForUnits(rawData, [u]);
-    const mt = memberTeam?.trim();
-    if (mt && tfu.includes(mt)) setTeamOrder([mt]);
-    else setTeamOrder([]);
-    setStep(2);
-  }, [memberUnit, memberTeam, rawData]);
-
-  const handleNextFromUnitStep = useCallback(() => {
-    if (showUnitPicker && unitChoice) goToStep2();
-  }, [showUnitPicker, unitChoice, goToStep2]);
 
   const canStart = teamOrder.length > 0;
 
   return (
-    <div className="min-h-0 flex-1 flex flex-col bg-gradient-to-b from-muted/40 via-background to-background overflow-auto">
-      <div className="w-full max-w-xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8">
+    <div className="min-h-0 flex-1 flex flex-col bg-gradient-to-b from-muted/40 via-background to-background overflow-hidden">
+      <div className="w-full h-full px-4 sm:px-6 py-6 flex flex-col gap-4 min-h-0">
         <Button type="button" variant="ghost" size="sm" className="w-fit gap-1.5 -ml-2" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
           Назад
         </Button>
 
-        <header className="space-y-2 text-center sm:text-left">
+        <header className="space-y-2 text-center sm:text-left shrink-0">
           <p className="text-xs font-medium uppercase tracking-wider text-primary">Заполнение по шагам</p>
           <h1 className="font-juneau font-medium text-2xl sm:text-3xl tracking-tight text-balance">Настроим контекст</h1>
-          <p className="text-sm text-muted-foreground text-balance max-w-md mx-auto sm:mx-0">
-            Юнит и команды. По каждой команде — два шага: коэффициенты и проверка полей.
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <p className="text-sm text-muted-foreground text-balance max-w-3xl mx-auto sm:mx-0">
+              Юнит, команды и состав на квартал <span className="font-medium text-foreground">{referenceQuarter}</span>.
+              По каждой выбранной команде — шаги заполнения отдельно.
+            </p>
+            <div className="w-full sm:w-[260px] shrink-0">
+              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите квартал" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedQuarters.length > 0 ? (
+                    [...sortedQuarters].reverse().map((q) => (
+                      <SelectItem key={q} value={q}>
+                        {q}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value={getCurrentQuarter()}>{getCurrentQuarter()}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </header>
 
-        <div className="flex items-center justify-center sm:justify-start gap-2">
-          <span
-            className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium',
-              step === 1 ? 'bg-primary text-primary-foreground' : 'bg-primary/15 text-primary'
-            )}
-          >
-            1
-          </span>
-          <div className="h-px w-8 bg-border" />
-          <span
-            className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium',
-              step === 2 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-            )}
-          >
-            2
-          </span>
-        </div>
-
-        {step === 1 && (
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-lg">Юнит</CardTitle>
+        <div className="flex flex-col gap-4 flex-1 min-h-0">
+          <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-0 lg:divide-x lg:divide-border rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden flex-1 min-h-0">
+              {/* Column: units */}
+              <div className="flex flex-col min-h-0">
+                <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 shrink-0">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Юнит</span>
+                </div>
+                <ScrollArea className="flex-1 min-h-[220px] lg:min-h-0">
+                  <div className="p-2 space-y-1">
+                    {units.map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => selectUnit(u)}
+                        className={cn(
+                          'w-full text-left rounded-lg px-4 py-3 text-base font-medium transition-colors',
+                          unitChoice === u
+                            ? 'bg-primary/15 text-primary'
+                            : 'hover:bg-muted/80 text-foreground'
+                        )}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
               </div>
-              <CardDescription>Инициативы и проценты — в рамках одного юнита за проход.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {memberUnit?.trim() && !showUnitPicker ? (
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Ваш юнит в профиле</p>
-                      <p className="text-lg font-semibold mt-1">{memberUnit.trim()}</p>
+
+              {/* Column: teams */}
+              <div
+                className={cn(
+                  'flex flex-col min-h-0 border-t lg:border-t-0',
+                  !teamsAndRosterActive && 'opacity-60 pointer-events-none'
+                )}
+              >
+                <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 shrink-0">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Команды</span>
+                </div>
+                <div className="px-4 py-2 text-xs text-muted-foreground shrink-0">
+                  {memberTeam?.trim() && teamsForUnit.includes(memberTeam.trim())
+                    ? 'Ваша команда отмечена. Порядок отметок = порядок прохождения.'
+                    : 'Выберите одну или несколько. Порядок отметок = порядок прохождения.'}
+                </div>
+                <ScrollArea className="flex-1 min-h-[220px] lg:min-h-0">
+                  {!unitChoice ? (
+                    <p className="text-sm text-muted-foreground p-4">Сначала выберите юнит слева.</p>
+                  ) : teamsForUnit.length === 0 ? (
+                    <p className="text-sm text-foreground bg-primary/10 border border-primary/15 rounded-lg p-3 m-2">
+                      Нет команд в данных. Создайте инициативы в полной таблице.
+                    </p>
+                  ) : (
+                    <div className="p-2 space-y-1">
+                      {teamsForUnit.map((t) => {
+                        const selected = selectedSet.has(t);
+                        const focus = focusedTeam === t;
+                        return (
+                          <button
+                            key={t || '_empty'}
+                            type="button"
+                            onClick={() => toggleTeamSelection(t)}
+                            className={cn(
+                              'w-full text-left flex items-center gap-3 rounded-lg px-4 py-3 text-base transition-colors',
+                              selected ? 'bg-primary/15 text-primary' : 'text-foreground hover:bg-muted/80',
+                              focus && !selected ? 'ring-1 ring-border' : ''
+                            )}
+                          >
+                            <span className="font-medium flex-1">{t || '—'}</span>
+                            {selected && (
+                              <span className="text-xs tabular-nums text-primary/80 shrink-0">
+                                {teamOrder.indexOf(t) + 1}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button className="flex-1" onClick={handleConfirmUnitFromProfile}>
-                      Да, это мой юнит
-                    </Button>
-                    <Button variant="outline" className="flex-1" onClick={() => { setShowUnitPicker(true); setUnitChoice(''); }}>
-                      Выбрать другой
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <Label>Выберите юнит</Label>
-                  <Select value={unitChoice || undefined} onValueChange={setUnitChoice}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Юнит…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {units.map((u) => (
-                        <SelectItem key={u} value={u}>
-                          {u}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {memberUnit?.trim() && showUnitPicker && (
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="px-0 h-auto text-muted-foreground"
-                      onClick={() => { setShowUnitPicker(false); setUnitChoice(''); }}
-                    >
-                      Вернуться к юниту из профиля
-                    </Button>
                   )}
-                  <Button className="w-full sm:w-auto mt-2" disabled={!unitChoice} onClick={handleNextFromUnitStep}>
-                    Далее: команды
-                    <ArrowRight className="h-4 w-4 ml-1.5" />
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                </ScrollArea>
+              </div>
 
-        {step === 2 && (
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-lg">Команды</CardTitle>
-              </div>
-              <CardDescription>
-                {memberTeam?.trim() && teamsForUnit.includes(memberTeam.trim())
-                  ? 'Ваша команда отмечена. Добавьте ещё при необходимости.'
-                  : 'Выберите одну или несколько. Порядок отметок = порядок прохождения.'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Юнит: <span className="font-medium text-foreground">{unitChoice}</span>
-              </p>
-              {teamsForUnit.length === 0 ? (
-                <p className="text-sm text-foreground bg-primary/10 border border-primary/15 rounded-lg p-3">
-                  Нет команд в данных. Создайте инициативы в полной таблице.
-                </p>
-              ) : (
-                <div className="rounded-lg border border-border max-h-[min(50vh,320px)] overflow-y-auto divide-y divide-border">
-                  {teamsForUnit.map((t) => (
-                    <label
-                      key={t || '_empty'}
-                      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50"
-                    >
-                      <Checkbox checked={selectedSet.has(t)} onCheckedChange={() => toggleTeam(t)} />
-                      <span className="text-sm font-medium">{t || '—'}</span>
-                    </label>
-                  ))}
+              {/* Column: roster */}
+              <div
+                className={cn(
+                  'flex flex-col min-h-0 border-t lg:border-t-0',
+                  !teamsAndRosterActive && 'opacity-60 pointer-events-none'
+                )}
+              >
+                <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 shrink-0">
+                  <UserCircle className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Состав команды</span>
                 </div>
-              )}
-              <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
-                <Button variant="outline" onClick={() => setStep(1)}>
-                  <ArrowLeft className="h-4 w-4 mr-1.5" />
-                  Изменить юнит
-                </Button>
-                <Button
-                  className="sm:ml-auto"
-                  disabled={!canStart}
-                  onClick={() => onStart(unitChoice, teamOrder)}
-                >
-                  Начать заполнение
-                  {teamOrder.length > 1 && (
-                    <span className="ml-1.5 text-xs opacity-90">({teamOrder.length})</span>
+                <div className="px-4 py-2 text-xs text-muted-foreground shrink-0">
+                  На квартал {referenceQuarter}. Нажмите на название команды — справа появится состав.
+                </div>
+                <ScrollArea className="flex-1 min-h-[220px] lg:min-h-0">
+                  {!unitChoice ? (
+                    <p className="text-sm text-muted-foreground p-4">
+                      Сначала выберите юнит слева.
+                    </p>
+                  ) : !focusedTeam ? (
+                    <p className="text-sm text-muted-foreground p-4">
+                      Нажмите на команду в средней колонке — здесь появится список людей.
+                    </p>
+                  ) : peopleLoading ? (
+                    <p className="text-sm text-muted-foreground p-4">Загрузка…</p>
+                  ) : roster.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4">
+                      Нет людей в составе для этой команды на выбранный квартал.
+                    </p>
+                  ) : (
+                    <ul className="p-2 space-y-0.5">
+                      {roster.map((p) => (
+                        <li
+                          key={p.id}
+                          className="rounded-lg px-3 py-2 text-sm border border-transparent hover:bg-muted/50"
+                        >
+                          <span className="font-medium">{p.full_name}</span>
+                          {p.email ? (
+                            <span className="block text-xs text-muted-foreground truncate">{p.email}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                </Button>
+                </ScrollArea>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end pt-1 shrink-0">
+            <Button
+              className="sm:w-auto"
+              disabled={!canStart}
+              onClick={() => onStart(unitChoice, teamOrder, selectedQuarter)}
+            >
+              Начать заполнение
+              {teamOrder.length > 1 && (
+                <span className="ml-1.5 text-xs opacity-90">({teamOrder.length})</span>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

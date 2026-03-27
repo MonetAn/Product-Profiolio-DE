@@ -4,6 +4,7 @@ export const QUICK_TEAM_QUEUE_KEY = 'admin_quick_team_queue_v1';
 
 export type QuickTeamQueueState = {
   unit: string;
+  quarter: string;
   /** Порядок прохождения */
   teams: string[];
   currentIndex: number;
@@ -25,6 +26,7 @@ export function readQuickTeamQueue(): QuickTeamQueueState | null {
     }
     return {
       unit: p.unit,
+      quarter: typeof p.quarter === 'string' ? p.quarter : '',
       teams: p.teams,
       currentIndex: Math.max(0, Math.min(p.currentIndex, p.teams.length - 1)),
     };
@@ -51,6 +53,6 @@ export function clearQuickTeamQueue(): void {
   }
 }
 
-export function initQuickTeamQueue(unit: string, teams: string[]): QuickTeamQueueState {
-  return { unit, teams: [...teams], currentIndex: 0 };
+export function initQuickTeamQueue(unit: string, teams: string[], quarter: string): QuickTeamQueueState {
+  return { unit, quarter, teams: [...teams], currentIndex: 0 };
 }

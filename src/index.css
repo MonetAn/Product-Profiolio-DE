@@ -352,28 +352,42 @@ html.admin-engineering {
   margin: 0.125em 0;
 }
 
-/* Следы: по hover — короткий fade по opacity только (без transform — не «прыгают»). */
-@keyframes admin-scenario-paw-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
+/* Админка: 5 следов — 3 пальца + ступня, каскад 280ms по transition-delay */
 .admin-scenario-bird-trail {
   isolation: isolate;
-  /* Слегка отличается от bg-card — пустые углы слота не читаются как «белая плашка» */
   background: hsl(var(--muted) / 0.06);
 }
 .admin-scenario-step-rotate {
   transition: transform 0.26s ease-out;
 }
 .admin-scenario-step-print {
-  background: transparent;
-  transition: transform 0.32s cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 0.26s ease-out, filter 0.26s ease-out;
   transition-delay: 0ms;
+}
+.admin-scenario-step-toe {
+  background: linear-gradient(
+    155deg,
+    hsl(var(--muted) / 0.62) 0%,
+    hsl(var(--muted) / 0.42) 100%
+  );
+  border: 2px solid hsl(var(--card));
+  box-shadow:
+    0 0 0 1px hsl(var(--foreground) / 0.1),
+    0 2px 5px hsl(var(--foreground) / 0.06),
+    inset 0 1px 0 hsl(var(--background) / 0.35);
+  transition:
+    background 0.26s ease-out,
+    border-color 0.26s ease-out,
+    box-shadow 0.26s ease-out;
+  transition-delay: inherit;
+}
+.dark .admin-scenario-step-toe {
+  background: linear-gradient(155deg, hsl(var(--muted) / 0.58) 0%, hsl(var(--muted) / 0.38) 100%);
+  border-color: hsl(var(--card));
+  box-shadow:
+    0 0 0 1px hsl(var(--foreground) / 0.16),
+    0 2px 6px hsl(0 0% 0% / 0.18),
+    inset 0 1px 0 hsl(var(--foreground) / 0.06);
 }
 .admin-scenario-step-pad {
   background: linear-gradient(
@@ -401,81 +415,115 @@ html.admin-engineering {
     inset 0 1px 0 hsl(var(--foreground) / 0.05);
 }
 
-.admin-scenario-paw-wrap {
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  transform-origin: center bottom;
-  /* Без hover следов нет (на устройствах с hover); только opacity — позиция фиксирована */
-  opacity: 0;
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 0ms;
 }
-
-.admin-scenario-paw-svg {
-  --paw-g0: hsl(var(--muted) / 0.9);
-  --paw-g1: hsl(var(--muted) / 0.72);
-  --paw-g2: hsl(var(--muted) / 0.65);
-  /* Крупные лапы, но помещаются в блок ~как справа (+2–4rem под силуэт) */
-  transform: scale(5.25);
-  transform-origin: center;
-  filter:
-    drop-shadow(0 3px 10px hsl(var(--foreground) / 0.11))
-    drop-shadow(0 8px 24px hsl(var(--foreground) / 0.07));
-  /* Без transition на filter — иначе тень при hover даёт ощущение сдвига */
-  transition: none;
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 0ms;
 }
-
-.dark .admin-scenario-paw-svg {
-  --paw-g0: hsl(var(--muted) / 0.55);
-  --paw-g1: hsl(var(--muted) / 0.48);
-  --paw-g2: hsl(var(--muted) / 0.4);
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 280ms;
 }
-
-/* Тач / нет hover: следы всегда видны, без «шага» */
-@media (hover: none) {
-  .admin-scenario-bird-trail > div .admin-scenario-paw-wrap {
-    opacity: 1;
-    transform: none;
-    animation: none !important;
-  }
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 280ms;
 }
-
-/* Шаг 1→5: почти мгновенное появление (короткий opacity), лёгкий stagger */
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-paw-wrap,
-  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(1) .admin-scenario-paw-wrap {
-    animation: admin-scenario-paw-fade-in 0.07s ease-out forwards;
-    animation-delay: 0s;
-  }
-  .admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-paw-wrap,
-  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(2) .admin-scenario-paw-wrap {
-    animation: admin-scenario-paw-fade-in 0.07s ease-out forwards;
-    animation-delay: 0.07s;
-  }
-  .admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-paw-wrap,
-  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-paw-wrap {
-    animation: admin-scenario-paw-fade-in 0.07s ease-out forwards;
-    animation-delay: 0.14s;
-  }
-  .admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-paw-wrap,
-  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-paw-wrap {
-    animation: admin-scenario-paw-fade-in 0.07s ease-out forwards;
-    animation-delay: 0.21s;
-  }
-  .admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-paw-wrap,
-  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-paw-wrap {
-    animation: admin-scenario-paw-fade-in 0.07s ease-out forwards;
-    animation-delay: 0.28s;
-  }
-
-  .admin-scenario-quick:hover .admin-scenario-bird-trail .admin-scenario-paw-svg,
-  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail .admin-scenario-paw-svg {
-    --paw-g0: hsl(var(--primary) / 0.34);
-    --paw-g1: hsl(var(--primary) / 0.26);
-    --paw-g2: hsl(var(--primary) / 0.19);
-    filter:
-      drop-shadow(0 3px 10px hsl(var(--primary) / 0.22))
-      drop-shadow(0 7px 20px hsl(var(--primary) / 0.16));
-  }
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 560ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(3) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 560ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 840ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(4) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 840ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print {
+  transform: scale(1.04);
+  filter: drop-shadow(0 2px 10px hsl(var(--primary) / 0.2));
+  transition-delay: 1120ms;
+}
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:hover .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-toe,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-pad,
+.admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div:nth-child(5) .admin-scenario-step-print .admin-scenario-step-toe {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--primary) / 0.12) 100%
+  );
+  border-color: hsl(var(--primary) / 0.85);
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.25),
+    0 2px 12px hsl(var(--primary) / 0.18),
+    inset 0 1px 0 hsl(var(--background) / 0.4);
+  transition-delay: 1120ms;
 }
 
 /* 5×3: задержки = 90ms×строка + 42ms×столбец (чтение слева направо, сверху вниз) */
@@ -595,14 +643,13 @@ html.admin-engineering {
 @media (prefers-reduced-motion: reduce) {
   .admin-scenario-step-print,
   .admin-scenario-step-pad,
-  .admin-scenario-paw-wrap,
-  .admin-scenario-paw-svg {
+  .admin-scenario-step-toe {
     transition: none;
   }
-  .admin-scenario-bird-trail > div .admin-scenario-paw-wrap {
-    animation: none !important;
-    opacity: 1;
+  .admin-scenario-quick:hover .admin-scenario-bird-trail > div .admin-scenario-step-print,
+  .admin-scenario-quick:focus-visible .admin-scenario-bird-trail > div .admin-scenario-step-print {
     transform: none;
+    filter: none;
   }
   .admin-scenario-table-cell {
     transition: none;

@@ -61,6 +61,15 @@ type InitiativesScreen =
   | 'quickStep3'
   | 'fullTable';
 
+function getPreviousQuarterFromTarget(targetQuarter: string): string {
+  const match = targetQuarter.match(/^(\d{4})-Q([1-4])$/);
+  if (!match) return getPreviousQuarter();
+  const year = Number(match[1]);
+  const quarter = Number(match[2]);
+  if (quarter === 1) return `${year - 1}-Q4`;
+  return `${year}-Q${quarter - 1}`;
+}
+
 const Admin = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -95,6 +104,7 @@ const Admin = () => {
     selectedTeams, 
     buildFilteredUrl 
   } = useFilterParams();
+  const [quickTeamQueue, setQuickTeamQueue] = useState<QuickTeamQueueState | null>(null);
 
   // Derived state (must be before canShowQuick / isQuickMode)
   const hasData = rawData.length > 0;
@@ -110,7 +120,18 @@ const Admin = () => {
   const hideUnitTeamColumns = selectedUnits.length > 0;
 
   const isQuickMode = searchParams.get('mode') === 'quick';
+  const quickQuarterFromUrl = searchParams.get('quickQuarter');
   const canShowQuick = hasData && !needsSelection && !onlyUnitSelected;
+  const quickSelectedQuarter = useMemo(() => {
+    const qFromQueue = quickTeamQueue?.quarter?.trim();
+    if (qFromQueue) return qFromQueue;
+    if (quickQuarterFromUrl?.trim()) return quickQuarterFromUrl.trim();
+    return getNextQuarter();
+  }, [quickTeamQueue?.quarter, quickQuarterFromUrl]);
+  const quickSelectedPreviousQuarter = useMemo(
+    () => getPreviousQuarterFromTarget(quickSelectedQuarter),
+    [quickSelectedQuarter]
+  );
   const reducedMotion = useReducedMotion();
 
   // UI state
@@ -119,7 +140,6 @@ const Admin = () => {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [createdInQuickSession, setCreatedInQuickSession] = useState<string[]>([]);
   const [showQuickSetup, setShowQuickSetup] = useState(false);
-  const [quickTeamQueue, setQuickTeamQueue] = useState<QuickTeamQueueState | null>(null);
   const [queueActionLoading, setQueueActionLoading] = useState(false);
   const [quickFillInitiativeId, setQuickFillInitiativeId] = useState<string | null>(null);
   const [quickDraftPatches, setQuickDraftPatches] = useState<Map<string, Record<string, Partial<AdminQuarterData>>>>(new Map());
@@ -219,6 +239,19 @@ const Admin = () => {
     () => applyQuickDraftPatches(filteredData, quickDraftPatches),
     [filteredData, quickDraftPatches, applyQuickDraftPatches]
   );
+
+  /** Кварталы, где в черновике менялись коэффициенты усилий (для шага 3: лист vs база). */
+  const quickDirtyEffortQuarters = useMemo(() => {
+    const s = new Set<string>();
+    for (const [, byQ] of quickDraftPatches) {
+      for (const [q, patch] of Object.entries(byQ)) {
+        if (patch && Object.prototype.hasOwnProperty.call(patch, 'effortCoefficient')) {
+          s.add(q);
+        }
+      }
+    }
+    return Array.from(s);
+  }, [quickDraftPatches]);
 
   const handleQuickDraftChange = useCallback((
     id: string,
@@ -503,6 +536,7 @@ const Admin = () => {
     setSearchParams((prev) => {
       const n = new URLSearchParams(prev);
       n.delete('mode');
+      n.delete('quickQuarter');
       return n;
     }, { replace: true });
   }, [setSearchParams]);
@@ -532,6 +566,7 @@ const Admin = () => {
           p.delete('units');
           p.delete('teams');
           p.delete('table');
+          p.delete('quickQuarter');
           return p;
         });
         toast({ title: 'Готово', description: 'Все выбранные команды пройдены.' });
@@ -548,6 +583,7 @@ const Admin = () => {
         p.set('units', q.unit);
         p.set('teams', q.teams[nextIdx]);
         p.set('mode', 'quick');
+        p.set('quickQuarter', q.quarter);
         p.delete('table');
         return p;
       });
@@ -573,8 +609,8 @@ const Admin = () => {
   }, [setSearchParams]);
 
   const handleQuickSetupStart = useCallback(
-    (unit: string, teamsInOrder: string[]) => {
-      const q = initQuickTeamQueue(unit, teamsInOrder);
+    (unit: string, teamsInOrder: string[], quarter: string) => {
+      const q = initQuickTeamQueue(unit, teamsInOrder, quarter);
       writeQuickTeamQueue(q);
       setQuickTeamQueue(q);
       setShowQuickSetup(false);
@@ -587,6 +623,7 @@ const Admin = () => {
         p.set('units', unit);
         p.set('teams', teamsInOrder[0]);
         p.set('mode', 'quick');
+        p.set('quickQuarter', quarter);
         return p;
       });
     },
@@ -717,6 +754,7 @@ const Admin = () => {
               showQuickSetup ? (
                 <AdminQuickFlowSetupScreen
                   units={units}
+                  quarters={quarters}
                   rawData={rawData}
                   memberUnit={memberUnit}
                   memberTeam={memberTeam}
@@ -742,8 +780,8 @@ const Admin = () => {
                       aria-hidden
                     />
                     <div className="w-full flex flex-col items-center shrink-0">
-                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-center justify-center overflow-visible px-0 mb-4 sm:mb-5">
-                        <ScenarioFootstepsIllustration />
+                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-center justify-center overflow-hidden px-0 mb-4 sm:mb-5">
+                        <ScenarioFootstepsIllustration reducedMotion={!!reducedMotion} />
                       </div>
                       <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
                         <span className="font-juneau font-medium text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
@@ -774,7 +812,7 @@ const Admin = () => {
                       aria-hidden
                     />
                     <div className="w-full flex flex-col items-center shrink-0">
-                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-center justify-center overflow-hidden px-0 mb-4 sm:mb-5">
+                      <div className="w-full min-h-[12.75rem] sm:min-h-[14.25rem] flex items-center justify-center overflow-hidden px-0 mb-4 sm:mb-5">
                         <ScenarioTableIllustrationSlot reducedMotion={!!reducedMotion} />
                       </div>
                       <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
@@ -830,8 +868,8 @@ const Admin = () => {
               <AdminQuickFlow
                 filteredData={quickDisplayData}
                 quarters={quarters}
-                previousQuarter={getPreviousQuarter()}
-                nextQuarter={getNextQuarter()}
+                previousQuarter={quickSelectedPreviousQuarter}
+                nextQuarter={quickSelectedQuarter}
                 unit={selectedUnits[0] ?? ''}
                 team={selectedTeams[0] ?? ''}
                 createdInQuickSession={createdInQuickSession}
@@ -842,6 +880,7 @@ const Admin = () => {
                 onGoToFullTable={handleGoToFullTable}
                 onOpenFillInitiative={setQuickFillInitiativeId}
                 hasQuickDraft={quickDraftPatches.size > 0}
+                dirtyEffortQuarters={quickDirtyEffortQuarters}
                 onSaveQuickDraft={handleSaveQuickDraft}
                 isSavingQuickDraft={isSavingQuickDraft}
                 onRequestExitQuick={handleRequestExitQuick}

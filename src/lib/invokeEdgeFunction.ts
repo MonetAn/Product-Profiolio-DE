@@ -20,7 +20,7 @@ function sleep(ms: number): Promise<void> {
 async function invokeViaFetch(
   functionName: string,
   accessToken: string,
-  body: Record<string, unknown> | undefined
+  requestBody: Record<string, unknown> | undefined
 ): Promise<unknown> {
   const baseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '');
   const anon = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -40,26 +40,26 @@ async function invokeViaFetch(
         apikey: anon,
         'Content-Type': 'application/json',
       },
-      body: body === undefined ? '{}' : JSON.stringify(body),
+      body: requestBody === undefined ? '{}' : JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
     const text = await res.text();
-    let body: Record<string, unknown> = {};
+    let parsed: Record<string, unknown> = {};
     try {
-      body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
     } catch {
-      body = { error: text.slice(0, 500) };
+      parsed = { error: text.slice(0, 500) };
     }
 
     if (!res.ok) {
-      const errPart = typeof body.error === 'string' ? body.error : '';
-      const detailPart = typeof body.detail === 'string' ? body.detail : '';
+      const errPart = typeof parsed.error === 'string' ? parsed.error : '';
+      const detailPart = typeof parsed.detail === 'string' ? parsed.detail : '';
       const combined =
         [errPart, detailPart].filter(Boolean).join('\n') || `HTTP ${res.status} ${res.statusText}`.trim();
       throw new Error(combined);
     }
-    return body;
+    return parsed;
   } finally {
     clearTimeout(t);
   }

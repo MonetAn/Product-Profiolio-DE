@@ -12,7 +12,15 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import {
   AdminDataRow,
   AdminQuarterData,
@@ -56,12 +64,99 @@ interface AdminQuickFlowProps {
   }>;
   restoreSheetsInFromDatabase?: () => Promise<void>;
   applySheetCostsFromOut?: () => Promise<void>;
+  /** Кварталы, где в черновике менялись effortCoefficient (шаг 3: превью с листа только для «следующий» при изменениях). */
+  dirtyEffortQuarters?: string[];
 }
 
-const OUT_ITOG_KEYS = ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'] as const;
+type CostPeriodPreset = 'next' | 'previous' | 'year_2025' | 'year_2026';
+
+const YEAR_2025_KEYS = ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'] as const;
+const YEAR_2026_KEYS = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'] as const;
+
+function periodQuarterKeys(
+  preset: CostPeriodPreset,
+  nextQuarter: string,
+  previousQuarter: string
+): string[] {
+  switch (preset) {
+    case 'next':
+      return [nextQuarter];
+    case 'previous':
+      return [previousQuarter];
+    case 'year_2025':
+      return [...YEAR_2025_KEYS];
+    case 'year_2026':
+      return [...YEAR_2026_KEYS];
+    default:
+      return [nextQuarter];
+  }
+}
+
+function rhsSortIndex(byQ: Record<string, number>, keys: string[]): number {
+  for (let i = keys.length - 1; i >= 0; i--) {
+    if ((byQ[keys[i]] ?? 0) > 0) return i;
+  }
+  return -1;
+}
+
+type CostRowModel = {
+  initiativeId: string;
+  initiativeName: string;
+  byQ: Record<string, number>;
+  total: number;
+};
+
+function buildDbCostRows(rows: AdminDataRow[], keys: string[]): CostRowModel[] {
+  return rows.map((r) => {
+    const byQ: Record<string, number> = {};
+    let total = 0;
+    for (const k of keys) {
+      const c = Number(r.quarterlyData[k]?.cost ?? 0) || 0;
+      byQ[k] = c;
+      total += c;
+    }
+    return {
+      initiativeId: r.id,
+      initiativeName: r.initiative || '—',
+      byQ,
+      total,
+    };
+  });
+}
+
+function buildSheetCostRows(previewRows: SheetsPreviewRow[], nextQuarter: string): CostRowModel[] {
+  return previewRows.map((r) => {
+    const v = r.itog[nextQuarter];
+    const n = v != null && Number.isFinite(Number(v)) ? Number(v) : 0;
+    return {
+      initiativeId: r.initiativeId,
+      initiativeName: r.initiativeName ?? r.initiativeId,
+      byQ: { [nextQuarter]: n },
+      total: n,
+    };
+  });
+}
+
+function sortCostRows(rows: CostRowModel[], keys: string[]): CostRowModel[] {
+  return [...rows].sort((a, b) => {
+    const aPos = a.total > 0 ? 1 : 0;
+    const bPos = b.total > 0 ? 1 : 0;
+    if (aPos !== bPos) return bPos - aPos;
+    const ar = rhsSortIndex(a.byQ, keys);
+    const br = rhsSortIndex(b.byQ, keys);
+    if (ar !== br) return br - ar;
+    if (b.total !== a.total) return b.total - a.total;
+    return a.initiativeName.localeCompare(b.initiativeName, 'ru');
+  });
+}
 
 function formatCost(n: number): string {
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+}
+
+function formatPctShare(total: number, teamTotal: number): string {
+  if (teamTotal <= 0 || total <= 0) return '—';
+  return `${((total / teamTotal) * 100).toLocaleString('ru-RU', { maximumFractionDigits: 1, minimumFractionDigits: 0 })}%`;
 }
 
 export default function AdminQuickFlow({
@@ -89,6 +184,7 @@ export default function AdminQuickFlow({
   runSheetsPreviewCalculation,
   restoreSheetsInFromDatabase,
   applySheetCostsFromOut,
+  dirtyEffortQuarters = [],
 }: AdminQuickFlowProps) {
   const { toast } = useToast();
   const [stepLocal, setStepLocal] = useState<1 | 2 | 3>(1);
@@ -102,6 +198,7 @@ export default function AdminQuickFlow({
   const [restoreInLoading, setRestoreInLoading] = useState(false);
   const [applyOutLoading, setApplyOutLoading] = useState(false);
   const [previewMeta, setPreviewMeta] = useState<{ pollStable?: boolean; message?: string } | null>(null);
+  const [costPeriodPreset, setCostPeriodPreset] = useState<CostPeriodPreset>('next');
 
   useEffect(() => {
     if (!enableSheetsPreviewStep && step === 3) {
@@ -113,6 +210,7 @@ export default function AdminQuickFlow({
     if (step !== 3) {
       setPreviewRows(null);
       setPreviewMeta(null);
+      setCostPeriodPreset('next');
     }
   }, [step]);
 
@@ -153,6 +251,54 @@ export default function AdminQuickFlow({
 
   const teamInitiativeIds = useMemo(() => new Set(filteredData.map((r) => r.id)), [filteredData]);
 
+  const costPreviewModel = useMemo(() => {
+    const quarterKeys = periodQuarterKeys(costPeriodPreset, nextQuarter, previousQuarter);
+    const dirtySet = new Set(dirtyEffortQuarters);
+    const nextDirty = dirtySet.has(nextQuarter);
+    const useSheet =
+      costPeriodPreset === 'next' &&
+      nextDirty &&
+      previewRows != null &&
+      previewRows.length > 0;
+
+    let source: 'sheet' | 'db';
+    let banner: string;
+    let rows: CostRowModel[];
+
+    if (costPeriodPreset !== 'next') {
+      source = 'db';
+      banner =
+        'Агрегация по выбранному периоду из базы (последнее сохранение). Для истории не нужно каждый раз запускать Google — расчёт листа здесь относится к следующему кварталу.';
+      rows = sortCostRows(buildDbCostRows(filteredData, quarterKeys), quarterKeys);
+    } else if (!nextDirty) {
+      source = 'db';
+      banner =
+        'Коэффициенты за следующий квартал в этом сеансе не менялись — показаны сохранённые стоимости из базы. При желании всё равно можно нажать «Рассчитать предварительно» и сравнить с листом.';
+      rows = sortCostRows(buildDbCostRows(filteredData, quarterKeys), quarterKeys);
+    } else if (useSheet) {
+      source = 'sheet';
+      banner =
+        'Значения с листа OUT после «Рассчитать предварительно» (черновик коэффициентов для этого квартала учтён на листе).';
+      rows = sortCostRows(buildSheetCostRows(previewRows, nextQuarter), quarterKeys);
+    } else {
+      source = 'db';
+      banner =
+        'Коэффициенты за следующий квартал изменены в сеансе. Нажмите «Рассчитать предварительно», чтобы получить актуальные суммы с Google Таблицы; ниже — последние сохранённые в базе.';
+      rows = sortCostRows(buildDbCostRows(filteredData, quarterKeys), quarterKeys);
+    }
+
+    const teamTotal = rows.reduce((s, r) => s + r.total, 0);
+    const needsSheetRecalc = costPeriodPreset === 'next' && nextDirty && !useSheet;
+    return { quarterKeys, source, banner, rows, teamTotal, needsSheetRecalc };
+  }, [
+    costPeriodPreset,
+    nextQuarter,
+    previousQuarter,
+    dirtyEffortQuarters,
+    previewRows,
+    filteredData,
+  ]);
+
   const handleExitClick = useCallback(() => {
     if (onRequestExitQuick) onRequestExitQuick('fullTable', onGoToFullTable);
     else onGoToFullTable();
@@ -176,7 +322,7 @@ export default function AdminQuickFlow({
         toast({
           title: 'Нет строк для команды',
           description:
-            'На листе OUT не найдено итогов по UUID инициатив этой команды. Проверьте выгрузку и колонки O–R.',
+            'На листе OUT не найдено итогов по UUID инициатив этой команды. Проверьте колонки O–R (2025) и Y–AB (2026) и строку с данными.',
           variant: 'destructive',
         });
       } else {
@@ -320,7 +466,7 @@ export default function AdminQuickFlow({
             <section className="rounded-xl border border-border bg-card p-6 order-1 lg:order-2">
               <div className="flex items-center gap-2 mb-4">
                 <ListChecks size={20} className="text-muted-foreground" />
-                <h2 className="text-lg font-semibold">Следующий квартал: {nextQuarter}</h2>
+                <h2 className="text-lg font-semibold">Выбранный квартал: {nextQuarter}</h2>
               </div>
               {!nextInQuarters ? (
                 <p className="text-sm text-muted-foreground">Нет данных за этот квартал в выгрузке. Добавьте квартал через импорт или полную таблицу.</p>
@@ -579,7 +725,7 @@ export default function AdminQuickFlow({
             </div>
           </section>
         ) : (
-          <section className="rounded-xl border border-border bg-card p-6 max-w-4xl space-y-6">
+          <section className="rounded-xl border border-border bg-card p-6 max-w-5xl space-y-6">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
               <div className="flex items-center gap-2">
                 <Calculator size={20} className="text-muted-foreground" />
@@ -592,11 +738,53 @@ export default function AdminQuickFlow({
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              Коэффициенты из этого шага (включая несохранённые в базе) отправляются на лист IN как оверрайды; после пересчёта формул читаются итоги 2025 Q1–Q4
-              (колонки O–R). База данных не обновляется, пока вы явно не примените стоимости.
+              Коэффициенты из этого шага (включая несохранённые в базе) отправляются на лист IN как оверрайды; после пересчёта формул читаются итоги с OUT: 2025 — O–R; 2026 — Y–AB.
+              Для <span className="font-medium text-foreground">следующего квартала</span>, если вы меняли % в сеансе, после «Рассчитать предварительно» в таблице показываются цифры с листа; иначе и для других периодов — суммы из базы (последнее сохранение).
+              База не обновляется, пока вы не нажмёте «Записать стоимости из таблицы в базу».
             </p>
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
               Не запускайте расчёт одновременно с другим администратором. Если передумали — восстановите лист IN из базы (без черновых процентов).
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="space-y-1.5 flex-1 min-w-0 max-w-md">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="cost-period-preset">
+                  Период для таблицы стоимостей
+                </label>
+                <Select
+                  value={costPeriodPreset}
+                  onValueChange={(v) => setCostPeriodPreset(v as CostPeriodPreset)}
+                >
+                  <SelectTrigger id="cost-period-preset" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="next">Следующий квартал ({nextQuarter})</SelectItem>
+                    <SelectItem value="previous">Предыдущий квартал ({previousQuarter})</SelectItem>
+                    <SelectItem value="year_2025">Весь 2025 (Q1–Q4)</SelectItem>
+                    <SelectItem value="year_2026">Весь 2026 (Q1–Q4)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground sm:pb-2">
+                Источник:{' '}
+                <span className="font-medium text-foreground">
+                  {costPreviewModel.source === 'sheet' ? 'лист OUT после расчёта' : 'база данных'}
+                </span>
+              </p>
+            </div>
+
+            <div
+              className={cn(
+                'rounded-lg border p-3 text-sm',
+                costPreviewModel.source === 'sheet'
+                  ? 'border-emerald-500/35 bg-emerald-500/5 text-foreground'
+                  : costPreviewModel.needsSheetRecalc
+                    ? 'border-amber-500/30 bg-amber-500/5 text-muted-foreground'
+                    : 'border-border bg-muted/30 text-muted-foreground'
+              )}
+            >
+              {costPreviewModel.banner}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -643,36 +831,60 @@ export default function AdminQuickFlow({
               <p className="text-xs text-muted-foreground">{previewMeta.message}</p>
             )}
 
-            {previewRows && previewRows.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      <th className="text-left p-2 font-medium">Инициатива</th>
-                      {OUT_ITOG_KEYS.map((k) => (
-                        <th key={k} className="text-right p-2 font-medium whitespace-nowrap">
-                          Итог {k}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map((row) => (
-                      <tr key={row.initiativeId} className="border-b border-border/60">
-                        <td className="p-2 max-w-[220px] truncate" title={row.initiativeName ?? row.initiativeId}>
-                          {row.initiativeName ?? row.initiativeId.slice(0, 8) + '…'}
-                        </td>
-                        {OUT_ITOG_KEYS.map((k) => (
-                          <td key={k} className="p-2 text-right tabular-nums">
-                            {row.itog[k] != null ? formatCost(row.itog[k]) : '—'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Сумма по команде за выбранный период (все строки):{' '}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatCost(costPreviewModel.teamTotal)}
+                  </span>
+                </p>
               </div>
-            )}
+              {costPreviewModel.rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Нет инициатив в выборке.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="text-left p-2 font-medium">Инициатива</th>
+                        {costPreviewModel.quarterKeys.map((qk) => (
+                          <th key={qk} className="text-right p-2 font-medium whitespace-nowrap">
+                            {qk}
+                          </th>
+                        ))}
+                        <th className="text-right p-2 font-medium whitespace-nowrap">Итого</th>
+                        <th className="text-right p-2 font-medium whitespace-nowrap">Доля</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {costPreviewModel.rows.map((row) => (
+                        <tr
+                          key={row.initiativeId}
+                          className={cn(
+                            'border-b border-border/60',
+                            row.total === 0 && 'opacity-55'
+                          )}
+                        >
+                          <td className="p-2 max-w-[200px] truncate" title={row.initiativeName}>
+                            {row.initiativeName.length > 48 ? `${row.initiativeName.slice(0, 48)}…` : row.initiativeName}
+                          </td>
+                          {costPreviewModel.quarterKeys.map((qk) => (
+                            <td key={qk} className="p-2 text-right tabular-nums">
+                              {formatCost(row.byQ[qk] ?? 0)}
+                            </td>
+                          ))}
+                          <td className="p-2 text-right tabular-nums font-medium">{formatCost(row.total)}</td>
+                          <td className="p-2 text-right tabular-nums text-muted-foreground">
+                            {formatPctShare(row.total, costPreviewModel.teamTotal)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">
               <Button type="button" variant="ghost" onClick={() => setStep(2)}>

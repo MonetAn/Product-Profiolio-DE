@@ -1,6 +1,11 @@
 /**
- * Quarter helpers for quick flow: previous/next quarter by current date.
- * Format matches data: "YYYY-QN" (e.g. 2026-Q1).
+ * Quarter helpers for quick flow: previous/next quarter by **текущей дате** на устройстве пользователя.
+ * Формат как в данных: "YYYY-QN" (например 2026-Q2).
+ *
+ * **Текущий квартал:** январь–март → Q1, апрель–июнь → Q2, июль–сентябрь → Q3, октябрь–декабрь → Q4.
+ *
+ * **Следующий квартал для заполнения** (`getNextQuarter`): сразу после текущего календарного.
+ * Пример: в апреле текущий = Q2 → следующий = **Q3** (не «текущий» Q2).
  */
 
 export function getCurrentQuarter(): string {

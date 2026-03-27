@@ -25,7 +25,7 @@ function applySheetCostsToQuarters(
   itog: Record<string, number>
 ): void {
   for (const [quarterKey, cost] of Object.entries(itog)) {
-    if (!/^2025-Q[1-4]$/.test(quarterKey)) continue;
+    if (!/^202(5|6)-Q[1-4]$/.test(quarterKey)) continue;
     const existing = qd[quarterKey];
     const base: Record<string, unknown> =
       existing && typeof existing === 'object' && !Array.isArray(existing)
@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
         updated: 0,
         errors: [],
         errorCount: 0,
-        message: 'Нет строк с UUID и числами в O–R',
+        message: 'Нет строк с UUID и числами в O–R / Y–AB',
         previewOnly,
         preview: [],
       });
@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
       errors: errors.slice(0, 50),
       errorCount: errors.length,
       message:
-        'Итоги O–R → sheet_out_itog_2025 и cost (батч RPC). Миграция: apply_initiatives_quarterly_data_batch',
+        'Итоги OUT O–R (2025) и Y–AB (2026) → sheet_out_itog_2025 и cost по кварталам (батч RPC).',
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

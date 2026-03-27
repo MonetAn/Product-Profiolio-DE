@@ -1,11 +1,6 @@
-import { useId } from 'react';
-
-/** Силуэт лапы: SVG Repo «paw-print-bold» (копия в `public/admin-icons/paw-print-bold.svg`), заливка градиентом. */
-const PAW_PRINT_BOLD_PATH =
-  'M189.02051,145.33984A31.35052,31.35052,0,0,1,174.0918,126.606a47.99847,47.99847,0,0,0-92.18262-.00635,31.35,31.35,0,0,1-14.92969,18.74023,44.00739,44.00739,0,0,0,38.11719,79.21094,60.16331,60.16331,0,0,1,45.80664,0,44.00678,44.00678,0,0,0,38.11719-79.21094ZM168,204a19.86485,19.86485,0,0,1-7.80078-1.57568c-.04395-.019-.08887-.0376-.13379-.05616a84.02637,84.02637,0,0,0-64.13086,0c-.04492.01856-.08984.03711-.13379.05616a20.00673,20.00673,0,0,1-17.31445-36.02246c.03515-.01954.07129-.03907.10644-.05909A55.21137,55.21137,0,0,0,104.957,133.29541a23.99908,23.99908,0,0,1,46.08887.00439,55.20367,55.20367,0,0,0,26.36133,33.043c.03515.02.07129.03955.10644.05909A20.00364,20.00364,0,0,1,168,204Zm64-100a24,24,0,1,1-24-24A23.99994,23.99994,0,0,1,232,104ZM48,128a24,24,0,1,1,24-24A23.99994,23.99994,0,0,1,48,128ZM72,56A24,24,0,1,1,96,80,23.99994,23.99994,0,0,1,72,56Zm64,0a24,24,0,1,1,24,24A23.99994,23.99994,0,0,1,136,56Z';
-
 /**
- * 5 следов: жирный силуэт лапы + градиент. Без hover следы скрыты; по hover — короткий fade по opacity (index.css).
+ * 5 следов по дуге снизу-слева вверх-вправо (ходьба), зона только над текстом.
+ * Чередование L/R, лёгкая перспектива (scale). Hover: акцент primary (индиго).
  */
 
 type StepConfig = {
@@ -17,59 +12,56 @@ type StepConfig = {
   z: number;
 };
 
-/** Позиции вдоль ширины контейнера тропы (тот же max-w-sm, что у заголовка). */
+/** bottomPct выше = след выше; дуга в верхней 2/3 зоны, чтобы после поворота низ не резался overflow */
 const STEPS: readonly StepConfig[] = [
-  { leftPct: 10, bottomPct: 28, rot: 82, flip: 1, scale: 0.82, z: 1 },
-  { leftPct: 28, bottomPct: 58, rot: 94, flip: -1, scale: 0.86, z: 2 },
-  { leftPct: 50, bottomPct: 30, rot: 88, flip: 1, scale: 0.84, z: 3 },
-  { leftPct: 72, bottomPct: 60, rot: 90, flip: -1, scale: 0.9, z: 4 },
-  { leftPct: 90, bottomPct: 34, rot: 86, flip: 1, scale: 0.87, z: 5 },
+  { leftPct: 7, bottomPct: 30, rot: 82, flip: 1, scale: 0.88, z: 1 },
+  { leftPct: 26, bottomPct: 62, rot: 94, flip: -1, scale: 0.93, z: 2 },
+  { leftPct: 44, bottomPct: 32, rot: 88, flip: 1, scale: 0.9, z: 3 },
+  { leftPct: 62, bottomPct: 64, rot: 90, flip: -1, scale: 0.97, z: 4 },
+  { leftPct: 82, bottomPct: 36, rot: 86, flip: 1, scale: 0.94, z: 5 },
 ];
 
-function CatPawPrint() {
-  const rawId = useId();
-  const gradId = `paw-grad-${rawId.replace(/:/g, '')}`;
+function StepPrint({ reducedMotion }: { reducedMotion: boolean }) {
+  if (reducedMotion) {
+    return (
+      <div
+        className="admin-scenario-step-print flex flex-col items-center w-[2.85rem] sm:w-[3.1rem] shrink-0"
+        aria-hidden
+      >
+        <div className="flex justify-center items-end gap-0.5 sm:gap-1">
+          <div className="size-[1rem] sm:size-[1.1rem] rounded-full border-2 border-primary/40 bg-primary/20" />
+          <div className="size-[1rem] sm:size-[1.1rem] rounded-full border-2 border-primary/40 bg-primary/20 translate-y-px" />
+          <div className="size-[1rem] sm:size-[1.1rem] rounded-full border-2 border-primary/40 bg-primary/20" />
+        </div>
+        <div className="h-1 sm:h-1.5 w-2 shrink-0" aria-hidden />
+        <div className="w-[2.45rem] sm:w-[2.7rem] h-[2.75rem] sm:h-12 rounded-t-md rounded-b-[1.5rem] sm:rounded-b-[1.65rem] border-2 border-primary/40 bg-primary/15" />
+      </div>
+    );
+  }
 
   return (
     <div
-      className="admin-scenario-step-print flex items-center justify-center w-[10.5rem] h-[10.5rem] sm:w-[12rem] sm:h-[12rem] shrink-0 bg-transparent"
+      className="admin-scenario-step-print flex flex-col items-center w-[2.95rem] sm:w-[3.35rem] shrink-0"
       aria-hidden
     >
-      <div className="admin-scenario-paw-wrap flex h-full w-full items-center justify-center overflow-visible bg-transparent">
-        <svg
-          aria-hidden
-          className="admin-scenario-paw-svg block h-full w-full min-h-0 min-w-0"
-          viewBox="0 0 256 256"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient
-              id={gradId}
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1"
-              gradientUnits="objectBoundingBox"
-            >
-              <stop offset="0%" stopColor="var(--paw-g0)" />
-              <stop offset="55%" stopColor="var(--paw-g1)" />
-              <stop offset="100%" stopColor="var(--paw-g2)" />
-            </linearGradient>
-          </defs>
-          <path d={PAW_PRINT_BOLD_PATH} fill={`url(#${gradId})`} />
-        </svg>
+      <div className="admin-scenario-step-toes-row flex justify-center items-end gap-0.5 sm:gap-1">
+        <div className="admin-scenario-step-toe size-[1.02rem] sm:size-[1.14rem] rounded-full shrink-0" />
+        <div className="admin-scenario-step-toe size-[1.02rem] sm:size-[1.14rem] rounded-full shrink-0 translate-y-px sm:translate-y-0.5" />
+        <div className="admin-scenario-step-toe size-[1.02rem] sm:size-[1.14rem] rounded-full shrink-0" />
       </div>
+      <div className="shrink-0 h-1 sm:h-1.5 w-2 min-h-[4px]" aria-hidden />
+      <div className="admin-scenario-step-pad w-[2.6rem] sm:w-[2.95rem] h-[2.85rem] sm:h-[3.2rem] rounded-t-[0.4rem] sm:rounded-t-md rounded-b-[1.55rem] sm:rounded-b-[1.85rem]" />
     </div>
   );
 }
 
-export function ScenarioFootstepsIllustration() {
+export function ScenarioFootstepsIllustration({ reducedMotion }: { reducedMotion: boolean }) {
   return (
     <div
-      className="scenario-footsteps-root w-full max-w-sm mx-auto shrink-0 px-0 box-border overflow-visible"
+      className="scenario-footsteps-root w-full max-w-full shrink-0 px-2 sm:px-4 box-border"
       aria-hidden
     >
-      <div className="admin-scenario-bird-trail relative w-full h-[11.75rem] sm:h-[13rem] pointer-events-none overflow-visible rounded-lg px-0 py-1 box-border">
+      <div className="admin-scenario-bird-trail relative w-full h-[11.75rem] sm:h-[13rem] pointer-events-none overflow-hidden rounded-lg pb-2 box-border">
         {STEPS.map((s, i) => (
           <div
             key={i}
@@ -88,7 +80,7 @@ export function ScenarioFootstepsIllustration() {
                 transformOrigin: '50% 100%',
               }}
             >
-              <CatPawPrint />
+              <StepPrint reducedMotion={reducedMotion} />
             </div>
           </div>
         ))}

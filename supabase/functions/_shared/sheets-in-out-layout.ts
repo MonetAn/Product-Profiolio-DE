@@ -22,24 +22,39 @@ export const IN_HEADERS: string[] = [
   ...QUARTER_KEYS,
 ];
 
-/** Лист OUT: строка 1 может быть заголовком книги; строка 2 — шапка таблицы; данные с 3-й. */
+/** Лист OUT: строка 1 — год/блоки; строка 2 — шапка колонок; строки с UUID в A — данные (часто с 4-й — пустая 3-я пропускается). */
 export const OUT_HEADER_ROW = 2;
+/** Первая строка диапазона чтения API (1-based). Если первая строка инициатив ниже — строки без UUID игнорируются. */
 export const OUT_DATA_START_ROW = 3;
 
 /**
  * На листе OUT колонка A = id инициативы (UUID), B–D юнит/команда/инициатива,
  * далее Fact (E–H), Прочие (I–L), затем «SUM из Итог Q1–Q4» в M–P **или** O–R —
- * в проекте зафиксировано: **O–R** = Итог Q1…Q4 (2025), т.е. O = итог за 2025-Q1.
- * 0-based индексы в массиве значений строки: O=14 … R=17.
+ * в проекте зафиксировано: **O–R** = Итог Q1…Q4 (2025).
+ * **Y–AB** = «SUM из Q1–Q4 Plan» за 2026 (тестовая вёрстка книги).
+ * 0-based: O=14…R=17, Y=24…AB=27.
  */
 export const OUT_COL_ITOG_Q1 = 14;
 export const OUT_COL_ITOG_Q4 = 17;
+
+export const OUT_COL_2026_ITOG_Q1 = 24; // Y
+export const OUT_COL_2026_ITOG_Q4 = 27; // AB
+
+/** Последний используемый индекс колонки на OUT при чтении итогов (включительно). */
+export const OUT_READ_LAST_COL_INDEX = OUT_COL_2026_ITOG_Q4;
 
 export const ITOG_QUARTER_KEYS: QuarterKey[] = [
   '2025-Q1',
   '2025-Q2',
   '2025-Q3',
   '2025-Q4',
+];
+
+export const ITOG_2026_QUARTER_KEYS: QuarterKey[] = [
+  '2026-Q1',
+  '2026-Q2',
+  '2026-Q3',
+  '2026-Q4',
 ];
 
 export function padRow(row: unknown[], minLen: number): string[] {

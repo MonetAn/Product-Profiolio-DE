@@ -1,8 +1,12 @@
 import {
+  ITOG_2026_QUARTER_KEYS,
   ITOG_QUARTER_KEYS,
+  OUT_COL_2026_ITOG_Q1,
+  OUT_COL_2026_ITOG_Q4,
   OUT_COL_ITOG_Q1,
   OUT_COL_ITOG_Q4,
   OUT_DATA_START_ROW,
+  OUT_READ_LAST_COL_INDEX,
   padRow,
   parseSheetNumber,
   looksLikeInitiativeUuid,
@@ -11,16 +15,22 @@ import {
 /** Последняя строка с тем же id побеждает (как при последовательных update). */
 export function parseOutGridToItogById(grid: unknown[][]): Map<string, Record<string, number>> {
   const itogById = new Map<string, Record<string, number>>();
+  const minLen = OUT_READ_LAST_COL_INDEX + 1;
   for (let i = 0; i < grid.length; i++) {
     const raw = grid[i];
     if (!Array.isArray(raw)) continue;
-    const row = padRow(raw, OUT_COL_ITOG_Q4 + 1);
+    const row = padRow(raw, minLen);
     const id = row[0]?.trim() ?? '';
     if (!id || !looksLikeInitiativeUuid(id)) continue;
 
     const itog: Record<string, number> = {};
     for (let c = OUT_COL_ITOG_Q1; c <= OUT_COL_ITOG_Q4; c++) {
       const qk = ITOG_QUARTER_KEYS[c - OUT_COL_ITOG_Q1];
+      const n = parseSheetNumber(row[c]);
+      if (n !== null) itog[qk] = n;
+    }
+    for (let c = OUT_COL_2026_ITOG_Q1; c <= OUT_COL_2026_ITOG_Q4; c++) {
+      const qk = ITOG_2026_QUARTER_KEYS[c - OUT_COL_2026_ITOG_Q1];
       const n = parseSheetNumber(row[c]);
       if (n !== null) itog[qk] = n;
     }
@@ -38,7 +48,7 @@ export async function fetchOutGrid(
 ): Promise<{ grid: unknown[][]; rawStatus: number }> {
   const sid = encodeURIComponent(spreadsheetId);
   const lastRow = OUT_DATA_START_ROW + 5000;
-  const range = encodeURIComponent(`${tabName}!A${OUT_DATA_START_ROW}:R${lastRow}`);
+  const range = encodeURIComponent(`${tabName}!A${OUT_DATA_START_ROW}:AB${lastRow}`);
   const getRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/${range}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
