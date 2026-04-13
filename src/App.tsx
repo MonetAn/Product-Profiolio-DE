@@ -11,6 +11,7 @@ import { AdminRoute } from "@/components/AdminRoute";
 import Index from "./pages/Index";
 import Admin from "./pages/Admin";
 import AdminPeople from "./pages/AdminPeople";
+import AdminMarkets from "./pages/AdminMarkets";
 import AdminAccess from "./pages/AdminAccess";
 import AdminActivity from "./pages/AdminActivity";
 import Auth from "./pages/Auth";
@@ -45,6 +46,13 @@ const App = () => (
               <ProtectedRoute>
                 <AdminRoute>
                   <AdminPeople />
+                </AdminRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/markets" element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <AdminMarkets />
                 </AdminRoute>
               </ProtectedRoute>
             } />

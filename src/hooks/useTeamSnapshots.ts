@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Person } from '@/lib/peopleDataManager';
+import type { Person } from '@/lib/peopleDataManager';
 
 // ===== TYPES =====
 export interface TeamSnapshot {
@@ -10,9 +10,73 @@ export interface TeamSnapshot {
   team: string;
   quarter: string;
   person_ids: string[];
-  source: 'csv_import' | 'carried_forward';
+  source: string;
   imported_at: string | null;
   created_by: string | null;
+  roster_confirmed_at: string | null;
+  roster_confirmed_by: string | null;
+  roster_confirmed_by_name: string | null;
+}
+
+/** Ответ сохранения состава: строка из БД + метаданные для UI (если в БД нет колонок подтверждения). */
+export interface RosterUpsertResult {
+  snapshot: TeamSnapshot;
+  displayAt: string;
+  displayName: string;
+}
+
+/** Supabase/Postgres иногда отдаёт null вместо [] — без этого падает `.includes` в расчёте состава. */
+export function normalizeSnapshotPersonIds(value: unknown): string[] {
+  return Array.isArray(value) ? (value as string[]) : [];
+}
+
+type AuthUserLike = {
+  id: string;
+  email?: string;
+  user_metadata?: { full_name?: string; name?: string };
+};
+
+async function resolveRosterConfirmerDisplayName(user: AuthUserLike | null): Promise<string> {
+  if (!user) return 'Пользователь';
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', user.id)
+    .maybeSingle();
+  const fromProfile = profile?.full_name?.trim();
+  if (fromProfile) return fromProfile;
+  const meta = user.user_metadata;
+  return (
+    meta?.full_name ||
+    meta?.name ||
+    user.email?.split('@')[0]?.trim() ||
+    'Пользователь'
+  );
+}
+
+function rowToTeamSnapshot(row: Record<string, unknown>): TeamSnapshot {
+  return {
+    id: String(row.id),
+    unit: String(row.unit),
+    team: String(row.team),
+    quarter: String(row.quarter),
+    person_ids: normalizeSnapshotPersonIds(row.person_ids),
+    source: String(row.source ?? ''),
+    imported_at: (row.imported_at as string | null) ?? null,
+    created_by: (row.created_by as string | null) ?? null,
+    roster_confirmed_at: (row.roster_confirmed_at as string | null) ?? null,
+    roster_confirmed_by: (row.roster_confirmed_by as string | null) ?? null,
+    roster_confirmed_by_name: (row.roster_confirmed_by_name as string | null) ?? null,
+  };
+}
+
+function isRosterMetaColumnError(message: string | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes('roster_confirmed') ||
+    (m.includes('schema cache') && m.includes('team_quarter_snapshots'))
+  );
 }
 
 export interface SnapshotStatus {
@@ -72,7 +136,8 @@ export function getEffectiveTeamMembers(
   // 1. Check for exact match
   const exactSnapshot = teamSnapshots.find(s => s.quarter === quarter);
   if (exactSnapshot) {
-    const people = allPeople.filter(p => exactSnapshot.person_ids.includes(p.id));
+    const ids = normalizeSnapshotPersonIds(exactSnapshot.person_ids);
+    const people = allPeople.filter(p => ids.includes(p.id));
     return {
       people,
       status: {
@@ -94,7 +159,8 @@ export function getEffectiveTeamMembers(
     for (let i = quarterIndex - 1; i >= 0; i--) {
       const prevSnapshot = teamSnapshots.find(s => s.quarter === sortedQuarters[i]);
       if (prevSnapshot) {
-        const people = allPeople.filter(p => prevSnapshot.person_ids.includes(p.id));
+        const prevIds = normalizeSnapshotPersonIds(prevSnapshot.person_ids);
+        const people = allPeople.filter(p => prevIds.includes(p.id));
         return {
           people,
           status: {
@@ -176,7 +242,16 @@ export function useTeamSnapshots(units: string[], teams: string[]) {
       const { data, error } = await query.order('quarter');
       
       if (error) throw error;
-      return data as TeamSnapshot[];
+      return (data ?? []).map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          ...row,
+          person_ids: normalizeSnapshotPersonIds(r.person_ids),
+          roster_confirmed_at: (r.roster_confirmed_at as string | null) ?? null,
+          roster_confirmed_by: (r.roster_confirmed_by as string | null) ?? null,
+          roster_confirmed_by_name: (r.roster_confirmed_by_name as string | null) ?? null,
+        } as TeamSnapshot;
+      });
     },
     staleTime: 1000 * 60,
     gcTime: 1000 * 60 * 5,
@@ -212,21 +287,29 @@ export function useSnapshotMutations() {
   const { toast } = useToast();
 
   const createSnapshot = useMutation({
-    mutationFn: async (snapshot: Omit<TeamSnapshot, 'id' | 'imported_at' | 'created_by'>) => {
+    mutationFn: async (
+      snapshot: Omit<
+        TeamSnapshot,
+        'id' | 'imported_at' | 'created_by' | 'roster_confirmed_at' | 'roster_confirmed_by' | 'roster_confirmed_by_name'
+      >
+    ) => {
       const { data, error } = await supabase
         .from('team_quarter_snapshots')
-        .upsert({
-          unit: snapshot.unit,
-          team: snapshot.team,
-          quarter: snapshot.quarter,
-          person_ids: snapshot.person_ids,
-          source: snapshot.source
-        }, {
-          onConflict: 'unit,team,quarter'
-        })
+        .upsert(
+          {
+            unit: snapshot.unit,
+            team: snapshot.team,
+            quarter: snapshot.quarter,
+            person_ids: snapshot.person_ids,
+            source: snapshot.source,
+          },
+          {
+            onConflict: 'unit,team,quarter',
+          }
+        )
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     },
@@ -256,5 +339,65 @@ export function useSnapshotMutations() {
     }
   });
 
-  return { createSnapshot, deleteSnapshot };
+  const upsertRosterSnapshot = useMutation({
+    mutationFn: async (args: {
+      unit: string;
+      team: string;
+      quarter: string;
+      person_ids: string[];
+    }): Promise<RosterUpsertResult> => {
+      const { unit, team, quarter, person_ids } = args;
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user ?? null;
+      const roster_confirmed_at = new Date().toISOString();
+      const roster_confirmed_by = user?.id ?? null;
+      const roster_confirmed_by_name = await resolveRosterConfirmerDisplayName(user);
+
+      const baseRow = {
+        unit,
+        team,
+        quarter,
+        person_ids,
+        source: 'quick_flow' as const,
+      };
+      const withRosterMeta = {
+        ...baseRow,
+        roster_confirmed_at,
+        roster_confirmed_by,
+        roster_confirmed_by_name,
+      };
+
+      let { data, error } = await supabase
+        .from('team_quarter_snapshots')
+        .upsert(withRosterMeta, { onConflict: 'unit,team,quarter' })
+        .select()
+        .single();
+
+      if (error && isRosterMetaColumnError(error.message)) {
+        ({ data, error } = await supabase
+          .from('team_quarter_snapshots')
+          .upsert(baseRow, { onConflict: 'unit,team,quarter' })
+          .select()
+          .single());
+      }
+
+      if (error) throw error;
+      if (!data) throw new Error('Пустой ответ при сохранении состава');
+
+      const snapshot = rowToTeamSnapshot(data as Record<string, unknown>);
+      return {
+        snapshot,
+        displayAt: roster_confirmed_at,
+        displayName: roster_confirmed_by_name,
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-snapshots'] });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Не удалось сохранить состав', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  return { createSnapshot, deleteSnapshot, upsertRosterSnapshot };
 }

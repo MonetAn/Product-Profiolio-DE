@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Download, ArrowRight, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SnapshotStatus } from '@/hooks/useTeamSnapshots';
+import type { SnapshotStatus } from '@/hooks/useTeamSnapshots';
 import {
   Tooltip,
   TooltipContent,

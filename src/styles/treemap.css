@@ -126,6 +126,25 @@
   filter: saturate(0.88) brightness(1.1);
 }
 
+/* Admin quick flow: доля изменилась vs baseline (только html.admin-engineering — голубой акцент) */
+html.admin-engineering .treemap-node.admin-effort-changed {
+  box-shadow:
+    inset 0 0 0 2px hsl(var(--admin-attention)),
+    0 0 0 1px rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+
+/* Quick flow: шаг обзора — незаполненная карточка при доле в бюджете (максимально заметно) */
+.treemap-node.admin-quick-review-issue {
+  box-shadow:
+    inset 0 0 0 3px hsl(0 84% 52%),
+    0 0 0 2px hsl(0 84% 40%),
+    0 0 0 6px hsl(0 84% 50% / 0.22),
+    0 6px 18px -4px hsl(0 84% 30% / 0.45);
+  z-index: 2;
+  filter: saturate(1.12);
+}
+
 .treemap-node.depth-1 {
   /* border removed for cleaner look */
 }
@@ -203,6 +222,17 @@
   color: hsl(var(--muted-foreground));
   margin-bottom: 10px;
   letter-spacing: 0.02em;
+}
+
+.tooltip-admin-effort-compare {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed hsl(var(--border));
+}
+
+.tooltip-admin-effort-compare .tooltip-row {
+  padding: 4px 0;
+  font-size: 12px;
 }
 
 .tooltip-row {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Table2, Users } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
@@ -13,11 +13,16 @@ import AdminHeader from '@/components/admin/AdminHeader';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
+import PersonCreateDialog from '@/components/admin/people/PersonCreateDialog';
 import QuarterSelector from '@/components/admin/people/QuarterSelector';
+import { AdminPeopleDirectoryFullView } from '@/components/admin/people/AdminPeopleDirectoryFullView';
+import { Button } from '@/components/ui/button';
 import { getUniqueUnits, getTeamsForUnits, filterData, getUnitSummary } from '@/lib/adminDataManager';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
 
 type GroupMode = 'person' | 'initiative';
+
+type PeoplePageMode = 'assignments' | 'directory';
 
 export default function AdminPeople() {
   const { data: people = [], isLoading: peopleLoading } = usePeople();
@@ -37,7 +42,9 @@ export default function AdminPeople() {
   
   // Dialogs & UI state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>('person');
+  const [pageMode, setPageMode] = useState<PeoplePageMode>('assignments');
   const [selectedQuarter, setSelectedQuarter] = useState<string | 'all'>('all');
   
   // Mutations
@@ -47,8 +54,24 @@ export default function AdminPeople() {
   const units = useMemo(() => getUniqueUnits(initiatives), [initiatives]);
   const teams = useMemo(() => getTeamsForUnits(initiatives, selectedUnits), [initiatives, selectedUnits]);
   
-  // Fetch team snapshots for selected units/teams
+  const allSnapshotUnits = useMemo(() => {
+    const u = new Set<string>();
+    for (const p of people) {
+      if (p.unit?.trim()) u.add(p.unit.trim());
+    }
+    for (const i of initiatives) {
+      if (i.unit?.trim()) u.add(i.unit.trim());
+    }
+    return [...u].sort();
+  }, [people, initiatives]);
+
+  // Fetch team snapshots for selected units/teams (таблица коэффициентов)
   const { data: snapshots = [] } = useTeamSnapshots(selectedUnits, selectedTeams.length > 0 ? selectedTeams : teams);
+
+  const { data: directorySnapshots = [], isLoading: directorySnapshotsLoading } = useTeamSnapshots(
+    pageMode === 'directory' ? allSnapshotUnits : [],
+    []
+  );
   
   // Filter initiatives by selected scope
   const filteredInitiatives = useMemo(() => {
@@ -174,6 +197,9 @@ export default function AdminPeople() {
   const peopleCount = filteredPeople.length;
   const initiativeCount = filteredInitiatives.length;
 
+  const createDefaultUnit = selectedUnits.length === 1 ? selectedUnits[0] : '';
+  const createDefaultTeam = selectedTeams.length === 1 ? selectedTeams[0] : '';
+
   const onlyUnitSelected = selectedUnits.length > 0 && selectedTeams.length === 0;
   const unitSummary = onlyUnitSelected ? getUnitSummary(initiatives, selectedUnits) : [];
 
@@ -186,32 +212,71 @@ export default function AdminPeople() {
   }
 
   const needsSelection = selectedUnits.length === 0;
+  const headerPeopleCount = pageMode === 'directory' ? people.length : peopleCount;
+  const headerHasData = pageMode === 'directory' ? people.length > 0 : !needsSelection;
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       <AdminHeader
         currentView="people"
-        peopleCount={peopleCount}
-        hasData={!needsSelection}
+        peopleCount={headerPeopleCount}
+        hasData={headerHasData}
         onImportPeople={() => setImportDialogOpen(true)}
+        onAddPerson={() => setCreateDialogOpen(true)}
       />
 
-      {/* Scope Selector */}
-      <div className="shrink-0">
-        <ScopeSelector
-          units={units}
-          teams={teams}
-          selectedUnits={selectedUnits}
-          selectedTeams={selectedTeams}
-          onUnitsChange={setSelectedUnits}
-          onTeamsChange={setSelectedTeams}
-          onFiltersChange={setFilters}
-          allData={initiatives}
-        />
+      <div className="shrink-0 border-b border-border px-6 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={pageMode === 'assignments' ? 'default' : 'outline'}
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setPageMode('assignments')}
+            >
+              <Table2 className="h-4 w-4" aria-hidden />
+              Привязки и коэффициенты
+            </Button>
+            <Button
+              type="button"
+              variant={pageMode === 'directory' ? 'default' : 'outline'}
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setPageMode('directory')}
+            >
+              <Users className="h-4 w-4" aria-hidden />
+              Справочник людей
+            </Button>
+          </div>
+          {pageMode === 'assignments' ? (
+            <p className="text-xs text-muted-foreground lg:max-w-xl lg:text-right">
+              Выберите Unit и команды — таблица кварталов и долей по инициативам.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground lg:max-w-xl lg:text-right">
+              Общий список без фильтра scope; поиск и проверка ручных записей и конфликтов составов.
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* Quarter Selector */}
-      {!needsSelection && quarters.length > 0 && (
+      {pageMode === 'assignments' ? (
+        <div className="shrink-0 border-b border-border px-6 py-3">
+          <ScopeSelector
+            units={units}
+            teams={teams}
+            selectedUnits={selectedUnits}
+            selectedTeams={selectedTeams}
+            onUnitsChange={setSelectedUnits}
+            onTeamsChange={setSelectedTeams}
+            onFiltersChange={setFilters}
+            allData={initiatives}
+          />
+        </div>
+      ) : null}
+
+      {pageMode === 'assignments' && !needsSelection && quarters.length > 0 ? (
         <div className="px-6 py-3 border-b border-border shrink-0">
           <QuarterSelector
             quarters={quarters}
@@ -220,11 +285,16 @@ export default function AdminPeople() {
             snapshotStatuses={snapshotStatuses}
           />
         </div>
-      )}
+      ) : null}
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {needsSelection ? (
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+        {pageMode === 'directory' ? (
+          <AdminPeopleDirectoryFullView
+            people={people}
+            snapshots={directorySnapshots}
+            snapshotsLoading={directorySnapshotsLoading}
+          />
+        ) : needsSelection ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8">
             <div className="border border-dashed border-border rounded-xl p-12 text-center max-w-md">
               <ClipboardList size={48} className="mx-auto text-muted-foreground mb-4" />
@@ -278,6 +348,13 @@ export default function AdminPeople() {
       </main>
 
       {/* Dialogs */}
+      <PersonCreateDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        defaultUnit={createDefaultUnit}
+        defaultTeam={createDefaultTeam}
+      />
+
       <CSVPeopleImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}

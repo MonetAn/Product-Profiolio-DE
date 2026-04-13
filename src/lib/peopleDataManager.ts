@@ -33,6 +33,9 @@ export function parseHRStructure(structure: string): ParsedHRStructure {
 }
 
 // ===== PERSON DATA TYPES =====
+export type PersonDirectorySource = 'import' | 'manual';
+export type ManualReviewStatus = 'pending' | 'resolved';
+
 export interface Person {
   id: string;
   external_id: string | null;
@@ -47,6 +50,38 @@ export interface Person {
   terminated_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  /** import — из выгрузки; manual — добавлено из UI (состав / админка). */
+  directory_source?: PersonDirectorySource | null;
+  manual_added_by?: string | null;
+  manual_added_by_name?: string | null;
+  /** pending — ждёт проверки админа; resolved — подтверждено. */
+  manual_review_status?: ManualReviewStatus | null;
+  manual_resolved_at?: string | null;
+  manual_resolved_by?: string | null;
+  manual_resolved_by_name?: string | null;
+}
+
+/** Нормализация строки из Supabase (старые БД без новых колонок). */
+export function normalizePersonRow(row: Record<string, unknown>): Person {
+  const p = row as unknown as Person;
+  return {
+    ...p,
+    directory_source: p.directory_source ?? 'import',
+    manual_added_by: p.manual_added_by ?? null,
+    manual_added_by_name: p.manual_added_by_name ?? null,
+    manual_review_status: p.manual_review_status ?? null,
+    manual_resolved_at: p.manual_resolved_at ?? null,
+    manual_resolved_by: p.manual_resolved_by ?? null,
+    manual_resolved_by_name: p.manual_resolved_by_name ?? null,
+  };
+}
+
+export function isManualPendingReview(p: Person): boolean {
+  return p.directory_source === 'manual' && p.manual_review_status === 'pending';
+}
+
+export function isManualResolved(p: Person): boolean {
+  return p.directory_source === 'manual' && p.manual_review_status === 'resolved';
 }
 
 export interface PersonAssignment {
@@ -205,10 +240,14 @@ export function parsePeopleCSV(text: string, existingUnits: string[], existingTe
 
     // Validate against existing units/teams
     if (person.unit && existingUnits.length > 0 && !existingUnits.includes(person.unit)) {
-      person.parseWarnings.push(`Unit "${person.unit}" не найден в инициативах`);
+      person.parseWarnings.push(
+        `Unit «${person.unit}» нет среди юнитов текущих инициатив в базе — импорт не блокируется, при необходимости поправьте вручную или синхронизируйте инициативы`
+      );
     }
     if (person.team && existingTeams.length > 0 && !existingTeams.includes(person.team)) {
-      person.parseWarnings.push(`Team "${person.team}" не найден в инициативах`);
+      person.parseWarnings.push(
+        `Команда «${person.team}» нет среди команд текущих инициатив в базе — импорт не блокируется, при необходимости поправьте вручную или синхронизируйте инициативы`
+      );
     }
 
     people.push(person);
@@ -216,7 +255,9 @@ export function parsePeopleCSV(text: string, existingUnits: string[], existingTe
 
   const totalWarnings = people.filter(p => p.parseWarnings.length > 0).length;
   if (totalWarnings > 0) {
-    warnings.push(`${totalWarnings} человек с предупреждениями о Unit/Team`);
+    warnings.push(
+      `${totalWarnings} чел.: Unit/Team из файла не совпали со списком из инициатив — это подсказка для проверки, не ошибка. Импорт можно выполнять.`
+    );
   }
 
   return { people, errors, warnings };

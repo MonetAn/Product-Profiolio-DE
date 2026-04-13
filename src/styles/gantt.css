@@ -236,6 +236,67 @@
   );
 }
 
+/*
+ * Quick flow (только html.admin-engineering + колбэк adminTimelineQuarterWarnings):
+ * незаполнены обязательные поля — сегмент красный (--destructive); детали П/Ф без обводки.
+ * Подсказка — нативный title по hover на сегменте.
+ */
+html.admin-engineering .gantt-segment.gantt-segment-admin-issue.development,
+html.admin-engineering .gantt-segment.gantt-segment-admin-issue.support {
+  background-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  box-shadow: none;
+  z-index: 2;
+  cursor: pointer;
+}
+
+html.admin-engineering .gantt-segment.gantt-segment-admin-issue.development.off-track,
+html.admin-engineering .gantt-segment.gantt-segment-admin-issue.support.off-track {
+  background-color: hsl(var(--destructive));
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.22) 3px,
+    rgba(0, 0, 0, 0.22) 6px
+  );
+}
+
+html.admin-engineering .gantt-row-is-stub .gantt-segment.gantt-segment-admin-issue.development,
+html.admin-engineering .gantt-row-is-stub .gantt-segment.gantt-segment-admin-issue.support {
+  background-color: hsl(var(--destructive));
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.18) 3px,
+    rgba(255, 255, 255, 0.18) 6px
+  );
+}
+
+html.admin-engineering .gantt-quarter-popup-admin-warnings {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: hsl(var(--destructive) / 0.12);
+  border: 1px solid hsl(var(--destructive) / 0.45);
+}
+
+.dark html.admin-engineering .gantt-quarter-popup-admin-warnings {
+  background: hsl(var(--destructive) / 0.18);
+  border-color: hsl(var(--destructive) / 0.5);
+}
+
+html.admin-engineering .gantt-quarter-popup-admin-warning-line {
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--destructive));
+}
+
+.dark html.admin-engineering .gantt-quarter-popup-admin-warning-line {
+  color: hsl(var(--destructive-foreground));
+}
+
 /* Stub row (placeholder initiative = team FTE cost) — light hatching overrides off-track red */
 .gantt-row-is-stub .gantt-segment {
   background-image: repeating-linear-gradient(

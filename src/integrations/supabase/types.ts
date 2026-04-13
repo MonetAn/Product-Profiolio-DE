@@ -109,10 +109,38 @@ export type Database = {
         }
         Relationships: []
       }
+      market_countries: {
+        Row: {
+          id: string
+          cluster_key: string
+          label_ru: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cluster_key: string
+          label_ru: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cluster_key?: string
+          label_ru?: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       people: {
         Row: {
           created_at: string
           created_by: string | null
+          directory_source: string
           email: string | null
           external_id: string | null
           full_name: string
@@ -120,6 +148,12 @@ export type Database = {
           hr_structure: string | null
           id: string
           leader: string | null
+          manual_added_by: string | null
+          manual_added_by_name: string | null
+          manual_resolved_at: string | null
+          manual_resolved_by: string | null
+          manual_resolved_by_name: string | null
+          manual_review_status: string | null
           position: string | null
           team: string | null
           terminated_at: string | null
@@ -130,6 +164,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          directory_source?: string
           email?: string | null
           external_id?: string | null
           full_name: string
@@ -137,6 +172,12 @@ export type Database = {
           hr_structure?: string | null
           id?: string
           leader?: string | null
+          manual_added_by?: string | null
+          manual_added_by_name?: string | null
+          manual_resolved_at?: string | null
+          manual_resolved_by?: string | null
+          manual_resolved_by_name?: string | null
+          manual_review_status?: string | null
           position?: string | null
           team?: string | null
           terminated_at?: string | null
@@ -147,6 +188,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          directory_source?: string
           email?: string | null
           external_id?: string | null
           full_name?: string
@@ -154,6 +196,12 @@ export type Database = {
           hr_structure?: string | null
           id?: string
           leader?: string | null
+          manual_added_by?: string | null
+          manual_added_by_name?: string | null
+          manual_resolved_at?: string | null
+          manual_resolved_by?: string | null
+          manual_resolved_by_name?: string | null
+          manual_review_status?: string | null
           position?: string | null
           team?: string | null
           terminated_at?: string | null
@@ -292,6 +340,9 @@ export type Database = {
           imported_at: string | null
           person_ids: string[]
           quarter: string
+          roster_confirmed_at: string | null
+          roster_confirmed_by: string | null
+          roster_confirmed_by_name: string | null
           source: string
           team: string
           unit: string
@@ -302,6 +353,9 @@ export type Database = {
           imported_at?: string | null
           person_ids?: string[]
           quarter: string
+          roster_confirmed_at?: string | null
+          roster_confirmed_by?: string | null
+          roster_confirmed_by_name?: string | null
           source?: string
           team: string
           unit: string
@@ -312,6 +366,9 @@ export type Database = {
           imported_at?: string | null
           person_ids?: string[]
           quarter?: string
+          roster_confirmed_at?: string | null
+          roster_confirmed_by?: string | null
+          roster_confirmed_by_name?: string | null
           source?: string
           team?: string
           unit?: string

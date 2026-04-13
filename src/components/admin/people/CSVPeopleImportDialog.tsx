@@ -215,11 +215,16 @@ export default function CSVPeopleImportDialog({
           <>
             {parseWarnings.length > 0 && (
               <div className="p-3 bg-accent border border-border rounded-lg flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-primary mt-0.5" />
-                <div>
+                <AlertTriangle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <div className="space-y-2 min-w-0">
                   {parseWarnings.map((w, i) => (
                     <p key={i} className="text-sm text-muted-foreground">{w}</p>
                   ))}
+                  <p className="text-xs text-muted-foreground border-t border-border pt-2">
+                    В колонке «Статус» число в значке — сколько таких подсказок у строки (обычно 1–2: отдельно Unit и
+                    Team). Галочка — строка совпала с юнитами и командами из инициатив. На сохранение в базу это не
+                    влияет.
+                  </p>
                 </div>
               </div>
             )}

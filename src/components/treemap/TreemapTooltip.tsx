@@ -172,6 +172,21 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
           <div class="tooltip-tags">${node.stakeholders.map(s => `<span class="tooltip-tag">${escapeHtml(s)}</span>`).join('')}</div>
         </div>`;
       }
+
+      const cmp = node.data?.adminEffortCompare;
+      if (cmp) {
+        const ef = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 1, minimumFractionDigits: 0 });
+        const money = (n: number) => formatBudget(n);
+        html += `<div class="tooltip-admin-effort-compare">`;
+        html += `<div class="tooltip-row"><span class="tooltip-label">Усилия (среднее за период)</span><span class="tooltip-value">${ef(cmp.effortBefore)}% → ${ef(cmp.effortAfter)}%</span></div>`;
+        if (showMoney) {
+          html += `<div class="tooltip-row"><span class="tooltip-label">Доля стоимости в treemap</span><span class="tooltip-value">${money(cmp.valueBefore)} → ${money(cmp.valueAfter)}</span></div>`;
+        } else {
+          html += `<div class="tooltip-row"><span class="tooltip-label">Изменение доли</span><span class="tooltip-value">есть</span></div>`;
+        }
+        html += `</div>`;
+      }
+
       return html;
     }
     

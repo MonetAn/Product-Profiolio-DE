@@ -1,7 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useRef, useCallback, useState, useEffect } from 'react';
-import { AdminDataRow, AdminQuarterData, createEmptyQuarterData } from '@/lib/adminDataManager';
+import {
+  AdminDataRow,
+  AdminQuarterData,
+  createEmptyQuarterData,
+  type GeoCostSplit,
+} from '@/lib/adminDataManager';
 import { quarterlyDataToJson } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
@@ -301,7 +306,7 @@ export function useInitiativeMutations() {
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean
+    value: string | number | boolean | GeoCostSplit | undefined
   ) => {
     const key = `${id}-quarterly-${quarter}-${field}`;
     
@@ -335,8 +340,14 @@ export function useInitiativeMutations() {
     setSyncStatus('saving');
     
     // Debounce based on field type
-    const delay = typeof value === 'boolean' ? 0 : 
-                  typeof value === 'number' ? 500 : 1000;
+    const delay =
+      field === 'geoCostSplit'
+        ? 400
+        : typeof value === 'boolean'
+          ? 0
+          : typeof value === 'number'
+            ? 500
+            : 1000;
     
     const timer = setTimeout(async () => {
       updateMutation.mutate({ 
@@ -406,6 +417,14 @@ export function useInitiativeMutations() {
     updateMutation.mutate({ id, field, value });
   }, [updateMutation]);
 
+  /** Одиночное поле строки — для сохранения черновика quick flow (ожидание завершения). */
+  const updateInitiativeFieldAsync = useCallback(
+    async (id: string, field: string, value: unknown) => {
+      await updateMutation.mutateAsync({ id, field, value });
+    },
+    [updateMutation]
+  );
+
   // Flush all pending changes immediately
   const flushPendingChanges = useCallback(() => {
     debounceTimers.current.forEach((timer, key) => {
@@ -429,6 +448,7 @@ export function useInitiativeMutations() {
     updateQuarterDataBulk,
     updateQuarterDataBulkAsync,
     immediateUpdate,
+    updateInitiativeFieldAsync,
     syncAssignments,
     
     // CRUD operations

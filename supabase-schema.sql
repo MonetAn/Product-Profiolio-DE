@@ -39,6 +39,15 @@ CREATE TABLE public.people (
   updated_by text
 );
 
+ALTER TABLE public.people
+  ADD COLUMN IF NOT EXISTS directory_source text NOT NULL DEFAULT 'import',
+  ADD COLUMN IF NOT EXISTS manual_added_by uuid,
+  ADD COLUMN IF NOT EXISTS manual_added_by_name text,
+  ADD COLUMN IF NOT EXISTS manual_review_status text,
+  ADD COLUMN IF NOT EXISTS manual_resolved_at timestamptz,
+  ADD COLUMN IF NOT EXISTS manual_resolved_by uuid,
+  ADD COLUMN IF NOT EXISTS manual_resolved_by_name text;
+
 -- person_initiative_assignments (depends on initiatives, people)
 CREATE TABLE public.person_initiative_assignments (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -98,6 +107,11 @@ CREATE TABLE public.team_quarter_snapshots (
   team text NOT NULL,
   unit text NOT NULL
 );
+
+ALTER TABLE public.team_quarter_snapshots
+  ADD COLUMN IF NOT EXISTS roster_confirmed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS roster_confirmed_by uuid,
+  ADD COLUMN IF NOT EXISTS roster_confirmed_by_name text;
 
 -- Optional: enable RLS and add policies (adjust as needed for your auth)
 ALTER TABLE public.initiatives ENABLE ROW LEVEL SECURITY;

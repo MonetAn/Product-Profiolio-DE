@@ -7,7 +7,8 @@ import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
 import { TreemapLayoutNode, AnimationType, ColorGetter, ANIMATION_DURATIONS, getEffectiveDuration, TEXT_VISIBLE_AT_RATIO } from './types';
-import { TreeNode, getSubtreeValue } from '@/lib/dataManager';
+import type { TreeNode } from '@/lib/dataManager';
+import { getSubtreeValue } from '@/lib/dataManager';
 import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import { perfMark } from '@/lib/perfDiagnostics';
 import '@/styles/treemap.css';
@@ -20,6 +21,8 @@ interface TreemapContainerProps {
   onNavigateBack?: () => void;
   canNavigateBack?: boolean;
   onInitiativeClick?: (initiativeName: string, path: string) => void;
+  /** Если задано, клик по листу с adminInitiativeRowId открывает обзор вместо стандартного peek (quick flow). */
+  onAdminInitiativeRowClick?: (rowId: string, node: TreeNode) => void;
   selectedQuarters?: string[];
   hasData?: boolean;
   onResetFilters?: () => void;
@@ -58,6 +61,7 @@ const TreemapContainer = ({
   onNavigateBack,
   canNavigateBack = false,
   onInitiativeClick,
+  onAdminInitiativeRowClick,
   selectedQuarters = [],
   hasData = false,
   onResetFilters,
@@ -362,6 +366,17 @@ const TreemapContainer = ({
       return;
     }
     
+    // Quick flow review: полный обзор по строке админ-таблицы
+    if (
+      node.data.isInitiative &&
+      node.data.adminInitiativeRowId &&
+      onAdminInitiativeRowClick
+    ) {
+      onTrackTreemapAction?.('treemap_click', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
+      onAdminInitiativeRowClick(node.data.adminInitiativeRowId, node.data);
+      return;
+    }
+
     // Initiative click → open peek modal (parent may navigate to Gantt from there)
     if (node.data.isInitiative && onInitiativeClick) {
       onTrackTreemapAction?.('treemap_click', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
@@ -398,7 +413,16 @@ const TreemapContainer = ({
       setFocusedPath(newFocusedPath);
       onFocusedPathChange?.(newFocusedPath);
     }
-  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange, onTrackTreemapAction, viewKey]);
+  }, [
+    onInitiativeClick,
+    onAdminInitiativeRowClick,
+    showTeams,
+    showInitiatives,
+    onAutoEnableTeams,
+    onFocusedPathChange,
+    onTrackTreemapAction,
+    viewKey,
+  ]);
   
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {

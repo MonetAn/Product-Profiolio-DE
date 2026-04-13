@@ -1,5 +1,6 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   RawDataRow,
   calculateBudget,
@@ -13,6 +14,7 @@ import {
   type SupportFilter
 } from '@/lib/dataManager';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
+import { cn } from '@/lib/utils';
 import '@/styles/gantt.css';
 
 interface QuarterPopupData {
@@ -49,6 +51,12 @@ interface GanttViewProps {
   costFilterMin?: number | null;
   costFilterMax?: number | null;
   costType?: 'period' | 'total';
+  /** Quick flow: в закреплённом попапе квартала — правка план/факта и пр. */
+  adminOnEditQuarter?: (adminRowId: string, quarter: string) => void;
+  /** Quick flow: в закреплённом попапе имени — карточка инициативы */
+  adminOnEditInitiativeCard?: (adminRowId: string) => void;
+  /** Quick flow только: подсветка сегментов с незаполненными обязательными полями */
+  adminTimelineQuarterWarnings?: (adminRowId: string, quarter: string) => string[];
 }
 
 const GanttView = ({
@@ -67,7 +75,10 @@ const GanttView = ({
   costSortOrder = 'none',
   costFilterMin = null,
   costFilterMax = null,
-  costType = 'period'
+  costType = 'period',
+  adminOnEditQuarter,
+  adminOnEditInitiativeCard,
+  adminTimelineQuarterWarnings,
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
   const headerTimelineRef = useRef<HTMLDivElement>(null);
@@ -76,12 +87,17 @@ const GanttView = ({
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const popupRef = useRef<HTMLDivElement>(null);
   const [quarterPopupSize, setQuarterPopupSize] = useState<{ width: number; height: number } | null>(null);
-  
+
   // Name popup state
   const [namePopup, setNamePopup] = useState<NamePopupData | null>(null);
   const [nameExpandedSections, setNameExpandedSections] = useState<Record<string, boolean>>({});
   const namePopupRef = useRef<HTMLDivElement>(null);
   const [namePopupSize, setNamePopupSize] = useState<{ width: number; height: number } | null>(null);
+
+  const timelineQuarterWarningsForRow = (row: RawDataRow, quarter: string): string[] => {
+    if (!adminTimelineQuarterWarnings || !row.adminInitiativeRowId) return [];
+    return adminTimelineQuarterWarnings(row.adminInitiativeRowId, quarter);
+  };
 
   // Measure tooltip sizes after render
   useEffect(() => {
@@ -244,7 +260,7 @@ const GanttView = ({
 
   const handleSegmentMouseMove = (e: React.MouseEvent) => {
     if (quarterPopup?.pinned) return;
-    setQuarterPopup(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+    setQuarterPopup((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : null));
   };
 
   const handleSegmentMouseLeave = () => {
@@ -254,6 +270,11 @@ const GanttView = ({
 
   const handleSegmentClick = (e: React.MouseEvent, row: RawDataRow, quarter: string) => {
     e.stopPropagation();
+    if (adminOnEditQuarter && row.adminInitiativeRowId) {
+      adminOnEditQuarter(row.adminInitiativeRowId, quarter);
+      setQuarterPopup(null);
+      return;
+    }
     setQuarterPopup({
       row,
       quarter,
@@ -330,6 +351,15 @@ const GanttView = ({
     const planLong = qData.metricPlan && qData.metricPlan.length > 100;
     const factLong = qData.metricFact && qData.metricFact.length > 100;
     const commentLong = qData.comment && qData.comment.length > 100;
+    const adminUnpinnedHover = Boolean(adminOnEditQuarter && !pinned);
+    const quarterWarnings =
+      adminTimelineQuarterWarnings && row.adminInitiativeRowId
+        ? adminTimelineQuarterWarnings(row.adminInitiativeRowId, quarter)
+        : [];
+
+    const showPlanFull = !planLong || expandedSections['plan'] || adminUnpinnedHover;
+    const showFactFull = !factLong || expandedSections['fact'] || adminUnpinnedHover;
+    const showCommentFull = !commentLong || expandedSections['comment'] || adminUnpinnedHover;
 
     // Dynamic sizing: use measured size or fallback
     const padding = 16;
@@ -367,7 +397,7 @@ const GanttView = ({
     return (
       <div
         ref={popupRef}
-        className={`gantt-quarter-popup ${pinned ? 'pinned' : ''}`}
+        className={cn('gantt-quarter-popup', pinned && 'pinned')}
         style={{
           left: posX,
           top: posY,
@@ -378,6 +408,16 @@ const GanttView = ({
           <div className="gantt-quarter-popup-title">{row.initiative}</div>
           <div className="gantt-quarter-popup-quarter">{quarter.replace('-', ' ')}</div>
         </div>
+
+        {quarterWarnings.length > 0 ? (
+          <div className="gantt-quarter-popup-admin-warnings" role="status">
+            {quarterWarnings.map((t, i) => (
+              <div key={`${i}-${t}`} className="gantt-quarter-popup-admin-warning-line">
+                {t}
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="gantt-quarter-popup-status">
           <span className={`gantt-quarter-popup-badge ${isSupport ? 'support' : 'development'}`}>
@@ -401,18 +441,16 @@ const GanttView = ({
               onClick={() => pinned && planLong && toggleSection('plan')}
             >
               План
-              {pinned && planLong && (
+              {pinned && planLong && !adminUnpinnedHover && (
                 expandedSections['plan'] 
                   ? <ChevronUp size={12} className="expand-icon" />
                   : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 
-              className={`gantt-quarter-popup-text ${!expandedSections['plan'] && planLong ? 'truncated' : ''}`}
+              className={`gantt-quarter-popup-text ${!showPlanFull && planLong ? 'truncated' : ''}`}
             >
-              {expandedSections['plan'] || !planLong 
-                ? qData.metricPlan 
-                : qData.metricPlan.slice(0, 100) + '…'}
+              {showPlanFull ? qData.metricPlan : qData.metricPlan.slice(0, 100) + '…'}
             </div>
           </div>
         )}
@@ -424,18 +462,16 @@ const GanttView = ({
               onClick={() => pinned && factLong && toggleSection('fact')}
             >
               Факт
-              {pinned && factLong && (
+              {pinned && factLong && !adminUnpinnedHover && (
                 expandedSections['fact'] 
                   ? <ChevronUp size={12} className="expand-icon" />
                   : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 
-              className={`gantt-quarter-popup-text ${!expandedSections['fact'] && factLong ? 'truncated' : ''}`}
+              className={`gantt-quarter-popup-text ${!showFactFull && factLong ? 'truncated' : ''}`}
             >
-              {expandedSections['fact'] || !factLong 
-                ? qData.metricFact 
-                : qData.metricFact.slice(0, 100) + '…'}
+              {showFactFull ? qData.metricFact : qData.metricFact.slice(0, 100) + '…'}
             </div>
           </div>
         )}
@@ -447,18 +483,16 @@ const GanttView = ({
               onClick={() => pinned && commentLong && toggleSection('comment')}
             >
               Комментарий
-              {pinned && commentLong && (
+              {pinned && commentLong && !adminUnpinnedHover && (
                 expandedSections['comment'] 
                   ? <ChevronUp size={12} className="expand-icon" />
                   : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 
-              className={`gantt-quarter-popup-text ${!expandedSections['comment'] && commentLong ? 'truncated' : ''}`}
+              className={`gantt-quarter-popup-text ${!showCommentFull && commentLong ? 'truncated' : ''}`}
             >
-              {expandedSections['comment'] || !commentLong 
-                ? qData.comment 
-                : qData.comment.slice(0, 100) + '…'}
+              {showCommentFull ? qData.comment : qData.comment.slice(0, 100) + '…'}
             </div>
           </div>
         )}
@@ -472,7 +506,25 @@ const GanttView = ({
           </div>
         )}
 
-        {!pinned && (
+        {pinned && adminOnEditQuarter && row.adminInitiativeRowId && (
+          <div className="mt-3 border-t border-border pt-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 w-full gap-1.5 text-xs"
+              onClick={() => {
+                adminOnEditQuarter(row.adminInitiativeRowId!, quarter);
+                setQuarterPopup(null);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Редактировать квартал
+            </Button>
+          </div>
+        )}
+
+        {!pinned && !adminOnEditQuarter && (
           <div className="gantt-name-popup-hint">
             Кликните для детального просмотра
           </div>
@@ -581,6 +633,24 @@ const GanttView = ({
           </div>
         )}
 
+        {pinned && adminOnEditInitiativeCard && row.adminInitiativeRowId && (
+          <div className="mt-3 border-t border-border pt-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 w-full gap-1.5 text-xs"
+              onClick={() => {
+                adminOnEditInitiativeCard(row.adminInitiativeRowId!);
+                setNamePopup(null);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Редактировать карточку
+            </Button>
+          </div>
+        )}
+
         {!pinned && (
           <div className="gantt-name-popup-hint">
             Кликните для детального просмотра
@@ -615,7 +685,7 @@ const GanttView = ({
 
           return (
             <div 
-              key={idx} 
+              key={row.adminInitiativeRowId ?? `${row.unit}|${row.team}|${row.initiative}|${idx}`} 
               ref={isHighlighted ? highlightedRef : null}
               className={`gantt-row ${isHighlighted ? 'highlighted' : ''} ${row.isTimelineStub ? 'gantt-row-is-stub' : ''}`}
             >
@@ -661,11 +731,18 @@ const GanttView = ({
 
                     const isSupport = qData.support;
                     const isOffTrack = !qData.onTrack;
+                    const segWarnings = timelineQuarterWarningsForRow(row, q);
+                    const segHasIssue = segWarnings.length > 0;
 
                     return (
                       <div
                         key={q}
-                        className={`gantt-segment ${isSupport ? 'support' : 'development'} ${isOffTrack ? 'off-track' : ''}`}
+                        className={cn(
+                          'gantt-segment',
+                          isSupport ? 'support' : 'development',
+                          isOffTrack && 'off-track',
+                          segHasIssue && 'gantt-segment-admin-issue'
+                        )}
                         style={{
                           left: qIdx * quarterWidth + 4,
                           width: quarterWidth - 8
@@ -685,6 +762,7 @@ const GanttView = ({
                 <div className="gantt-quarter-details">
                   {selectedQuarters.map((q) => {
                     const qData = row.quarterlyData[q];
+
                     if (!qData || qData.budget === 0) {
                       return <div key={q} className="gantt-quarter-detail" style={{ minWidth: quarterWidth }} />;
                     }

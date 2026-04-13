@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ExternalLink, Info, Check, Pencil } from 'lucide-react';
 import {
   Dialog,
@@ -27,7 +27,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType, validateTeamQuarterEffort, quarterRequiresPlanFact } from '@/lib/adminDataManager';
+import {
+  AdminDataRow,
+  AdminQuarterData,
+  INITIATIVE_TYPES,
+  STAKEHOLDERS_LIST,
+  validateTeamQuarterEffort,
+  quarterRequiresPlanFact,
+  quarterRequiresMetricFact,
+  type GeoCostSplit,
+} from '@/lib/adminDataManager';
+import { useMarketCountries } from '@/hooks/useMarketCountries';
+import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
+import { compareQuarters } from '@/lib/quarterUtils';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -54,16 +66,64 @@ function useBlurField<T extends string | number>(
   return { value: localValue, onChange: handleChange, onBlur: handleBlur };
 }
 
+export type QuarterFieldsVariant = 'default' | 'quickTimeline';
+
 interface QuarterFieldsProps {
   initiativeId: string;
   quarter: string;
   qData: AdminQuarterData;
   allData: AdminDataRow[];
   initiative: AdminDataRow;
-  onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
+  onQuarterDataChange: (
+    id: string,
+    quarter: string,
+    field: keyof AdminQuarterData,
+    value: string | number | boolean | GeoCostSplit | undefined
+  ) => void;
+  /** Полный режим (таблица) или только метрики/on-track + поддержка по периоду (шаг таймлайна quick flow). */
+  variant?: QuarterFieldsVariant;
+  /** Кварталы сценария quick flow — для вопроса «с какого квартала на поддержке». */
+  scenarioQuarters?: string[];
 }
 
-const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQuarterDataChange }: QuarterFieldsProps) => {
+function supportScenarioSelectValue(row: AdminDataRow, sortedQs: string[]): string {
+  if (sortedQs.length === 0) return 'never';
+  const flags = sortedQs.map((q) => row.quarterlyData[q]?.support === true);
+  if (!flags.some(Boolean)) return 'never';
+  if (flags.every(Boolean)) return 'all';
+  const firstTrue = flags.findIndex(Boolean);
+  const fromQ = sortedQs[firstTrue];
+  const expected = sortedQs.map((q) => compareQuarters(q, fromQ) >= 0);
+  const matches = expected.every((e, i) => e === flags[i]);
+  return matches ? `from|${fromQ}` : 'mixed';
+}
+
+function applySupportScenario(
+  initiativeId: string,
+  sortedQs: string[],
+  mode: 'never' | 'all' | 'from',
+  fromQuarter: string | undefined,
+  onQuarterDataChange: QuarterFieldsProps['onQuarterDataChange']
+) {
+  for (const q of sortedQs) {
+    let support = false;
+    if (mode === 'all') support = true;
+    else if (mode === 'from' && fromQuarter) support = compareQuarters(q, fromQuarter) >= 0;
+    onQuarterDataChange(initiativeId, q, 'support', support);
+  }
+}
+
+const QuarterFields = ({
+  initiativeId,
+  quarter,
+  qData,
+  allData,
+  initiative,
+  onQuarterDataChange,
+  variant = 'default',
+  scenarioQuarters = [],
+}: QuarterFieldsProps) => {
+  const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
   const save = (field: keyof AdminQuarterData) => (value: string | number | boolean) =>
     onQuarterDataChange(initiativeId, quarter, field, value);
 
@@ -76,13 +136,183 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
 
   const totalCost = (qData.cost ?? 0) + qData.otherCosts;
   const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
-  const requiresPlanFact = quarterRequiresPlanFact(qData);
+  const requiresMetricPlan = quarterRequiresPlanFact(qData);
+  const requiresMetricFact = quarterRequiresMetricFact(qData, quarter);
+
+  const sortedScenarioQs = useMemo(
+    () => [...scenarioQuarters].filter(Boolean).sort(compareQuarters),
+    [scenarioQuarters]
+  );
+
+  const scenarioSupportFingerprint = useMemo(
+    () =>
+      sortedScenarioQs.map((q) => (initiative.quarterlyData[q]?.support === true ? '1' : '0')).join(''),
+    [initiative.quarterlyData, sortedScenarioQs]
+  );
+
+  const supportSelectValue = useMemo(
+    () => supportScenarioSelectValue(initiative, sortedScenarioQs),
+    [initiative, sortedScenarioQs, scenarioSupportFingerprint]
+  );
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K ₽`;
-    return `${value} ₽`;
+    return `${Math.round(value).toLocaleString('ru-RU')} ₽`;
   };
+
+  const formatCurrencyFull = (value: number) =>
+    `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+
+  if (variant === 'quickTimeline') {
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-col gap-4 rounded-xl border border-border/80 bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded-lg bg-primary/10 px-3 py-1.5 text-lg font-semibold tabular-nums text-primary">
+              {quarter}
+            </span>
+            {qData.support ? (
+              <Badge variant="secondary" className="text-xs">
+                Поддержка
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+                Разработка
+              </Badge>
+            )}
+            <div className="text-sm text-muted-foreground">
+              Сумма по кварталу:{' '}
+              <span className="font-semibold tabular-nums text-foreground">{formatCurrencyFull(totalCost)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-lg border border-primary/25 bg-primary/[0.06] px-4 py-3 dark:bg-primary/10">
+            <Label htmlFor={`qt-ontrack-${initiativeId}-${quarter}`} className="text-sm font-medium">
+              On-track
+            </Label>
+            <Switch
+              id={`qt-ontrack-${initiativeId}-${quarter}`}
+              checked={qData.onTrack}
+              onCheckedChange={(checked) => onQuarterDataChange(initiativeId, quarter, 'onTrack', checked)}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-muted/25 p-4 dark:bg-muted/15">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Стоимость и усилия
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Коэффициент трудозатрат</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{qData.effortCoefficient ?? 0}%</p>
+              <p
+                className={`mt-1 text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-400'}`}
+              >
+                Команда {initiative.team} в {quarter}: {teamEffort.total}% из 100%
+                {!teamEffort.isValid ? ' — превышение' : ''}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Стоимость (из выгрузки)</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrencyFull(qData.cost ?? 0)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Доп. расходы</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrencyFull(qData.otherCosts ?? 0)}</p>
+            </div>
+          </div>
+        </div>
+
+        {sortedScenarioQs.length > 0 ? (
+          <div className="rounded-xl border border-border/60 bg-muted/25 p-4 dark:bg-muted/15">
+            <h3 className="text-sm font-semibold leading-snug text-foreground">
+              В каком квартале инициатива переходит на поддержку?
+            </h3>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Действует на все кварталы выбранного в сценарии периода:{' '}
+              <span className="font-medium text-foreground">{sortedScenarioQs.join(' · ')}</span>
+            </p>
+            <Select
+              value={supportSelectValue === 'mixed' ? undefined : supportSelectValue}
+              onValueChange={(v) => {
+                if (v === 'never') applySupportScenario(initiativeId, sortedScenarioQs, 'never', undefined, onQuarterDataChange);
+                else if (v === 'all') applySupportScenario(initiativeId, sortedScenarioQs, 'all', undefined, onQuarterDataChange);
+                else if (v.startsWith('from|')) {
+                  const fq = v.slice(5);
+                  applySupportScenario(initiativeId, sortedScenarioQs, 'from', fq, onQuarterDataChange);
+                }
+              }}
+            >
+              <SelectTrigger className="mt-3 w-full max-w-md">
+                <SelectValue
+                  placeholder={
+                    supportSelectValue === 'mixed'
+                      ? 'Сейчас настройка смешанная — выберите вариант'
+                      : 'Выберите вариант'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="never">Нет поддержки в этом периоде (все кварталы — разработка)</SelectItem>
+                <SelectItem value="all">На поддержке во всех кварталах периода</SelectItem>
+                {sortedScenarioQs.map((q) => (
+                  <SelectItem key={q} value={`from|${q}`}>
+                    Переход на поддержку с {q} (и далее по периоду)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        <div className="rounded-xl border-2 border-primary/25 bg-primary/[0.04] p-4 shadow-sm dark:border-primary/35 dark:bg-primary/[0.08]">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">План и факт метрики</p>
+          <div className="mt-3 grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              {requiresMetricPlan ? (
+                <RequiredLabel className="text-xs">План метрики</RequiredLabel>
+              ) : (
+                <Label className="text-xs text-muted-foreground">План метрики</Label>
+              )}
+              <Textarea
+                value={metricPlan.value}
+                onChange={(e) => metricPlan.onChange(e.target.value)}
+                onBlur={metricPlan.onBlur}
+                placeholder="Планируемое значение метрики..."
+                className={`min-h-[140px] resize-y ${requiresMetricPlan && !qData.metricPlan?.trim() ? 'ring-2 ring-primary/55' : ''}`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              {requiresMetricFact ? (
+                <RequiredLabel className="text-xs">Факт метрики</RequiredLabel>
+              ) : (
+                <Label className="text-xs text-muted-foreground">Факт метрики</Label>
+              )}
+              <Textarea
+                value={metricFact.value}
+                onChange={(e) => metricFact.onChange(e.target.value)}
+                onBlur={metricFact.onBlur}
+                placeholder="Фактическое значение метрики..."
+                className={`min-h-[140px] resize-y ${requiresMetricFact && !qData.metricFact?.trim() ? 'ring-2 ring-primary/55' : ''}`}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">Комментарий</Label>
+          <Textarea
+            value={comment.value}
+            onChange={(e) => comment.onChange(e.target.value)}
+            onBlur={comment.onBlur}
+            placeholder="По желанию — контекст по кварталу…"
+            className="min-h-[72px] resize-y"
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -162,7 +392,7 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
 
         {/* Metric Plan */}
         <div className="space-y-1">
-          {requiresPlanFact ? (
+          {requiresMetricPlan ? (
             <RequiredLabel className="text-xs text-muted-foreground">План метрики</RequiredLabel>
           ) : (
             <Label className="text-xs text-muted-foreground">План метрики</Label>
@@ -172,13 +402,13 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
             onChange={(e) => metricPlan.onChange(e.target.value)}
             onBlur={metricPlan.onBlur}
             placeholder="Планируемое значение метрики..."
-            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricPlan?.trim() ? 'ring-2 ring-primary/55' : ''}`}
+            className={`min-h-[120px] resize-y ${requiresMetricPlan && !qData.metricPlan?.trim() ? 'ring-2 ring-primary/55' : ''}`}
           />
         </div>
 
         {/* Metric Fact */}
         <div className="space-y-1">
-          {requiresPlanFact ? (
+          {requiresMetricFact ? (
             <RequiredLabel className="text-xs text-muted-foreground">Факт метрики</RequiredLabel>
           ) : (
             <Label className="text-xs text-muted-foreground">Факт метрики</Label>
@@ -188,7 +418,7 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
             onChange={(e) => metricFact.onChange(e.target.value)}
             onBlur={metricFact.onBlur}
             placeholder="Фактическое значение метрики..."
-            className={`min-h-[120px] resize-y ${requiresPlanFact && !qData.metricFact?.trim() ? 'ring-2 ring-primary/55' : ''}`}
+            className={`min-h-[120px] resize-y ${requiresMetricFact && !qData.metricFact?.trim() ? 'ring-2 ring-primary/55' : ''}`}
           />
         </div>
       </div>
@@ -204,6 +434,21 @@ const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQu
           className="min-h-[80px] resize-y"
         />
       </div>
+
+      {(qData.cost ?? 0) > 0 && marketCountries.length > 0 ? (
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <Label className="text-xs font-medium text-muted-foreground">
+            Распределение стоимости по странам и кластерам
+          </Label>
+          <GeoCostSplitEditor
+            cost={qData.cost ?? 0}
+            value={qData.geoCostSplit}
+            countries={marketCountries}
+            onChange={(next) => onQuarterDataChange(initiativeId, quarter, 'geoCostSplit', next)}
+            bulkAddQuarterLabel={quarter}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -215,7 +460,14 @@ interface InitiativeDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => void;
-  onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
+  onQuarterDataChange: (
+    id: string,
+    quarter: string,
+    field: keyof AdminQuarterData,
+    value: string | number | boolean | GeoCostSplit | undefined
+  ) => void;
+  /** Если false — только поля карточки (без блока кварталов), для quick flow поверх таймлайна */
+  showQuarterSection?: boolean;
 }
 
 const InitiativeDetailDialog = ({
@@ -226,6 +478,7 @@ const InitiativeDetailDialog = ({
   onOpenChange,
   onDataChange,
   onQuarterDataChange,
+  showQuarterSection = true,
 }: InitiativeDetailDialogProps) => {
   const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
 
@@ -392,42 +645,47 @@ const InitiativeDetailDialog = ({
             />
           </div>
 
-          <Separator />
+          {showQuarterSection ? (
+            <>
+              <Separator />
 
-          {/* Quarters */}
-          <div className="space-y-4">
-            <Label className="text-sm font-medium">Квартальные данные</Label>
-            <div className="space-y-4">
-              {quarters.map((quarter) => {
-                const qData = initiative.quarterlyData[quarter] || {
-                  cost: 0,
-                  otherCosts: 0,
-                  support: false,
-                  onTrack: true,
-                  metricPlan: '',
-                  metricFact: '',
-                  comment: '',
-                  effortCoefficient: 0
-                };
+              {/* Quarters */}
+              <div className="space-y-4">
+                <Label className="text-sm font-medium">Квартальные данные</Label>
+                <div className="space-y-4">
+                  {quarters.map((quarter) => {
+                    const qData = initiative.quarterlyData[quarter] || {
+                      cost: 0,
+                      otherCosts: 0,
+                      support: false,
+                      onTrack: true,
+                      metricPlan: '',
+                      metricFact: '',
+                      comment: '',
+                      effortCoefficient: 0
+                    };
 
-                return (
-                  <QuarterFields
-                    key={quarter}
-                    initiativeId={initiative.id}
-                    quarter={quarter}
-                    qData={qData}
-                    allData={allData}
-                    initiative={initiative}
-                    onQuarterDataChange={onQuarterDataChange}
-                  />
-                );
-              })}
-            </div>
-          </div>
+                    return (
+                      <QuarterFields
+                        key={quarter}
+                        initiativeId={initiative.id}
+                        quarter={quarter}
+                        qData={qData}
+                        allData={allData}
+                        initiative={initiative}
+                        onQuarterDataChange={onQuarterDataChange}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
   );
 };
 
+export { QuarterFields };
 export default InitiativeDetailDialog;

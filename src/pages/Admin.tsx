@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Upload, ClipboardList, AlertCircle, RefreshCw } from 'lucide-react';
+import { Upload, ClipboardList, AlertCircle, RefreshCw, ArrowLeft, ChevronRight } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +27,9 @@ import {
   createEmptyQuarterData,
   AdminDataRow,
   AdminQuarterData,
-  InitiativeType
+  InitiativeType,
+  type GeoCostSplit,
+  stakeholdersListFromGeoSplit,
 } from '@/lib/adminDataManager';
 import {
   readQuickTeamQueue,
@@ -37,15 +39,24 @@ import {
   type QuickTeamQueueState,
 } from '@/lib/adminQuickTeamQueue';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
+import { useMarketCountries, buildCountryIdToClusterMap } from '@/hooks/useMarketCountries';
 import { useAccess } from '@/hooks/useAccess';
 import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
 import { useCSVExport } from '@/hooks/useCSVExport';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPreviousQuarter, getNextQuarter } from '@/lib/quarterUtils';
+import {
+  getNextQuarter,
+  compareQuarters,
+  parseQuickQsParam,
+  getQuartersFromNextThroughCalendarYearEnd,
+} from '@/lib/quarterUtils';
 import AdminQuickFlow from '@/components/admin/AdminQuickFlow';
 import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
 import { AdminQuickFlowSetupScreen } from '@/components/admin/AdminQuickFlowSetupScreen';
+import { AdminQuickFlowTeamQuarterPicker } from '@/components/admin/AdminQuickFlowTeamQuarterPicker';
+import { AdminQuickFlowRosterStep } from '@/components/admin/AdminQuickFlowRosterStep';
+import { AdminQuickFlowStepTrack } from '@/components/admin/AdminQuickFlowStepTrack';
 import {
   ScenarioFootstepsIllustration,
   ScenarioTableIllustrationSlot,
@@ -53,22 +64,23 @@ import {
 import { GoogleSheetsSyncStrip } from '@/components/admin/GoogleSheetsSyncStrip';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
+/** Полоса Google Sheets под хедером: выключена, логика в компоненте и хендлерах сохранена. */
+const SHOW_GOOGLE_SHEETS_SYNC_STRIP_UI = false;
+
 type InitiativesScreen =
   | 'start'
+  | 'quickSetupContext'
+  | 'quickRosterPreflight'
+  | 'quickPickQuarters'
   | 'unitSummary'
   | 'quickStep1'
   | 'quickStep2'
   | 'quickStep3'
+  | 'quickStep4'
+  | 'quickStep5'
+  | 'quickStep6'
+  | 'quickStep7'
   | 'fullTable';
-
-function getPreviousQuarterFromTarget(targetQuarter: string): string {
-  const match = targetQuarter.match(/^(\d{4})-Q([1-4])$/);
-  if (!match) return getPreviousQuarter();
-  const year = Number(match[1]);
-  const quarter = Number(match[2]);
-  if (quarter === 1) return `${year - 1}-Q4`;
-  return `${year}-Q${quarter - 1}`;
-}
 
 const Admin = () => {
   const { toast } = useToast();
@@ -79,6 +91,11 @@ const Admin = () => {
   // Data from Supabase
   const { data: rawData = [], isLoading, error, refetch } = useInitiatives();
   const quarters = useQuarters(rawData);
+  const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
+  const countryIdToClusterKey = useMemo(
+    () => buildCountryIdToClusterMap(marketCountries),
+    [marketCountries]
+  );
   
   // Mutations
   const { 
@@ -86,6 +103,7 @@ const Admin = () => {
     updateQuarterData, 
     updateQuarterDataBulk,
     updateQuarterDataBulkAsync,
+    updateInitiativeFieldAsync,
     createInitiative, 
     deleteInitiative,
     syncAssignments,
@@ -95,7 +113,10 @@ const Admin = () => {
   } = useInitiativeMutations();
 
   // CSV Export
-  const { exportAll, exportFiltered } = useCSVExport({ quarters });
+  const { exportAll, exportFiltered, exportGeoSplitAll, exportGeoSplitFiltered } = useCSVExport({
+    quarters,
+    marketCountries,
+  });
 
   // Filter state from URL
   const [searchParams, setSearchParams] = useSearchParams();
@@ -120,18 +141,58 @@ const Admin = () => {
   const hideUnitTeamColumns = selectedUnits.length > 0;
 
   const isQuickMode = searchParams.get('mode') === 'quick';
-  const quickQuarterFromUrl = searchParams.get('quickQuarter');
+  const quickQsParam = searchParams.get('quickQs');
   const canShowQuick = hasData && !needsSelection && !onlyUnitSelected;
-  const quickSelectedQuarter = useMemo(() => {
-    const qFromQueue = quickTeamQueue?.quarter?.trim();
-    if (qFromQueue) return qFromQueue;
-    if (quickQuarterFromUrl?.trim()) return quickQuarterFromUrl.trim();
-    return getNextQuarter();
-  }, [quickTeamQueue?.quarter, quickQuarterFromUrl]);
-  const quickSelectedPreviousQuarter = useMemo(
-    () => getPreviousQuarterFromTarget(quickSelectedQuarter),
-    [quickSelectedQuarter]
-  );
+
+  const currentQueueTeam =
+    quickTeamQueue && quickTeamQueue.teams.length > 0
+      ? quickTeamQueue.teams[quickTeamQueue.currentIndex] ?? ''
+      : '';
+
+  const quickFillQuarters = useMemo(() => {
+    if (quickTeamQueue && currentQueueTeam) {
+      const fromMap = quickTeamQueue.quartersByTeam[currentQueueTeam];
+      if (fromMap && fromMap.length > 0) {
+        return [...fromMap].filter((q) => quarters.includes(q)).sort(compareQuarters);
+      }
+      const fromUrl = parseQuickQsParam(quickQsParam).filter((q) => quarters.includes(q));
+      if (fromUrl.length > 0) return [...fromUrl].sort(compareQuarters);
+      return [];
+    }
+    const nq = getNextQuarter();
+    if (quarters.includes(nq)) return [nq];
+    if (quarters.length > 0) return [[...quarters].sort(compareQuarters).at(-1)!];
+    return [nq];
+  }, [quickTeamQueue, currentQueueTeam, quarters, quickQsParam]);
+
+  /** Шаг коэффициентов в AdminQuickFlow: 1 если состав уже пройден в очереди, иначе 2 (после встроенного состава). */
+  const suppressRosterInQuickFlow = Boolean(quickTeamQueue?.teams.length);
+  const coeffQuickStepIndex = suppressRosterInQuickFlow ? 1 : 2;
+
+  const needsRosterPreflight =
+    isQuickMode &&
+    canShowQuick &&
+    !!quickTeamQueue &&
+    quickTeamQueue.teams.length > 0 &&
+    quickFillQuarters.length === 0 &&
+    !quickTeamQueue.rosterPreflightDoneByTeam?.[currentQueueTeam];
+
+  const needsTeamQuarterPick =
+    isQuickMode &&
+    canShowQuick &&
+    !!quickTeamQueue &&
+    quickTeamQueue.teams.length > 0 &&
+    quickFillQuarters.length === 0 &&
+    !!quickTeamQueue.rosterPreflightDoneByTeam?.[currentQueueTeam];
+
+  /** С очередью состав вынесен до выбора кварталов → на один шаг меньше, чем в одиночном quick. */
+  const quickFlowMaxInnerWhenQueued = isAdmin ? 6 : 5;
+  const quickFlowMaxInner = quickTeamQueue?.teams.length
+    ? quickFlowMaxInnerWhenQueued
+    : isAdmin
+      ? 7
+      : 6;
+
   const reducedMotion = useReducedMotion();
 
   // UI state
@@ -140,16 +201,32 @@ const Admin = () => {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [createdInQuickSession, setCreatedInQuickSession] = useState<string[]>([]);
   const [showQuickSetup, setShowQuickSetup] = useState(false);
+  const [quickSetupTeamCount, setQuickSetupTeamCount] = useState(0);
   const [queueActionLoading, setQueueActionLoading] = useState(false);
   const [quickFillInitiativeId, setQuickFillInitiativeId] = useState<string | null>(null);
+  const [teamQuarterPickSelection, setTeamQuarterPickSelection] = useState<string[]>([]);
   const [quickDraftPatches, setQuickDraftPatches] = useState<Map<string, Record<string, Partial<AdminQuarterData>>>>(new Map());
+  type QuickFlowRowPatch = Partial<
+    Pick<
+      AdminDataRow,
+      'initiative' | 'initiativeType' | 'stakeholdersList' | 'description' | 'documentationLink' | 'isTimelineStub'
+    >
+  >;
+  const [quickRowPatches, setQuickRowPatches] = useState<Map<string, QuickFlowRowPatch>>(new Map());
   const [isSavingQuickDraft, setIsSavingQuickDraft] = useState(false);
   const [exitConfirmState, setExitConfirmState] = useState<{ onProceed: () => void } | null>(null);
-  const [quickStep, setQuickStep] = useState<1 | 2 | 3>(1);
+  const [quickStep, setQuickStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
+  const prevIsQuickModeRef = useRef(false);
 
-  // Reset quick step when entering quick mode
+  // Сбрасываем шаг только при **входе** в quick mode, а не при каждом canShowQuick === true.
+  // Иначе кратковременный canShowQuick === false (рефетч без данных, мигание onlyUnitSelected и т.п.)
+  // снова даёт true → эффект дёргал setQuickStep(1) и экран на миг показывал шаг 1 (выбор таблица / по шагам).
   useEffect(() => {
-    if (isQuickMode && canShowQuick) setQuickStep(1);
+    const wasQuick = prevIsQuickModeRef.current;
+    prevIsQuickModeRef.current = isQuickMode;
+    if (isQuickMode && !wasQuick && canShowQuick) {
+      setQuickStep(1);
+    }
   }, [isQuickMode, canShowQuick]);
 
   useEffect(() => {
@@ -164,32 +241,188 @@ const Admin = () => {
     });
   }, [isQuickMode]);
 
+  useEffect(() => {
+    if (!showQuickSetup) setQuickSetupTeamCount(0);
+  }, [showQuickSetup]);
+
+  const quickFlowLinearProgress = useMemo(() => {
+    if (!hasData) return null;
+    if (needsSelection && showQuickSetup) {
+      const total =
+        quickSetupTeamCount > 0
+          ? 1 + quickSetupTeamCount * (2 + quickFlowMaxInnerWhenQueued)
+          : undefined;
+      return { current: 1, total };
+    }
+    if (!isQuickMode || !canShowQuick) return null;
+    if (!quickTeamQueue) {
+      return { current: quickStep, total: quickFlowMaxInner };
+    }
+    const n = quickTeamQueue.teams.length;
+    if (n === 0) {
+      return { current: quickStep, total: quickFlowMaxInner };
+    }
+    const perTeam = 2 + quickFlowMaxInner;
+    const total = 1 + n * perTeam;
+    const idx = quickTeamQueue.currentIndex;
+    if (needsRosterPreflight) {
+      return { current: 2 + idx * perTeam, total };
+    }
+    if (needsTeamQuarterPick) {
+      return { current: 3 + idx * perTeam, total };
+    }
+    return {
+      current: 3 + idx * perTeam + quickStep,
+      total,
+    };
+  }, [
+    hasData,
+    needsSelection,
+    showQuickSetup,
+    quickSetupTeamCount,
+    isQuickMode,
+    canShowQuick,
+    quickTeamQueue,
+    needsRosterPreflight,
+    needsTeamQuarterPick,
+    quickStep,
+    quickFlowMaxInner,
+    quickFlowMaxInnerWhenQueued,
+  ]);
+
   // Current Initiatives screen and previous (for Back button)
   const currentInitiativesScreen = useMemo((): InitiativesScreen | null => {
     if (!hasData) return null;
-    if (needsSelection) return 'start';
+    if (needsSelection) {
+      if (showQuickSetup) return 'quickSetupContext';
+      return 'start';
+    }
     if (onlyUnitSelected) return 'unitSummary';
     if (isQuickMode && canShowQuick) {
+      if (needsRosterPreflight) return 'quickRosterPreflight';
+      if (needsTeamQuarterPick) return 'quickPickQuarters';
+      if (quickStep === 7) return 'quickStep7';
+      if (quickStep === 6) return 'quickStep6';
+      if (quickStep === 5) return 'quickStep5';
+      if (quickStep === 4) return 'quickStep4';
       if (quickStep === 3) return 'quickStep3';
       if (quickStep === 2) return 'quickStep2';
       return 'quickStep1';
     }
     return 'fullTable';
-  }, [hasData, needsSelection, onlyUnitSelected, isQuickMode, canShowQuick, quickStep]);
+  }, [
+    hasData,
+    needsSelection,
+    showQuickSetup,
+    onlyUnitSelected,
+    isQuickMode,
+    canShowQuick,
+    needsRosterPreflight,
+    needsTeamQuarterPick,
+    quickStep,
+  ]);
 
   const previousInitiativesScreen = useMemo((): InitiativesScreen | null => {
     const current = currentInitiativesScreen;
     if (!current) return null;
     switch (current) {
-      case 'fullTable': case 'quickStep1': case 'unitSummary': return 'start';
-      case 'quickStep3': return 'quickStep2';
-      case 'quickStep2': return 'quickStep1';
-      case 'start': return null;
-      default: return null;
+      case 'fullTable':
+      case 'unitSummary':
+        return 'start';
+      case 'quickSetupContext':
+        return 'start';
+      case 'quickRosterPreflight':
+        return 'quickSetupContext';
+      case 'quickPickQuarters':
+        return 'quickRosterPreflight';
+      case 'quickStep1':
+        return quickTeamQueue ? 'quickPickQuarters' : 'start';
+      case 'quickStep7':
+        return 'quickStep6';
+      case 'quickStep6':
+        return 'quickStep5';
+      case 'quickStep5':
+        return 'quickStep4';
+      case 'quickStep4':
+        return 'quickStep3';
+      case 'quickStep3':
+        return 'quickStep2';
+      case 'quickStep2':
+        return 'quickStep1';
+      case 'start':
+        return null;
+      default:
+        return null;
     }
-  }, [currentInitiativesScreen]);
+  }, [currentInitiativesScreen, quickTeamQueue]);
+
+  const handleBackFromQuickPickQuarters = useCallback(() => {
+    clearQuickTeamQueue();
+    setQuickTeamQueue(null);
+    setShowQuickSetup(true);
+    setSearchParams((prevParams) => {
+      const p = new URLSearchParams(prevParams);
+      p.delete('mode');
+      p.delete('quickQs');
+      p.delete('units');
+      p.delete('teams');
+      p.delete('table');
+      p.delete('quickQuarterFrom');
+      p.delete('quickQuarterTo');
+      p.delete('quickQuarter');
+      return p;
+    });
+  }, [setSearchParams]);
 
   const handleInitiativesBack = useCallback(() => {
+    const cur = currentInitiativesScreen;
+
+    if (cur === 'quickSetupContext') {
+      setShowQuickSetup(false);
+      return;
+    }
+    if (cur === 'quickRosterPreflight') {
+      handleBackFromQuickPickQuarters();
+      return;
+    }
+    if (cur === 'quickPickQuarters') {
+      setQuickTeamQueue((prev) => {
+        if (!prev) return prev;
+        const team = prev.teams[prev.currentIndex];
+        if (!team) return prev;
+        const next: QuickTeamQueueState = {
+          ...prev,
+          rosterPreflightDoneByTeam: { ...prev.rosterPreflightDoneByTeam, [team]: false },
+        };
+        writeQuickTeamQueue(next);
+        return next;
+      });
+      setSearchParams((prevParams) => {
+        const p = new URLSearchParams(prevParams);
+        p.delete('quickQs');
+        return p;
+      });
+      return;
+    }
+    if (cur === 'quickStep1' && quickTeamQueue) {
+      const team = quickTeamQueue.teams[quickTeamQueue.currentIndex];
+      setQuickDraftPatches(new Map());
+      setQuickRowPatches(new Map());
+      setQuickTeamQueue((q) => {
+        if (!q || !team) return q;
+        const next = { ...q, quartersByTeam: { ...q.quartersByTeam } };
+        delete next.quartersByTeam[team];
+        writeQuickTeamQueue(next);
+        return next;
+      });
+      setSearchParams((prevParams) => {
+        const p = new URLSearchParams(prevParams);
+        p.delete('quickQs');
+        return p;
+      });
+      return;
+    }
+
     const prev = previousInitiativesScreen;
     if (prev === null) {
       navigate('/');
@@ -205,8 +438,28 @@ const Admin = () => {
         p.delete('teams');
         p.delete('mode');
         p.delete('table');
+        p.delete('quickQuarterFrom');
+        p.delete('quickQuarterTo');
+        p.delete('quickQuarter');
+        p.delete('quickQs');
         return p;
       });
+      return;
+    }
+    if (prev === 'quickStep6') {
+      setQuickStep(6);
+      return;
+    }
+    if (prev === 'quickStep5') {
+      setQuickStep(5);
+      return;
+    }
+    if (prev === 'quickStep4') {
+      setQuickStep(4);
+      return;
+    }
+    if (prev === 'quickStep3') {
+      setQuickStep(3);
       return;
     }
     if (prev === 'quickStep2') {
@@ -216,7 +469,14 @@ const Admin = () => {
     if (prev === 'quickStep1') {
       setQuickStep(1);
     }
-  }, [previousInitiativesScreen, navigate, setSearchParams]);
+  }, [
+    currentInitiativesScreen,
+    previousInitiativesScreen,
+    quickTeamQueue,
+    handleBackFromQuickPickQuarters,
+    navigate,
+    setSearchParams,
+  ]);
 
   // Apply draft patches to rows (quick flow only)
   const applyQuickDraftPatches = useCallback((
@@ -235,12 +495,32 @@ const Admin = () => {
     });
   }, []);
 
-  const quickDisplayData = useMemo(
-    () => applyQuickDraftPatches(filteredData, quickDraftPatches),
-    [filteredData, quickDraftPatches, applyQuickDraftPatches]
+  const applyQuickRowPatches = useCallback((rows: AdminDataRow[], patches: Map<string, QuickFlowRowPatch>) => {
+    if (patches.size === 0) return rows;
+    return rows.map((row) => {
+      const p = patches.get(row.id);
+      return p ? { ...row, ...p } : row;
+    });
+  }, []);
+
+  const quickDisplayData = useMemo(() => {
+    const withRow = applyQuickRowPatches(filteredData, quickRowPatches);
+    return applyQuickDraftPatches(withRow, quickDraftPatches);
+  }, [filteredData, quickDraftPatches, quickRowPatches, applyQuickDraftPatches, applyQuickRowPatches]);
+
+  const handleQuickInitiativeDraftChange = useCallback(
+    (id: string, field: keyof QuickFlowRowPatch, value: string | string[] | boolean) => {
+      setQuickRowPatches((prev) => {
+        const next = new Map(prev);
+        const cur = next.get(id) ?? {};
+        next.set(id, { ...cur, [field]: value } as QuickFlowRowPatch);
+        return next;
+      });
+    },
+    []
   );
 
-  /** Кварталы, где в черновике менялись коэффициенты усилий (для шага 3: лист vs база). */
+  /** Кварталы, где в черновике менялись коэффициенты усилий (для шага 4: лист vs база). */
   const quickDirtyEffortQuarters = useMemo(() => {
     const s = new Set<string>();
     for (const [, byQ] of quickDraftPatches) {
@@ -253,11 +533,53 @@ const Admin = () => {
     return Array.from(s);
   }, [quickDraftPatches]);
 
+  /** Следующий квартал — Q4 того же года: для предупреждения «не меняли %» при Далее (текущий календарный не входит). */
+  const quickPlanningEffortQuarters = useMemo(
+    () => getQuartersFromNextThroughCalendarYearEnd(quarters),
+    [quarters]
+  );
+
+  const quickCoeffBaselineSnapshotKey = useMemo(
+    () =>
+      [
+        selectedUnits.join('\u001f'),
+        selectedTeams.join('\u001f'),
+        String(quickTeamQueue?.currentIndex ?? -1),
+        quickTeamQueue?.unit ?? '',
+        currentQueueTeam,
+        quickFillQuarters.join(','),
+      ].join('|'),
+    [
+      selectedUnits,
+      selectedTeams,
+      quickTeamQueue?.currentIndex,
+      quickTeamQueue?.unit,
+      currentQueueTeam,
+      quickFillQuarters,
+    ]
+  );
+
+  /**
+   * Снимок строк команды при первом входе на шаг «коэффициенты» (до черновика).
+   * Новые инициативы в сеансе в «до» не попадают; при смене ключа (команда/кварталы) — новый снимок.
+   */
+  const quickCoefficientsBaselineStore = useRef<{ key: string; rows: AdminDataRow[] } | null>(null);
+  if (!isQuickMode || !canShowQuick || needsTeamQuarterPick || needsRosterPreflight) {
+    quickCoefficientsBaselineStore.current = null;
+  } else if (quickStep === coeffQuickStepIndex) {
+    const k = quickCoeffBaselineSnapshotKey;
+    if (!quickCoefficientsBaselineStore.current || quickCoefficientsBaselineStore.current.key !== k) {
+      quickCoefficientsBaselineStore.current = { key: k, rows: structuredClone(filteredData) };
+    }
+  }
+  const quickCoefficientsBaselineRows =
+    quickCoefficientsBaselineStore.current?.rows ?? filteredData;
+
   const handleQuickDraftChange = useCallback((
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean
+    value: string | number | boolean | GeoCostSplit | undefined
   ) => {
     setQuickDraftPatches((prev) => {
       const next = new Map(prev);
@@ -268,8 +590,28 @@ const Admin = () => {
     });
   }, []);
 
+  const handleQuickGeoCostSplitDraft = useCallback(
+    (id: string, quarter: string, split: GeoCostSplit | undefined) => {
+      handleQuickDraftChange(id, quarter, 'geoCostSplit', split);
+      setQuickRowPatches((prev) => {
+        const next = new Map(prev);
+        const cur = next.get(id) ?? {};
+        if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
+          next.set(id, { ...cur, stakeholdersList: sh });
+        } else {
+          const { stakeholdersList: _drop, ...rest } = cur;
+          if (Object.keys(rest).length > 0) next.set(id, rest);
+          else next.delete(id);
+        }
+        return next;
+      });
+    },
+    [handleQuickDraftChange, countryIdToClusterKey]
+  );
+
   const handleSaveQuickDraft = useCallback(async (opts?: { silent?: boolean }) => {
-    if (quickDraftPatches.size === 0) return;
+    if (quickDraftPatches.size === 0 && quickRowPatches.size === 0) return;
     setIsSavingQuickDraft(true);
     try {
       for (const [id, byQuarter] of quickDraftPatches) {
@@ -287,7 +629,15 @@ const Admin = () => {
           }
         }
       }
+      for (const [id, patch] of quickRowPatches) {
+        for (const key of Object.keys(patch) as (keyof QuickFlowRowPatch)[]) {
+          const value = patch[key];
+          if (value === undefined) continue;
+          await updateInitiativeFieldAsync(id, key as string, value);
+        }
+      }
       setQuickDraftPatches(new Map());
+      setQuickRowPatches(new Map());
       if (!opts?.silent) toast({ title: 'Данные сохранены' });
     } catch (e) {
       toast({
@@ -298,15 +648,28 @@ const Admin = () => {
     } finally {
       setIsSavingQuickDraft(false);
     }
-  }, [quickDraftPatches, rawData, updateQuarterDataBulkAsync, syncAssignments, toast]);
+  }, [
+    quickDraftPatches,
+    quickRowPatches,
+    rawData,
+    updateQuarterDataBulkAsync,
+    updateInitiativeFieldAsync,
+    syncAssignments,
+    toast,
+  ]);
 
   const handleSheetsPreviewCalculation = useCallback(async () => {
-    const nq = getNextQuarter();
     const previewQuarterEfforts: Record<string, Record<string, number>> = {};
     for (const row of quickDisplayData) {
-      const eff = row.quarterlyData[nq]?.effortCoefficient;
-      if (eff === undefined || eff === null) continue;
-      previewQuarterEfforts[row.id] = { [nq]: Number(eff) };
+      const byQ: Record<string, number> = {};
+      for (const q of quickFillQuarters) {
+        const eff = row.quarterlyData[q]?.effortCoefficient;
+        if (eff === undefined || eff === null) continue;
+        byQ[q] = Number(eff);
+      }
+      if (Object.keys(byQ).length > 0) {
+        previewQuarterEfforts[row.id] = byQ;
+      }
     }
     return invokeEdgeFunction('sheets-preview-calculation', {
       previewQuarterEfforts,
@@ -316,7 +679,7 @@ const Admin = () => {
       pollStable?: boolean;
       message?: string;
     }>;
-  }, [quickDisplayData]);
+  }, [quickDisplayData, quickFillQuarters]);
 
   const handleRestoreSheetsInFromDatabase = useCallback(async () => {
     await invokeEdgeFunction('sheets-push-in', {});
@@ -335,13 +698,13 @@ const Admin = () => {
     });
   }, [toast, refetch]);
 
-  const handleRequestExitQuick = useCallback((_action: 'fullTable' | 'backToStep1', onProceed: () => void) => {
-    if (quickDraftPatches.size === 0) {
+  const handleRequestExitQuick = useCallback((_action: 'backToStep1', onProceed: () => void) => {
+    if (quickDraftPatches.size === 0 && quickRowPatches.size === 0) {
       onProceed();
       return;
     }
     setExitConfirmState({ onProceed });
-  }, [quickDraftPatches.size]);
+  }, [quickDraftPatches.size, quickRowPatches.size]);
 
   const handleExitConfirmSave = useCallback(async () => {
     const onProceed = exitConfirmState?.onProceed;
@@ -354,6 +717,7 @@ const Admin = () => {
   const handleExitConfirmDiscard = useCallback(() => {
     const onProceed = exitConfirmState?.onProceed;
     setQuickDraftPatches(new Map());
+    setQuickRowPatches(new Map());
     setExitConfirmState(null);
     onProceed?.();
   }, [exitConfirmState]);
@@ -433,14 +797,24 @@ const Admin = () => {
     updateInitiative(id, field, value, delay);
   }, [updateInitiative]);
 
-  const handleQuarterDataChange = useCallback((
-    id: string, 
-    quarter: string, 
-    field: keyof AdminQuarterData, 
-    value: string | number | boolean
-  ) => {
-    updateQuarterData(id, quarter, field, value);
-  }, [updateQuarterData]);
+  const handleQuarterDataChange = useCallback(
+    (
+      id: string,
+      quarter: string,
+      field: keyof AdminQuarterData,
+      value: string | number | boolean | GeoCostSplit | undefined
+    ) => {
+      updateQuarterData(id, quarter, field, value);
+      if (field === 'geoCostSplit') {
+        const split = value as GeoCostSplit | undefined;
+        if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
+          updateInitiative(id, 'stakeholdersList', sh, 0);
+        }
+      }
+    },
+    [updateQuarterData, updateInitiative, countryIdToClusterKey]
+  );
 
   const handleQuarterlyDataBulkChange = useCallback((
     id: string,
@@ -492,13 +866,13 @@ const Admin = () => {
   // Quick flow: create initiative with full payload (from NewInitiativeDialog in quick mode)
   const handleCreateInitiativeQuick = useCallback(
     async (data: NewInitiativeSubmitData) => {
-      const nextQ = getNextQuarter();
+      const targetQ = quickFillQuarters[0] ?? getNextQuarter();
       const effortPercent = data.effortPercent ?? 0;
       const quarterlyData: Record<string, AdminQuarterData> = {};
       quarters.forEach((q) => {
         quarterlyData[q] = {
           ...createEmptyQuarterData(),
-          effortCoefficient: q === nextQ ? effortPercent : 0,
+          effortCoefficient: q === targetQ ? effortPercent : 0,
         };
       });
       const u = data.unit || (selectedUnits[0] ?? '');
@@ -520,13 +894,13 @@ const Admin = () => {
         if (createdId) setCreatedInQuickSession((prev) => [...prev, createdId]);
         toast({
           title: 'Инициатива добавлена',
-          description: `«${data.initiative}» с ${effortPercent}% на ${nextQ}`,
+          description: `«${data.initiative}» с ${effortPercent}% на ${targetQ}`,
         });
       } catch (err) {
         console.error('Failed to create initiative:', err);
       }
     },
-    [quarters, selectedUnits, selectedTeams, createInitiative, toast]
+    [quarters, quickFillQuarters, selectedUnits, selectedTeams, createInitiative, toast]
   );
 
   const handleGoToFullTable = useCallback(() => {
@@ -536,7 +910,10 @@ const Admin = () => {
     setSearchParams((prev) => {
       const n = new URLSearchParams(prev);
       n.delete('mode');
+      n.delete('quickQuarterFrom');
+      n.delete('quickQuarterTo');
       n.delete('quickQuarter');
+      n.delete('quickQs');
       return n;
     }, { replace: true });
   }, [setSearchParams]);
@@ -545,12 +922,12 @@ const Admin = () => {
     const q = quickTeamQueue ?? readQuickTeamQueue();
     setQueueActionLoading(true);
     try {
-      if (quickDraftPatches.size > 0) {
+      if (quickDraftPatches.size > 0 || quickRowPatches.size > 0) {
         await handleSaveQuickDraft({ silent: true });
       }
       if (!q || q.teams.length === 0) {
         handleGoToFullTable();
-        toast({ title: 'Готово', description: 'Можно продолжить в полной таблице.' });
+        toast({ title: 'Готово', description: 'Сценарий завершён.' });
         return;
       }
       const nextIdx = q.currentIndex + 1;
@@ -566,7 +943,10 @@ const Admin = () => {
           p.delete('units');
           p.delete('teams');
           p.delete('table');
+          p.delete('quickQuarterFrom');
+          p.delete('quickQuarterTo');
           p.delete('quickQuarter');
+          p.delete('quickQs');
           return p;
         });
         toast({ title: 'Готово', description: 'Все выбранные команды пройдены.' });
@@ -583,7 +963,7 @@ const Admin = () => {
         p.set('units', q.unit);
         p.set('teams', q.teams[nextIdx]);
         p.set('mode', 'quick');
-        p.set('quickQuarter', q.quarter);
+        p.delete('quickQs');
         p.delete('table');
         return p;
       });
@@ -593,6 +973,7 @@ const Admin = () => {
     }
   }, [
     quickDraftPatches,
+    quickRowPatches,
     quickTeamQueue,
     handleSaveQuickDraft,
     handleGoToFullTable,
@@ -609,26 +990,73 @@ const Admin = () => {
   }, [setSearchParams]);
 
   const handleQuickSetupStart = useCallback(
-    (unit: string, teamsInOrder: string[], quarter: string) => {
-      const q = initQuickTeamQueue(unit, teamsInOrder, quarter);
+    (unit: string, teamsInOrder: string[]) => {
+      const q = initQuickTeamQueue(unit, teamsInOrder);
       writeQuickTeamQueue(q);
       setQuickTeamQueue(q);
       setShowQuickSetup(false);
       setQuickStep(1);
       setQuickDraftPatches(new Map());
+      setQuickRowPatches(new Map());
       setCreatedInQuickSession([]);
       setSearchParams((prev) => {
         const p = new URLSearchParams(prev);
         p.delete('table');
+        p.delete('quickQuarterFrom');
+        p.delete('quickQuarterTo');
+        p.delete('quickQuarter');
+        p.delete('quickQs');
         p.set('units', unit);
         p.set('teams', teamsInOrder[0]);
         p.set('mode', 'quick');
-        p.set('quickQuarter', quarter);
         return p;
       });
     },
     [setSearchParams]
   );
+
+  const handleConfirmRosterPreflight = useCallback(() => {
+    setQuickTeamQueue((prev) => {
+      if (!prev) return prev;
+      const team = prev.teams[prev.currentIndex];
+      if (!team) return prev;
+      const next: QuickTeamQueueState = {
+        ...prev,
+        rosterPreflightDoneByTeam: { ...prev.rosterPreflightDoneByTeam, [team]: true },
+      };
+      writeQuickTeamQueue(next);
+      return next;
+    });
+  }, []);
+
+  const handleConfirmTeamQuarters = useCallback(
+    (selected: string[]) => {
+      setQuickTeamQueue((prev) => {
+        if (!prev) return prev;
+        const team = prev.teams[prev.currentIndex];
+        if (!team) return prev;
+        const next: typeof prev = {
+          ...prev,
+          quartersByTeam: {
+            ...prev.quartersByTeam,
+            [team]: selected,
+          },
+        };
+        writeQuickTeamQueue(next);
+        return next;
+      });
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('quickQs', selected.join(','));
+        return p;
+      });
+    },
+    [setSearchParams]
+  );
+
+  useEffect(() => {
+    if (!needsTeamQuarterPick) setTeamQuarterPickSelection([]);
+  }, [needsTeamQuarterPick]);
 
   useEffect(() => {
     if (!isQuickMode) return;
@@ -650,6 +1078,43 @@ const Admin = () => {
     }
   }, [rawData, deleteInitiative, toast]);
 
+  /** Только id из `createdInQuickSession` — с шага «коэффициенты» в quick flow. */
+  const handleDeleteInitiativeAddedInQuickSession = useCallback(
+    async (id: string) => {
+      if (!createdInQuickSession.includes(id)) return;
+      const row = quickDisplayData.find((r) => r.id === id);
+      const name =
+        row?.initiative?.trim() || rawData.find((r) => r.id === id)?.initiative?.trim() || '—';
+      try {
+        await deleteInitiative(id);
+        setCreatedInQuickSession((prev) => prev.filter((x) => x !== id));
+        setQuickDraftPatches((prev) => {
+          const next = new Map(prev);
+          next.delete(id);
+          return next;
+        });
+        setQuickRowPatches((prev) => {
+          const next = new Map(prev);
+          next.delete(id);
+          return next;
+        });
+        setQuickFillInitiativeId((cur) => (cur === id ? null : cur));
+        toast({
+          title: 'Инициатива удалена',
+          description: `«${name}» больше не отображается в списке.`,
+        });
+      } catch (err) {
+        console.error('Failed to delete initiative from quick flow:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Не удалось удалить',
+          description: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [createdInQuickSession, quickDisplayData, rawData, deleteInitiative, toast]
+  );
+
   // Export handlers
   const handleDownloadAll = useCallback(() => {
     exportAll(rawData);
@@ -658,6 +1123,14 @@ const Admin = () => {
   const handleDownloadFiltered = useCallback(() => {
     exportFiltered(filteredData);
   }, [filteredData, exportFiltered]);
+
+  const handleDownloadGeoAll = useCallback(() => {
+    exportGeoSplitAll(rawData);
+  }, [rawData, exportGeoSplitAll]);
+
+  const handleDownloadGeoFiltered = useCallback(() => {
+    exportGeoSplitFiltered(filteredData);
+  }, [filteredData, exportGeoSplitFiltered]);
 
   // Loading state
   if (isLoading) {
@@ -687,8 +1160,10 @@ const Admin = () => {
     );
   }
 
+  const showInitiativesStepBack = hasData && previousInitiativesScreen !== null;
+
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-screen w-full min-w-0 bg-background flex flex-col overflow-hidden">
       <AdminHeader
         currentView="initiatives"
         initiativeCount={filteredData.length}
@@ -700,15 +1175,16 @@ const Admin = () => {
         onImportClick={() => setImportDialogOpen(true)}
         onDownloadAll={handleDownloadAll}
         onDownloadFiltered={handleDownloadFiltered}
+        onDownloadGeoSplitAll={handleDownloadGeoAll}
+        onDownloadGeoSplitFiltered={handleDownloadGeoFiltered}
         onRetry={retry}
-        onExitQuick={isQuickMode ? handleGoToFullTable : undefined}
-        onBack={hasData ? handleInitiativesBack : undefined}
-        backLabel={previousInitiativesScreen == null ? 'dashboard' : 'back'}
       />
 
-      {isAdmin && hasData ? <GoogleSheetsSyncStrip onAfterImport={() => refetch()} /> : null}
+      {isAdmin && hasData && SHOW_GOOGLE_SHEETS_SYNC_STRIP_UI ? (
+        <GoogleSheetsSyncStrip onAfterImport={() => refetch()} />
+      ) : null}
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
         {!hasData ? (
           /* Empty state */
           <div className="flex-1 flex flex-col items-center justify-center p-8">
@@ -733,9 +1209,9 @@ const Admin = () => {
           </div>
         ) : (
           /* Data view */
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {!needsSelection && (
-              <div className="shrink-0">
+          <div className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
+            {!needsSelection && !isQuickMode && (
+              <div className="shrink-0 w-full min-w-0">
                 <ScopeSelector
                   units={units}
                   teams={teams}
@@ -754,15 +1230,22 @@ const Admin = () => {
               showQuickSetup ? (
                 <AdminQuickFlowSetupScreen
                   units={units}
-                  quarters={quarters}
                   rawData={rawData}
                   memberUnit={memberUnit}
-                  memberTeam={memberTeam}
-                  onBack={() => setShowQuickSetup(false)}
                   onStart={handleQuickSetupStart}
+                  onTeamsOrderChange={setQuickSetupTeamCount}
+                  stepTrack={
+                    quickFlowLinearProgress ? (
+                      <AdminQuickFlowStepTrack
+                        current={quickFlowLinearProgress.current}
+                        total={quickFlowLinearProgress.total}
+                        onStepBack={showInitiativesStepBack ? handleInitiativesBack : undefined}
+                      />
+                    ) : null
+                  }
                 />
               ) : (
-              <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-px p-0 bg-border">
+              <div className="flex-1 min-h-0 w-full min-w-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-px p-0 bg-border">
                 <motion.div
                   className="min-h-0 w-full h-full flex rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none overflow-visible"
                   initial={{ opacity: 0 }}
@@ -831,8 +1314,22 @@ const Admin = () => {
               )
             ) : onlyUnitSelected ? (
               /* Only Unit selected: hint + unit summary (no table to avoid 100% sum across teams) */
-              <div className="flex-1 flex flex-col overflow-auto p-8">
-                <div className="max-w-2xl mx-auto space-y-6">
+              <div className="flex-1 flex flex-col overflow-auto w-full min-w-0">
+                {showInitiativesStepBack ? (
+                  <div className="shrink-0 flex items-center px-4 sm:px-6 py-2 border-b border-border bg-muted/20">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 h-8 -ml-2 text-muted-foreground"
+                      onClick={handleInitiativesBack}
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Назад
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="w-full max-w-none px-4 sm:px-6 lg:px-10 py-6 lg:py-8 space-y-6">
                   <div className="border border-dashed border-border rounded-xl p-8 text-center">
                     <ClipboardList size={40} className="mx-auto text-muted-foreground mb-3" />
                     <h2 className="font-juneau font-medium text-lg mb-2">Выберите одну или несколько команд</h2>
@@ -864,23 +1361,110 @@ const Admin = () => {
                   </div>
                 </div>
               </div>
+            ) : isQuickMode && canShowQuick && needsRosterPreflight && quickTeamQueue ? (
+              <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-gradient-to-b from-muted/40 via-background to-background">
+                <div className="mx-auto flex min-h-0 w-full max-w-none min-w-0 flex-1 flex-col overflow-hidden px-4 py-3 sm:px-5 lg:px-8">
+                  <div className="mb-3 flex min-w-0 shrink-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <AdminQuickFlowStepTrack
+                      className="min-w-0 flex-1 pt-0.5"
+                      current={quickFlowLinearProgress?.current ?? 1}
+                      total={quickFlowLinearProgress?.total}
+                      onStepBack={showInitiativesStepBack ? handleInitiativesBack : undefined}
+                      unit={quickTeamQueue.unit?.trim() || undefined}
+                      team={currentQueueTeam?.trim() || undefined}
+                      queueCurrent={
+                        quickTeamQueue.teams.length > 0 ? quickTeamQueue.currentIndex + 1 : undefined
+                      }
+                      queueTotal={
+                        quickTeamQueue.teams.length > 0 ? quickTeamQueue.teams.length : undefined
+                      }
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
+                      title="Перейти к выбору кварталов для заполнения"
+                      onClick={handleConfirmRosterPreflight}
+                    >
+                      Далее
+                      <ChevronRight size={15} className="shrink-0" aria-hidden />
+                    </Button>
+                  </div>
+                  <AdminQuickFlowRosterStep
+                    unit={quickTeamQueue.unit}
+                    team={currentQueueTeam}
+                    fillQuarters={[]}
+                    quartersCatalog={quarters}
+                  />
+                </div>
+              </div>
+            ) : isQuickMode && canShowQuick && needsTeamQuarterPick && quickTeamQueue ? (
+              <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-gradient-to-b from-muted/40 via-background to-background">
+                <AdminQuickFlowTeamQuarterPicker
+                  key={currentQueueTeam}
+                  quartersCatalog={quarters}
+                  teamRows={rawData.filter(
+                    (r) => r.unit === quickTeamQueue.unit && r.team === currentQueueTeam
+                  )}
+                  onSelectionChange={setTeamQuarterPickSelection}
+                  flowHeader={
+                    <div className="flex min-w-0 shrink-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                      <AdminQuickFlowStepTrack
+                        className="min-w-0 flex-1 pt-0.5"
+                        current={quickFlowLinearProgress?.current ?? 1}
+                        total={quickFlowLinearProgress?.total}
+                        onStepBack={showInitiativesStepBack ? handleInitiativesBack : undefined}
+                        unit={quickTeamQueue.unit?.trim() || undefined}
+                        team={currentQueueTeam?.trim() || undefined}
+                        queueCurrent={
+                          quickTeamQueue.teams.length > 0
+                            ? quickTeamQueue.currentIndex + 1
+                            : undefined
+                        }
+                        queueTotal={
+                          quickTeamQueue.teams.length > 0 ? quickTeamQueue.teams.length : undefined
+                        }
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
+                        disabled={teamQuarterPickSelection.length === 0}
+                        title={
+                          teamQuarterPickSelection.length > 0
+                            ? `Выбрано кварталов: ${teamQuarterPickSelection.length}`
+                            : 'Выберите хотя бы один квартал'
+                        }
+                        onClick={() => handleConfirmTeamQuarters(teamQuarterPickSelection)}
+                      >
+                        Далее
+                        <ChevronRight size={15} className="shrink-0" aria-hidden />
+                      </Button>
+                    </div>
+                  }
+                />
+              </div>
             ) : isQuickMode && canShowQuick ? (
-              <AdminQuickFlow
+              <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col">
+                <AdminQuickFlow
+                suppressRosterStep={suppressRosterInQuickFlow}
                 filteredData={quickDisplayData}
+                baselineFilteredData={quickCoefficientsBaselineRows}
                 quarters={quarters}
-                previousQuarter={quickSelectedPreviousQuarter}
-                nextQuarter={quickSelectedQuarter}
+                fillQuarters={quickFillQuarters}
                 unit={selectedUnits[0] ?? ''}
                 team={selectedTeams[0] ?? ''}
                 createdInQuickSession={createdInQuickSession}
+                onDeleteInitiativeAddedInQuickFlow={handleDeleteInitiativeAddedInQuickSession}
                 step={quickStep}
                 setStep={setQuickStep}
                 onQuarterDataChange={handleQuickDraftChange}
+                onInitiativeDraftChange={handleQuickInitiativeDraftChange}
                 onOpenAddInitiative={() => setQuickAddDialogOpen(true)}
-                onGoToFullTable={handleGoToFullTable}
                 onOpenFillInitiative={setQuickFillInitiativeId}
-                hasQuickDraft={quickDraftPatches.size > 0}
+                hasQuickDraft={quickDraftPatches.size > 0 || quickRowPatches.size > 0}
                 dirtyEffortQuarters={quickDirtyEffortQuarters}
+                planningEffortQuartersNoCoeffChangeConfirm={quickPlanningEffortQuarters}
                 onSaveQuickDraft={handleSaveQuickDraft}
                 isSavingQuickDraft={isSavingQuickDraft}
                 onRequestExitQuick={handleRequestExitQuick}
@@ -899,9 +1483,28 @@ const Admin = () => {
                 restoreSheetsInFromDatabase={handleRestoreSheetsInFromDatabase}
                 applySheetCostsFromOut={handleApplySheetCostsFromOut}
                 enableSheetsPreviewStep={!!isAdmin}
-              />
+                overallStepProgress={quickFlowLinearProgress ?? undefined}
+                onFlowStepBack={showInitiativesStepBack ? handleInitiativesBack : undefined}
+                marketCountries={marketCountries}
+                onGeoCostSplitDraftChange={handleQuickGeoCostSplitDraft}
+                />
+              </div>
             ) : (
-              <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
+                {showInitiativesStepBack ? (
+                  <div className="shrink-0 flex items-center px-4 sm:px-6 py-2 border-b border-border bg-muted/20">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 h-8 -ml-2 text-muted-foreground"
+                      onClick={handleInitiativesBack}
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Назад
+                    </Button>
+                  </div>
+                ) : null}
                 {canShowQuick && (
                   <div className="px-4 py-2 border-b border-border flex flex-wrap items-center justify-between gap-2 bg-muted/30">
                     <span className="text-sm text-muted-foreground">
@@ -917,7 +1520,7 @@ const Admin = () => {
                     </Button>
                   </div>
                 )}
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 overflow-hidden w-full min-w-0">
                   <InitiativeTable
                     data={filteredData}
                     allData={rawData}
@@ -966,7 +1569,7 @@ const Admin = () => {
           defaultUnit={selectedUnits[0] || ''}
           defaultTeam={selectedTeams[0] || ''}
           mode="quick"
-          nextQuarter={getNextQuarter()}
+          nextQuarter={quickFillQuarters[0] ?? getNextQuarter()}
           onSubmit={handleCreateInitiativeQuick}
         />
       )}

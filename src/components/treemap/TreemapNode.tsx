@@ -94,9 +94,9 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue =
   
   return (
     <div className="absolute inset-0 flex items-center justify-center p-1">
-      <div className="text-center w-full px-1">
+      <div className="text-center w-full px-1 min-h-0 flex flex-col items-center justify-center">
         <div 
-          className={`font-semibold ${textColorClass} ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+          className={`font-semibold ${textColorClass} ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'} w-full shrink-0`}
           style={{ 
             textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
             whiteSpace: 'nowrap',
@@ -180,6 +180,8 @@ const TreemapNode = memo(({
     node.isTeam && 'is-team',
     node.isInitiative && 'is-initiative',
     node.isInitiative && node.isTimelineStub && 'is-timeline-stub',
+    node.isInitiative && isLeaf && node.data?.adminEffortChanged && 'admin-effort-changed',
+    node.isInitiative && isLeaf && node.data?.adminQuickReviewIssue && 'admin-quick-review-issue',
   ].filter(Boolean).join(' ');
 
   const skipInitial = animationType === 'initial';

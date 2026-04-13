@@ -1,65 +1,133 @@
 import { useCallback } from 'react';
-import { AdminDataRow, exportAdminCSV, createEmptyQuarterData } from '@/lib/adminDataManager';
+import {
+  AdminDataRow,
+  exportAdminCSV,
+  exportGeoCostSplitCSV,
+  type GeoExportCountry,
+} from '@/lib/adminDataManager';
 import { useToast } from '@/hooks/use-toast';
 
 interface UseCSVExportOptions {
   quarters: string[];
+  marketCountries?: GeoExportCountry[];
 }
 
-export function useCSVExport({ quarters }: UseCSVExportOptions) {
+export function useCSVExport({ quarters, marketCountries = [] }: UseCSVExportOptions) {
   const { toast } = useToast();
 
-  const downloadCSV = useCallback((
-    data: AdminDataRow[],
-    filename: string,
-    description: string
-  ) => {
-    if (data.length === 0) {
+  const downloadCSV = useCallback(
+    (data: AdminDataRow[], filename: string, description: string) => {
+      if (data.length === 0) {
+        toast({
+          title: 'Нет данных',
+          description: 'Нет инициатив для скачивания',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const csv = exportAdminCSV(data, quarters, []);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
       toast({
-        title: 'Нет данных',
-        description: 'Нет инициатив для скачивания',
-        variant: 'destructive'
+        title: 'Файл скачан',
+        description,
       });
-      return;
-    }
+    },
+    [quarters, toast]
+  );
 
-    // Generate CSV with BOM for Excel
-    const csv = exportAdminCSV(data, quarters, []);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+  const downloadGeoSplitCSV = useCallback(
+    (data: AdminDataRow[], filename: string, description: string) => {
+      if (data.length === 0) {
+        toast({
+          title: 'Нет данных',
+          description: 'Нет инициатив для скачивания',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (marketCountries.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Справочник стран не загружен',
+          description: 'Обновите страницу или откройте раздел «Рынки».',
+        });
+        return;
+      }
 
-    toast({
-      title: 'Файл скачан',
-      description
-    });
-  }, [quarters, toast]);
+      const csv = exportGeoCostSplitCSV(data, quarters, marketCountries);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
 
-  const exportAll = useCallback((data: AdminDataRow[]) => {
-    const date = new Date().toISOString().split('T')[0];
-    downloadCSV(
-      data, 
-      `portfolio-all-${date}.csv`,
-      `Скачано ${data.length} инициатив`
-    );
-  }, [downloadCSV]);
+      toast({
+        title: 'Файл скачан',
+        description,
+      });
+    },
+    [quarters, marketCountries, toast]
+  );
 
-  const exportFiltered = useCallback((data: AdminDataRow[]) => {
-    const date = new Date().toISOString().split('T')[0];
-    downloadCSV(
-      data, 
-      `portfolio-filtered-${date}.csv`,
-      `Скачано ${data.length} отфильтрованных инициатив`
-    );
-  }, [downloadCSV]);
+  const exportAll = useCallback(
+    (data: AdminDataRow[]) => {
+      const date = new Date().toISOString().split('T')[0];
+      downloadCSV(data, `portfolio-all-${date}.csv`, `Скачано ${data.length} инициатив`);
+    },
+    [downloadCSV]
+  );
+
+  const exportFiltered = useCallback(
+    (data: AdminDataRow[]) => {
+      const date = new Date().toISOString().split('T')[0];
+      downloadCSV(
+        data,
+        `portfolio-filtered-${date}.csv`,
+        `Скачано ${data.length} отфильтрованных инициатив`
+      );
+    },
+    [downloadCSV]
+  );
+
+  const exportGeoSplitAll = useCallback(
+    (data: AdminDataRow[]) => {
+      const date = new Date().toISOString().split('T')[0];
+      downloadGeoSplitCSV(
+        data,
+        `portfolio-geo-split-all-${date}.csv`,
+        `Распределение по странам: ${data.length} инициатив`
+      );
+    },
+    [downloadGeoSplitCSV]
+  );
+
+  const exportGeoSplitFiltered = useCallback(
+    (data: AdminDataRow[]) => {
+      const date = new Date().toISOString().split('T')[0];
+      downloadGeoSplitCSV(
+        data,
+        `portfolio-geo-split-filtered-${date}.csv`,
+        `Распределение по странам: ${data.length} строк`
+      );
+    },
+    [downloadGeoSplitCSV]
+  );
 
   return {
     exportAll,
     exportFiltered,
+    exportGeoSplitAll,
+    exportGeoSplitFiltered,
     downloadCSV,
   };
 }

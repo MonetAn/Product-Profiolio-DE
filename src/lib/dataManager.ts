@@ -19,6 +19,8 @@ export interface RawDataRow {
   documentationLink?: string;
   isTimelineStub?: boolean;
   quarterlyData: Record<string, QuarterData>;
+  /** UUID строки в админке; задаётся при convertFromDB для привязки к редактированию в quick flow */
+  adminInitiativeRowId?: string;
 }
 
 export interface TreeNode {
@@ -40,6 +42,19 @@ export interface TreeNode {
   distributedValue?: number;
   /** For unit-only tree: aggregated unallocated (stub) budget */
   unallocatedValue?: number;
+  /** Admin quick flow: initiative row id on effort-preview treemap leaves */
+  adminInitiativeRowId?: string;
+  adminEffortChanged?: boolean;
+  adminEffortCompare?: {
+    effortBefore: number;
+    effortAfter: number;
+    valueBefore: number;
+    valueAfter: number;
+  };
+  /** Quick flow: лист с замечаниями по полям / план-факту на шаге обзора treemap */
+  adminQuickReviewIssue?: boolean;
+  /** Подписи незаполненных обязательных полей карточки (для подсказки на плитке) */
+  adminQuickReviewMissing?: string[];
 }
 
 /** Sum of values in a node's subtree (node.value if set, else sum of children recursively). */
@@ -120,7 +135,8 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
       stakeholders: row.stakeholders || '',
       documentationLink: row.documentationLink || '',
       isTimelineStub: row.isTimelineStub ?? false,
-      quarterlyData
+      quarterlyData,
+      adminInitiativeRowId: row.id,
     };
   });
 
@@ -216,13 +232,21 @@ export const STAKEHOLDER_DISPLAY_ORDER = [
   'Central Asia',
   'Europe',
   'MENA',
-  'Turkey+',
+  'Turkey',
+  'Other Countries',
   'Drinkit',
-  'IT'
 ] as const;
 
+function stakeholderNameForOrder(name: string): string {
+  if (name === 'Turkey+') return 'Turkey';
+  return name;
+}
+
 function getStakeholderOrderIndex(name: string): number {
-  const i = STAKEHOLDER_DISPLAY_ORDER.indexOf(name as typeof STAKEHOLDER_DISPLAY_ORDER[number]);
+  const normalized = stakeholderNameForOrder(name);
+  const i = STAKEHOLDER_DISPLAY_ORDER.indexOf(
+    normalized as (typeof STAKEHOLDER_DISPLAY_ORDER)[number]
+  );
   return i >= 0 ? i : STAKEHOLDER_DISPLAY_ORDER.length;
 }
 

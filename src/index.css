@@ -164,6 +164,12 @@ html.admin-engineering {
   --border: 220 14% 90%;
   --input: 220 14% 90%;
   --ring: 252 92% 58%;
+  /*
+   * «Требует внимания» / валидация в админке — голубой DE (~#428EFF), не оранжевый Brands.
+   * Используйте в CSS как hsl(var(--admin-attention)); в TSX — классы blue-* или border-primary/30 по смыслу.
+   */
+  --admin-attention: 217 91% 58%;
+  --admin-attention-foreground: 217 55% 24%;
   --radius: 0.5rem;
   --header-bg: 220 16% 97%;
   --header-height: 56px;

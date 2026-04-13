@@ -127,7 +127,7 @@ const ScopeSelector = ({
   };
 
   return (
-    <div className="flex items-center gap-3 p-4 bg-header border-b border-border">
+    <div className="w-full min-w-0 flex flex-wrap items-center gap-3 p-4 bg-header border-b border-border">
       {/* Unit selector */}
       <div ref={unitRef} className="relative">
         <button

@@ -31,7 +31,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, createEmptyQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo } from '@/lib/adminDataManager';
+import {
+  AdminDataRow,
+  AdminQuarterData,
+  createEmptyQuarterData,
+  INITIATIVE_TYPES,
+  validateTeamQuarterEffort,
+  getTeamQuarterEffortSums,
+  getInheritedSupportInfo,
+  type GeoCostSplit,
+} from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
@@ -40,7 +49,12 @@ interface InitiativeTableProps {
   selectedUnits: string[];
   selectedTeams: string[];
   onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => void;
-  onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
+  onQuarterDataChange: (
+    id: string,
+    quarter: string,
+    field: keyof AdminQuarterData,
+    value: string | number | boolean | GeoCostSplit | undefined
+  ) => void;
   onQuarterlyDataBulkChange?: (id: string, quarterlyData: Record<string, AdminQuarterData>) => void;
   onAddInitiative: () => void;
   onDeleteInitiative: (id: string) => Promise<void>;
@@ -122,7 +136,7 @@ const InitiativeTable = ({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full min-w-0">
       {/* Toolbar */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -234,7 +248,7 @@ const InitiativeTable = ({
                     className={`sticky ${hideUnitTeamColumns ? 'left-[60px]' : 'left-[250px]'} bg-card z-10 p-2 cursor-pointer`}
                     onClick={() => handleRowClick(row)}
                   >
-                    <span className="text-xs text-foreground font-medium truncate block max-w-[150px] inline-flex items-center gap-1.5 group-hover:underline decoration-muted-foreground/50">
+                    <span className="text-xs text-foreground font-medium truncate block max-w-[150px] xl:max-w-[min(24rem,22vw)] inline-flex items-center gap-1.5 group-hover:underline decoration-muted-foreground/50">
                       {row.initiative || <span className="text-muted-foreground font-normal italic">—</span>}
                       {row.isNew && (
                         <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">

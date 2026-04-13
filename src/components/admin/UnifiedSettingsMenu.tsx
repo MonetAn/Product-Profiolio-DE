@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Download, Upload } from 'lucide-react';
+import { Settings, Download, Upload, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -16,10 +16,14 @@ interface UnifiedSettingsMenuProps {
   // Импорт
   onImportInitiatives?: () => void;
   onImportPeople?: () => void;
+  /** Ручное добавление сотрудника (вкладка «Люди») */
+  onAddPerson?: () => void;
   
   // Экспорт инициатив
   onExportAllInitiatives?: () => void;
   onExportFilteredInitiatives?: () => void;
+  onExportGeoSplitAll?: () => void;
+  onExportGeoSplitFiltered?: () => void;
   initiativesTotal?: number;
   initiativesFiltered?: number;
   hasInitiativeFilters?: boolean;
@@ -35,8 +39,11 @@ interface UnifiedSettingsMenuProps {
 export default function UnifiedSettingsMenu({
   onImportInitiatives,
   onImportPeople,
+  onAddPerson,
   onExportAllInitiatives,
   onExportFilteredInitiatives,
+  onExportGeoSplitAll,
+  onExportGeoSplitFiltered,
   initiativesTotal = 0,
   initiativesFiltered = 0,
   hasInitiativeFilters = false,
@@ -47,8 +54,12 @@ export default function UnifiedSettingsMenu({
   const [peopleListOpen, setPeopleListOpen] = useState(false);
   const [mappingOpen, setMappingOpen] = useState(false);
 
-  const hasExportInitiatives = onExportAllInitiatives || onExportFilteredInitiatives;
-  const hasImport = onImportInitiatives || onImportPeople;
+  const hasExportInitiatives =
+    onExportAllInitiatives ||
+    onExportFilteredInitiatives ||
+    onExportGeoSplitAll ||
+    onExportGeoSplitFiltered;
+  const hasImport = onImportInitiatives || onImportPeople || onAddPerson;
 
   return (
     <>
@@ -73,6 +84,12 @@ export default function UnifiedSettingsMenu({
                   Импорт инициатив (CSV)
                 </DropdownMenuItem>
               )}
+              {onAddPerson && (
+                <DropdownMenuItem onClick={onAddPerson}>
+                  <UserPlus size={14} className="mr-2" />
+                  Добавить сотрудника вручную
+                </DropdownMenuItem>
+              )}
               {onImportPeople && (
                 <DropdownMenuItem onClick={onImportPeople}>
                   <Upload size={14} className="mr-2" />
@@ -91,6 +108,18 @@ export default function UnifiedSettingsMenu({
                 <DropdownMenuItem onClick={onExportFilteredInitiatives} disabled={!hasData}>
                   <Download size={14} className="mr-2" />
                   Экспорт: Отфильтрованные ({initiativesFiltered})
+                </DropdownMenuItem>
+              )}
+              {onExportGeoSplitAll && (
+                <DropdownMenuItem onClick={onExportGeoSplitAll} disabled={!hasData}>
+                  <Download size={14} className="mr-2" />
+                  Экспорт: Geo split — все ({initiativesTotal})
+                </DropdownMenuItem>
+              )}
+              {hasInitiativeFilters && onExportGeoSplitFiltered && (
+                <DropdownMenuItem onClick={onExportGeoSplitFiltered} disabled={!hasData}>
+                  <Download size={14} className="mr-2" />
+                  Экспорт: Geo split — отфильтр. ({initiativesFiltered})
                 </DropdownMenuItem>
               )}
               

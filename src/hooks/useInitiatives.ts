@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { AdminDataRow, AdminQuarterData, isQuarterPeriodKey, normalizeSupportCascade } from '@/lib/adminDataManager';
+import {
+  AdminDataRow,
+  AdminQuarterData,
+  geoCostSplitToJson,
+  isQuarterPeriodKey,
+  normalizeSupportCascade,
+  parseGeoCostSplit,
+} from '@/lib/adminDataManager';
 import { Tables, Json } from '@/integrations/supabase/types';
 
 type DBInitiative = Tables<'initiatives'>;
@@ -15,6 +22,7 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
     Object.entries(rawQuarterlyData).forEach(([key, value]) => {
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         const qData = value as Record<string, unknown>;
+        const geoCostSplit = parseGeoCostSplit(qData.geoCostSplit);
         quarterlyData[key] = {
           cost: typeof qData.cost === 'number' ? qData.cost : 0,
           otherCosts: typeof qData.otherCosts === 'number' ? qData.otherCosts : 0,
@@ -24,6 +32,7 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
           metricFact: typeof qData.metricFact === 'string' ? qData.metricFact : '',
           comment: typeof qData.comment === 'string' ? qData.comment : '',
           effortCoefficient: typeof qData.effortCoefficient === 'number' ? qData.effortCoefficient : 0,
+          ...(geoCostSplit ? { geoCostSplit } : {}),
         };
       }
     });
@@ -48,7 +57,7 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
 function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
   const result: Record<string, Record<string, unknown>> = {};
   Object.entries(data).forEach(([key, value]) => {
-    result[key] = {
+    const row: Record<string, unknown> = {
       cost: value.cost,
       otherCosts: value.otherCosts,
       support: value.support,
@@ -58,6 +67,10 @@ function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
       comment: value.comment,
       effortCoefficient: value.effortCoefficient,
     };
+    if (value.geoCostSplit?.entries?.length) {
+      row.geoCostSplit = geoCostSplitToJson(value.geoCostSplit);
+    }
+    result[key] = row;
   });
   return result as unknown as Json;
 }
