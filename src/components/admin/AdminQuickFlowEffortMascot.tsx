@@ -11,7 +11,7 @@ import { X } from 'lucide-react';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import { cn } from '@/lib/utils';
 
-const MASCOT_SRC = '/Quick-flow/maskot-Quick-flow.png';
+const MASCOT_SRC = `${import.meta.env.BASE_URL}Quick-flow/maskot-Quick-flow.png`;
 
 const TEXT_NEGATIVE = 'Удоли отрицательное значаение';
 const TEXT_SUCCESS = 'Ю ар зе бест!';
@@ -227,7 +227,7 @@ export function AdminQuickFlowEffortMascot({ rows, visibleQuarterKeys }: Props) 
         onScreen ? 'opacity-100' : 'pointer-events-none opacity-0'
       )}
     >
-      <div className="flex flex-col items-start gap-2 pl-2 pb-0 sm:pl-3">
+      <div className="flex flex-col items-start gap-1 pl-2 pb-0 sm:pl-3">
         {(phase === 'warn' ||
           phase === 'enter' ||
           phase === 'success' ||
@@ -264,7 +264,7 @@ export function AdminQuickFlowEffortMascot({ rows, visibleQuarterKeys }: Props) 
             <span className="block pr-1">{bubbleText}</span>
             {phase !== 'exit_ok' ? (
               <div
-                className="absolute -bottom-2 left-6 z-[2] h-3 w-3 rotate-45 border-b-2 border-r-2 border-foreground/20 bg-card"
+                className="absolute -bottom-1.5 left-6 z-[2] h-3 w-3 rotate-45 border-b-2 border-r-2 border-foreground/20 bg-card"
                 aria-hidden
               />
             ) : null}
@@ -272,7 +272,7 @@ export function AdminQuickFlowEffortMascot({ rows, visibleQuarterKeys }: Props) 
         )}
 
         <div
-          className="pointer-events-none relative -mt-2 h-[min(24vh,180px)] w-[min(52vw,220px)] overflow-hidden"
+          className="pointer-events-none relative -mt-5 h-[min(24vh,180px)] w-[min(52vw,220px)] overflow-hidden"
           aria-hidden
         >
           <img
