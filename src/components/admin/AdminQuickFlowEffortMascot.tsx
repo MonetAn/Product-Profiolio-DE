@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 
 const MASCOT_SRC = `${import.meta.env.BASE_URL}Quick-flow/maskot-Quick-flow.png`;
 
-const TEXT_NEGATIVE = 'Удоли отрицательное значаение';
+const TEXT_NEGATIVE = 'Удоли отрицательное значение';
 const TEXT_SUCCESS = 'Ю ар зе бест!';
 
 /** Длительность слайда маскота (вход = выход, совпадает с CSS transition). */
@@ -227,7 +227,7 @@ export function AdminQuickFlowEffortMascot({ rows, visibleQuarterKeys }: Props) 
         onScreen ? 'opacity-100' : 'pointer-events-none opacity-0'
       )}
     >
-      <div className="flex flex-col items-start gap-1 pl-2 pb-0 sm:pl-3">
+      <div className="flex flex-col items-start gap-0 pl-2 pb-0 sm:pl-3">
         {(phase === 'warn' ||
           phase === 'enter' ||
           phase === 'success' ||
@@ -272,7 +272,7 @@ export function AdminQuickFlowEffortMascot({ rows, visibleQuarterKeys }: Props) 
         )}
 
         <div
-          className="pointer-events-none relative -mt-5 h-[min(24vh,180px)] w-[min(52vw,220px)] overflow-hidden"
+          className="pointer-events-none relative -mt-9 h-[min(24vh,180px)] w-[min(52vw,220px)] overflow-hidden"
           aria-hidden
         >
           <img
