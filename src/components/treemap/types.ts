@@ -50,6 +50,8 @@ export interface TreemapLayoutNode {
   distributedValue?: number;
   /** For unit-only view: aggregated unallocated budget */
   unallocatedValue?: number;
+  /** Лист: в периоде фильтра есть квартал с предварительной стоимостью */
+  hasPreliminaryQuarterInPeriod?: boolean;
 }
 
 // Animation type determines duration and behavior

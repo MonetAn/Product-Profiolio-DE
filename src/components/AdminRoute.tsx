@@ -1,6 +1,7 @@
 import { ReactNode, useLayoutEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAccess } from '@/hooks/useAccess';
+import { useRecordDailyPresence } from '@/hooks/useRecordDailyPresence';
 import { LogoLoader } from '@/components/LogoLoader';
 
 const ADMIN_HTML_CLASS = 'admin-engineering';
@@ -12,6 +13,7 @@ interface AdminRouteProps {
 /** Renders children only if current user is admin; otherwise redirects to home. Use inside ProtectedRoute. */
 export function AdminRoute({ children }: AdminRouteProps) {
   const { isAdmin, accessLoading } = useAccess();
+  useRecordDailyPresence('admin', !accessLoading && isAdmin);
 
   useLayoutEffect(() => {
     document.documentElement.classList.add(ADMIN_HTML_CLASS);

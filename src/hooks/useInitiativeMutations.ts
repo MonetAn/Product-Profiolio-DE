@@ -4,15 +4,15 @@ import { useRef, useCallback, useState, useEffect } from 'react';
 import {
   AdminDataRow,
   AdminQuarterData,
+  confirmFinanceForAllQuartersInData,
   createEmptyQuarterData,
   type GeoCostSplit,
 } from '@/lib/adminDataManager';
-import { quarterlyDataToJson } from './useInitiatives';
+import { quarterlyDataToJson, quarterlyJsonToAdminRecord } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
 import { Json } from '@/integrations/supabase/types';
 
-// Field to DB column mapping
 const FIELD_TO_COLUMN: Record<string, string> = {
   unit: 'unit',
   team: 'team',
@@ -26,78 +26,75 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   quarterlyData: 'quarterly_data',
 };
 
+function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>): AdminDataRow {
+  let next = { ...row };
+  const p = patch;
+  if (p.unit !== undefined) next.unit = p.unit as string;
+  if (p.team !== undefined) next.team = p.team as string;
+  if (p.initiative !== undefined) next.initiative = p.initiative as string;
+  if (p.initiative_type !== undefined) next.initiativeType = (p.initiative_type as string) || '';
+  if (p.stakeholders_list !== undefined) next.stakeholdersList = p.stakeholders_list as string[];
+  if (p.description !== undefined) next.description = p.description as string;
+  if (p.documentation_link !== undefined) next.documentationLink = p.documentation_link as string;
+  if (p.stakeholders !== undefined) next.stakeholders = p.stakeholders as string;
+  if (p.is_timeline_stub !== undefined) next.isTimelineStub = p.is_timeline_stub as boolean;
+  if (p.quarterly_data !== undefined) {
+    next.quarterlyData = quarterlyJsonToAdminRecord(p.quarterly_data);
+  }
+  return next;
+}
+
 export type SyncStatus = 'synced' | 'saving' | 'error' | 'offline';
 
 export function useInitiativeMutations() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const debounceTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  /** Сколько ближайших onSettled пропустить с отдельным invalidate — одна инвалидация в конце пакета (Quick Flow). */
+  const bulkInitiativeInvalidateSkipsRef = useRef(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // Track pending changes count
   useEffect(() => {
     setPendingCount(debounceTimers.current.size);
   }, [debounceTimers.current.size]);
 
-  // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ 
-      id, 
-      field, 
-      value 
-    }: { 
-      id: string; 
-      field: string; 
-      value: unknown;
-    }) => {
-      const dbColumn = FIELD_TO_COLUMN[field] || field;
-      const { error } = await supabase
-        .from('initiatives')
-        .update({ [dbColumn]: value })
-        .eq('id', id);
-      
+    mutationFn: async (vars: { id: string; patch: Record<string, unknown> }) => {
+      const { error } = await supabase.from('initiatives').update(vars.patch).eq('id', vars.id);
       if (error) throw error;
     },
     onMutate: async (variables) => {
       setSyncStatus('saving');
       setLastError(null);
-      
-      // Optimistic update
       await queryClient.cancelQueries({ queryKey: ['initiatives'] });
       const previous = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
-      
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => 
-        (old || []).map(row => 
-          row.id === variables.id 
-            ? { ...row, [variables.field]: variables.value }
-            : row
-        )
-      );
-      
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.map((row) =>
+          row.id === variables.id ? applyPatchToAdminRow(row, variables.patch) : row
+        );
+      });
       return { previous };
     },
     onError: (err, variables, context) => {
       const details =
-        (err && typeof err === 'object' && 'message' in err)
+        err && typeof err === 'object' && 'message' in err
           ? (err as { message: string }).message
           : err instanceof Error
             ? err.message
             : String(err);
-      console.error('Update failed:', variables.field, variables.id, err);
+      console.error('Update failed:', variables.id, err);
       setSyncStatus('error');
       setLastError(details);
-
-      // Rollback on error
       if (context?.previous) {
         queryClient.setQueryData(['initiatives'], context.previous);
       }
-
       toast({
         title: 'Ошибка сохранения',
         description: details || 'Не удалось сохранить изменения. Попробуйте ещё раз.',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     },
     onSuccess: () => {
@@ -106,13 +103,20 @@ export function useInitiativeMutations() {
       }
     },
     onSettled: () => {
+      if (bulkInitiativeInvalidateSkipsRef.current > 0) {
+        bulkInitiativeInvalidateSkipsRef.current -= 1;
+        if (bulkInitiativeInvalidateSkipsRef.current === 0) {
+          queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+        }
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['initiatives'] });
-    }
+    },
   });
 
-  // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: Omit<AdminDataRow, 'id'>) => {
+      const qd = confirmFinanceForAllQuartersInData(data.quarterlyData);
       const { data: created, error } = await supabase
         .from('initiatives')
         .insert({
@@ -125,11 +129,11 @@ export function useInitiativeMutations() {
           documentation_link: data.documentationLink,
           stakeholders: data.stakeholders,
           is_timeline_stub: data.isTimelineStub ?? false,
-          quarterly_data: quarterlyDataToJson(data.quarterlyData),
+          quarterly_data: quarterlyDataToJson(qd),
         })
         .select()
         .single();
-      
+
       if (error) throw error;
       return created;
     },
@@ -142,299 +146,287 @@ export function useInitiativeMutations() {
       toast({
         title: 'Ошибка создания',
         description: 'Не удалось создать инициативу.',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     },
     onSuccess: () => {
       setSyncStatus('synced');
       queryClient.invalidateQueries({ queryKey: ['initiatives'] });
-    }
+    },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('initiatives')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('initiatives').delete().eq('id', id);
       if (error) throw error;
     },
     onMutate: async (id) => {
       setSyncStatus('saving');
-      
       await queryClient.cancelQueries({ queryKey: ['initiatives'] });
       const previous = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
-      
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => 
-        (old || []).filter(row => row.id !== id)
-      );
-      
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.filter((row) => row.id !== id);
+      });
       return { previous };
     },
     onError: (err, id, context) => {
       console.error('Delete failed:', err);
       setSyncStatus('error');
-      
       if (context?.previous) {
         queryClient.setQueryData(['initiatives'], context.previous);
       }
-      
       toast({
         title: 'Ошибка удаления',
         description: 'Не удалось удалить инициативу.',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     },
     onSuccess: () => {
       setSyncStatus('synced');
       queryClient.invalidateQueries({ queryKey: ['initiatives'] });
-    }
+    },
   });
 
-  // Debounced update for text fields
-  const debouncedUpdate = useCallback((
-    id: string, 
-    field: string, 
-    value: unknown, 
-    delay = 1000
-  ) => {
-    const key = `${id}-${field}`;
-    
-    // Cancel previous timer
-    const existing = debounceTimers.current.get(key);
-    if (existing) clearTimeout(existing);
-    
-    // Immediate optimistic update in cache
-    queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => 
-      (old || []).map(row => 
-        row.id === id 
-          ? { ...row, [field]: value }
-          : row
-      )
-    );
-    
-    setSyncStatus('saving');
-    setPendingCount(debounceTimers.current.size + 1);
-    
-    // Set new timer
-    const timer = setTimeout(() => {
-      updateMutation.mutate({ id, field, value });
-      debounceTimers.current.delete(key);
+  const debouncedUpdate = useCallback(
+    (id: string, field: string, value: unknown, delay = 1000) => {
+      const key = `${id}-${field}`;
+      const existing = debounceTimers.current.get(key);
+      if (existing) clearTimeout(existing);
+
+      const dbColumn = FIELD_TO_COLUMN[field] || field;
+
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.map((row) => (row.id !== id ? row : { ...row, [field]: value }));
+      });
+
+      setSyncStatus('saving');
+      setPendingCount(debounceTimers.current.size + 1);
+
+      const timer = setTimeout(() => {
+        const latest = queryClient.getQueryData<AdminDataRow[]>(['initiatives'])?.find((r) => r.id === id);
+        if (!latest) {
+          debounceTimers.current.delete(key);
+          setPendingCount(debounceTimers.current.size);
+          return;
+        }
+        updateMutation.mutate({
+          id,
+          patch: { [dbColumn]: value },
+        });
+        debounceTimers.current.delete(key);
+        setPendingCount(debounceTimers.current.size);
+      }, delay);
+
+      debounceTimers.current.set(key, timer);
       setPendingCount(debounceTimers.current.size);
-    }, delay);
-    
-    debounceTimers.current.set(key, timer);
-  }, [updateMutation, queryClient]);
+    },
+    [updateMutation, queryClient]
+  );
 
-  // Sync assignments when effortCoefficient changes
-  const syncAssignments = useCallback(async (
-    initiative: AdminDataRow,
-    quarter: string,
-    effortValue: number
-  ) => {
-    try {
-      // Get all people matching initiative's unit/team
-      const { data: people, error: peopleError } = await supabase
-        .from('people')
-        .select('*')
-        .eq('unit', initiative.unit)
-        .eq('team', initiative.team)
-        .is('terminated_at', null);
-      
-      if (peopleError) throw peopleError;
-      if (!people || people.length === 0) return;
+  const syncAssignments = useCallback(
+    async (initiative: AdminDataRow, quarter: string, effortValue: number) => {
+      try {
+        const { data: people, error: peopleError } = await supabase
+          .from('people')
+          .select('*')
+          .eq('unit', initiative.unit)
+          .eq('team', initiative.team)
+          .is('terminated_at', null);
 
-      // Get existing assignments for this initiative
-      const { data: existingAssignments, error: assignError } = await supabase
-        .from('person_initiative_assignments')
-        .select('*')
-        .eq('initiative_id', initiative.id);
-      
-      if (assignError) throw assignError;
+        if (peopleError) throw peopleError;
+        if (!people || people.length === 0) return;
 
-      const existingByPerson = new Map(
-        (existingAssignments || []).map(a => [a.person_id, a])
-      );
+        const { data: existingAssignments, error: assignError } = await supabase
+          .from('person_initiative_assignments')
+          .select('*')
+          .eq('initiative_id', initiative.id);
 
-      let created = 0;
-      let updated = 0;
+        if (assignError) throw assignError;
 
-      for (const person of people as Person[]) {
-        const existing = existingByPerson.get(person.id);
-        
-        if (!existing) {
-          // Create new assignment
-          await supabase
-            .from('person_initiative_assignments')
-            .insert({
+        const existingByPerson = new Map((existingAssignments || []).map((a) => [a.person_id, a]));
+
+        let created = 0;
+        let updated = 0;
+
+        for (const person of people as Person[]) {
+          const existing = existingByPerson.get(person.id);
+
+          if (!existing) {
+            await supabase.from('person_initiative_assignments').insert({
               person_id: person.id,
               initiative_id: initiative.id,
               quarterly_effort: { [quarter]: effortValue } as unknown as Json,
-              is_auto: true
+              is_auto: true,
             });
-          created++;
-        } else if (existing.is_auto) {
-          // Only update if is_auto = true
-          const newEffort = {
-            ...(existing.quarterly_effort as Record<string, number>),
-            [quarter]: effortValue
-          };
-          await supabase
-            .from('person_initiative_assignments')
-            .update({ quarterly_effort: newEffort as unknown as Json })
-            .eq('id', existing.id);
-          updated++;
+            created++;
+          } else if (existing.is_auto) {
+            const newEffort = {
+              ...(existing.quarterly_effort as Record<string, number>),
+              [quarter]: effortValue,
+            };
+            await supabase
+              .from('person_initiative_assignments')
+              .update({ quarterly_effort: newEffort as unknown as Json })
+              .eq('id', existing.id);
+            updated++;
+          }
         }
-      }
 
-      if (created > 0 || updated > 0) {
-        queryClient.invalidateQueries({ queryKey: ['person_assignments'] });
-        toast({ 
-          title: 'Привязки обновлены',
-          description: `Создано: ${created}, обновлено: ${updated}`
-        });
+        if (created > 0 || updated > 0) {
+          queryClient.invalidateQueries({ queryKey: ['person_assignments'] });
+          toast({
+            title: 'Привязки обновлены',
+            description: `Создано: ${created}, обновлено: ${updated}`,
+          });
+        }
+      } catch (err) {
+        console.error('Sync assignments error:', err);
       }
-    } catch (err) {
-      console.error('Sync assignments error:', err);
-    }
-  }, [queryClient, toast]);
+    },
+    [queryClient, toast]
+  );
 
-  // Update quarterly data (merges with existing)
-  const updateQuarterData = useCallback((
-    id: string,
-    quarter: string,
-    field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
-  ) => {
-    const key = `${id}-quarterly-${quarter}-${field}`;
-    
-    // Cancel previous timer
-    const existing = debounceTimers.current.get(key);
-    if (existing) clearTimeout(existing);
-    
-    // Get current data
-    const currentData = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
-    const currentRow = currentData?.find(r => r.id === id);
-    
-    if (!currentRow) return;
-    
-    const updatedQuarterlyData = {
-      ...currentRow.quarterlyData,
-      [quarter]: {
-        ...(currentRow.quarterlyData[quarter] || createEmptyQuarterData()),
-        [field]: value
-      }
-    };
-    
-    // Immediate optimistic update
-    queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => 
-      (old || []).map(row => 
-        row.id === id 
-          ? { ...row, quarterlyData: updatedQuarterlyData }
-          : row
-      )
-    );
-    
-    setSyncStatus('saving');
-    
-    // Debounce based on field type
-    const delay =
-      field === 'geoCostSplit'
-        ? 400
-        : typeof value === 'boolean'
-          ? 0
-          : typeof value === 'number'
-            ? 500
-            : 1000;
-    
-    const timer = setTimeout(async () => {
-      updateMutation.mutate({ 
-        id, 
-        field: 'quarterlyData', 
-        value: quarterlyDataToJson(updatedQuarterlyData) 
+  const updateQuarterData = useCallback(
+    (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean | GeoCostSplit | undefined) => {
+      const key = `${id}-quarterly-${quarter}-${field}`;
+      const existing = debounceTimers.current.get(key);
+      if (existing) clearTimeout(existing);
+
+      const currentData = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
+      const currentRow = currentData?.find((r) => r.id === id);
+      if (!currentRow) return;
+
+      const prevQ = currentRow.quarterlyData[quarter] || createEmptyQuarterData();
+      const nextQuarter =
+        field === 'costFinanceConfirmed'
+          ? { ...prevQ, [field]: value as boolean }
+          : { ...prevQ, [field]: value, costFinanceConfirmed: true };
+      const updatedQuarterlyData = {
+        ...currentRow.quarterlyData,
+        [quarter]: nextQuarter,
+      };
+
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.map((row) =>
+          row.id === id ? { ...row, quarterlyData: updatedQuarterlyData } : row
+        );
       });
-      
-      // If effortCoefficient changed, sync people assignments
-      if (field === 'effortCoefficient' && typeof value === 'number' && value > 0) {
-        const updatedRow = { ...currentRow, quarterlyData: updatedQuarterlyData };
-        await syncAssignments(updatedRow, quarter, value);
-      }
-      
-      debounceTimers.current.delete(key);
+
+      setSyncStatus('saving');
+
+      const delay =
+        field === 'geoCostSplit'
+          ? 400
+          : typeof value === 'boolean'
+            ? 0
+            : typeof value === 'number'
+              ? 500
+              : 1000;
+
+      const timer = setTimeout(async () => {
+        updateMutation.mutate({
+          id,
+          patch: { quarterly_data: quarterlyDataToJson(updatedQuarterlyData) },
+        });
+
+        if (field === 'effortCoefficient' && typeof value === 'number' && value > 0) {
+          const updatedRow = { ...currentRow, quarterlyData: updatedQuarterlyData };
+          await syncAssignments(updatedRow, quarter, value);
+        }
+
+        debounceTimers.current.delete(key);
+        setPendingCount(debounceTimers.current.size);
+      }, delay);
+
+      debounceTimers.current.set(key, timer);
       setPendingCount(debounceTimers.current.size);
-    }, delay);
-    
-    debounceTimers.current.set(key, timer);
-    setPendingCount(debounceTimers.current.size);
-  }, [updateMutation, queryClient, syncAssignments]);
+    },
+    [updateMutation, queryClient, syncAssignments]
+  );
 
-  // Bulk update quarterly data (e.g. support cascade) — one optimistic update, one API call
-  const updateQuarterDataBulk = useCallback((
-    id: string,
-    quarterlyData: Record<string, AdminQuarterData>
-  ) => {
-    setSyncStatus('saving');
-    setLastError(null);
-    queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) =>
-      (old || []).map(row =>
-        row.id === id ? { ...row, quarterlyData } : row
-      )
-    );
-    updateMutation.mutate({
-      id,
-      field: 'quarterlyData',
-      value: quarterlyDataToJson(quarterlyData),
-    });
-  }, [updateMutation, queryClient]);
+  const updateQuarterDataBulk = useCallback(
+    (id: string, quarterlyData: Record<string, AdminQuarterData>) => {
+      setSyncStatus('saving');
+      setLastError(null);
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.map((row) => (row.id === id ? { ...row, quarterlyData } : row));
+      });
+      updateMutation.mutate({
+        id,
+        patch: { quarterly_data: quarterlyDataToJson(quarterlyData) },
+      });
+    },
+    [updateMutation, queryClient]
+  );
 
-  // Async version for awaiting in quick-flow save (no optimistic update; caller manages state)
-  const updateQuarterDataBulkAsync = useCallback(async (
-    id: string,
-    quarterlyData: Record<string, AdminQuarterData>
-  ) => {
-    setSyncStatus('saving');
-    setLastError(null);
-    await updateMutation.mutateAsync({
-      id,
-      field: 'quarterlyData',
-      value: quarterlyDataToJson(quarterlyData),
-    });
-    queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) =>
-      (old || []).map(row =>
-        row.id === id ? { ...row, quarterlyData } : row
-      )
-    );
-  }, [updateMutation, queryClient]);
+  const updateQuarterDataBulkAsync = useCallback(
+    async (id: string, quarterlyData: Record<string, AdminQuarterData>) => {
+      setSyncStatus('saving');
+      setLastError(null);
+      await updateMutation.mutateAsync({
+        id,
+        patch: { quarterly_data: quarterlyDataToJson(quarterlyData) },
+      });
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.map((row) => (row.id === id ? { ...row, quarterlyData } : row));
+      });
+    },
+    [updateMutation, queryClient]
+  );
 
-  // Immediate update (no debounce)
-  const immediateUpdate = useCallback((
-    id: string,
-    field: string,
-    value: unknown
-  ) => {
-    updateMutation.mutate({ id, field, value });
-  }, [updateMutation]);
+  const immediateUpdate = useCallback(
+    (id: string, field: string, value: unknown) => {
+      const latest = queryClient.getQueryData<AdminDataRow[]>(['initiatives'])?.find((r) => r.id === id);
+      if (!latest) return;
+      const dbColumn = FIELD_TO_COLUMN[field] || field;
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+        if (old === undefined) return undefined;
+        return old.map((row) => (row.id === id ? { ...row, [field]: value } : row));
+      });
+      updateMutation.mutate({
+        id,
+        patch: { [dbColumn]: value },
+      });
+    },
+    [updateMutation, queryClient]
+  );
 
-  /** Одиночное поле строки — для сохранения черновика quick flow (ожидание завершения). */
+  const beginBulkInitiativeMutations = useCallback((expectedSettledCount: number) => {
+    if (expectedSettledCount > 0) {
+      bulkInitiativeInvalidateSkipsRef.current = expectedSettledCount;
+    }
+  }, []);
+
+  /** Если пакет прервался — сброс счётчика и один refetch. */
+  const finalizeBulkInitiativeMutations = useCallback(() => {
+    if (bulkInitiativeInvalidateSkipsRef.current > 0) {
+      bulkInitiativeInvalidateSkipsRef.current = 0;
+      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+    }
+  }, [queryClient]);
+
   const updateInitiativeFieldAsync = useCallback(
     async (id: string, field: string, value: unknown) => {
-      await updateMutation.mutateAsync({ id, field, value });
+      const dbColumn = FIELD_TO_COLUMN[field] || field;
+      await updateMutation.mutateAsync({
+        id,
+        patch: { [dbColumn]: value },
+      });
     },
     [updateMutation]
   );
 
-  // Flush all pending changes immediately
   const flushPendingChanges = useCallback(() => {
-    debounceTimers.current.forEach((timer, key) => {
-      clearTimeout(timer);
-      debounceTimers.current.delete(key);
-    });
+    debounceTimers.current.forEach((timer) => clearTimeout(timer));
+    debounceTimers.current.clear();
     setPendingCount(0);
   }, []);
 
-  // Retry last failed operation
   const retry = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['initiatives'] });
     setSyncStatus('synced');
@@ -442,7 +434,6 @@ export function useInitiativeMutations() {
   }, [queryClient]);
 
   return {
-    // Update methods
     updateInitiative: debouncedUpdate,
     updateQuarterData,
     updateQuarterDataBulk,
@@ -450,19 +441,15 @@ export function useInitiativeMutations() {
     immediateUpdate,
     updateInitiativeFieldAsync,
     syncAssignments,
-    
-    // CRUD operations
     createInitiative: createMutation.mutateAsync,
     deleteInitiative: deleteMutation.mutateAsync,
-    
-    // Status
     syncStatus,
     isSaving: updateMutation.isPending || createMutation.isPending || deleteMutation.isPending,
     pendingChanges: pendingCount,
     lastError,
-    
-    // Actions
     flushPendingChanges,
     retry,
+    beginBulkInitiativeMutations,
+    finalizeBulkInitiativeMutations,
   };
 }

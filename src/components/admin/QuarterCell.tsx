@@ -293,6 +293,28 @@ const QuarterCell = ({
                   <div className="text-xs font-medium text-muted-foreground">
                     Итого: {formatCurrency(totalCost)} ₽
                   </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-xs text-muted-foreground cursor-help border-b border-dotted border-muted-foreground/40">
+                          Провалидировано финансами
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-[220px]">
+                        <p className="text-xs">
+                          Для этого квартала. Снимается при сохранении из Quick Flow; включите после согласования
+                          стоимости с финансами.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Switch
+                      checked={data.costFinanceConfirmed !== false}
+                      onCheckedChange={(checked) => onChange('costFinanceConfirmed', checked)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Провалидировано финансами, ${quarter}`}
+                    />
+                  </div>
                 </div>
               </CollapsibleContent>
             </div>

@@ -11,6 +11,7 @@ import {
   formatBudgetShort,
   formatBudget,
   parseStakeholderParts,
+  periodEffortSum,
   type SupportFilter
 } from '@/lib/dataManager';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
@@ -81,8 +82,7 @@ const GanttView = ({
   adminTimelineQuarterWarnings,
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
-  const headerTimelineRef = useRef<HTMLDivElement>(null);
-  const rowsContainerRef = useRef<HTMLDivElement>(null);
+  const unifiedScrollRef = useRef<HTMLDivElement>(null);
   const [quarterPopup, setQuarterPopup] = useState<QuarterPopupData | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const popupRef = useRef<HTMLDivElement>(null);
@@ -122,7 +122,8 @@ const GanttView = ({
   const filteredData = useMemo(() => {
     let result = rawData.filter(row => {
       const periodBudget = calculateBudget(row, selectedQuarters);
-      if (periodBudget === 0) return false;
+      const periodEffort = periodEffortSum(row, selectedQuarters);
+      if (periodBudget === 0 && periodEffort <= 0) return false;
 
       const isSupport = isInitiativeSupport(row, selectedQuarters);
       if (supportFilter === 'exclude' && isSupport) return false;
@@ -175,21 +176,6 @@ const GanttView = ({
       highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlightedInitiative, filteredData]);
-
-  // Sync horizontal scroll between header and rows
-  useEffect(() => {
-    const rowsContainer = rowsContainerRef.current;
-    const headerTimeline = headerTimelineRef.current;
-
-    if (!rowsContainer || !headerTimeline) return;
-
-    const handleScroll = () => {
-      headerTimeline.scrollLeft = rowsContainer.scrollLeft;
-    };
-
-    rowsContainer.addEventListener('scroll', handleScroll);
-    return () => rowsContainer.removeEventListener('scroll', handleScroll);
-  }, []);
 
   // Close popups on outside click
   useEffect(() => {
@@ -309,19 +295,30 @@ const GanttView = ({
 
   // No results after filtering
   if (filteredData.length === 0) {
+    const sheetMin = 320 + selectedQuarters.length * quarterWidth;
     return (
       <div className="gantt-container">
-        <div className="gantt-header">
-          <div className="gantt-timeline-row">
-            <div className="gantt-header-label">Инициатива</div>
-            <div className="gantt-timeline-header" ref={headerTimelineRef}>
-              {selectedQuarters.map(q => (
-                <div key={q} className="gantt-quarter" style={{ minWidth: quarterWidth }}>{q.replace('-', ' ')}</div>
-              ))}
+        <div className="gantt-unified-scroll">
+          <div
+            className="gantt-sheet"
+            style={{
+              minWidth: sheetMin,
+              ['--gantt-timeline-width' as string]: `${selectedQuarters.length * quarterWidth}px`,
+            }}
+          >
+            <div className="gantt-header-sticky">
+              <div className="gantt-timeline-row">
+                <div className="gantt-header-label">Инициатива</div>
+                <div className="gantt-timeline-header">
+                  {selectedQuarters.map((q) => (
+                    <div key={q} className="gantt-quarter" style={{ minWidth: quarterWidth }}>
+                      {q.replace('-', ' ')}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="gantt-empty-state">
+            <div className="gantt-empty-state gantt-empty-state--in-sheet">
           <div className="gantt-empty-icon">
             <Search size={32} />
           </div>
@@ -334,6 +331,8 @@ const GanttView = ({
               Сбросить фильтры
             </button>
           )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -660,22 +659,32 @@ const GanttView = ({
     );
   };
 
+  const sheetMinWidth = 320 + selectedQuarters.length * quarterWidth;
+
   return (
     <div className="gantt-container">
-      {/* Header with quarter columns */}
-      <div className="gantt-header">
-        <div className="gantt-timeline-row">
-          <div className="gantt-header-label">Инициатива</div>
-          <div className="gantt-timeline-header" ref={headerTimelineRef}>
-            {selectedQuarters.map(q => (
-              <div key={q} className="gantt-quarter" style={{ minWidth: quarterWidth }}>{q.replace('-', ' ')}</div>
-            ))}
+      <div className="gantt-unified-scroll" ref={unifiedScrollRef}>
+        <div
+          className="gantt-sheet"
+          style={{
+            minWidth: sheetMinWidth,
+            ['--gantt-timeline-width' as string]: `${selectedQuarters.length * quarterWidth}px`,
+          }}
+        >
+          <div className="gantt-header-sticky">
+            <div className="gantt-timeline-row">
+              <div className="gantt-header-label">Инициатива</div>
+              <div className="gantt-timeline-header">
+                {selectedQuarters.map((q) => (
+                  <div key={q} className="gantt-quarter" style={{ minWidth: quarterWidth }}>
+                    {q.replace('-', ' ')}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Rows */}
-      <div className="gantt-rows" ref={rowsContainerRef}>
+          <div className="gantt-rows-block">
         {filteredData.map((row, idx) => {
           const totalCost = calculateTotalBudget(row);
           const periodCost = calculateBudget(row, selectedQuarters);
@@ -802,6 +811,8 @@ const GanttView = ({
             </div>
           );
         })}
+          </div>
+        </div>
       </div>
 
       {/* Name popup */}

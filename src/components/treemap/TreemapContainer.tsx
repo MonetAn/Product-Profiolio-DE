@@ -46,11 +46,14 @@ interface TreemapContainerProps {
   viewKey?: string;
   /** If false, tooltip does not show "Распределение бюджета" block (e.g. for Stakeholders treemap) */
   showDistributionInTooltip?: boolean;
-  onTrackTreemapAction?: (type: 'treemap_zoom' | 'treemap_click', payload: { view: string; path: string; name: string }) => void;
   /** If false, only percentages are shown on cells (no money) */
   showMoney?: boolean;
   /** When this key changes (e.g. support/off-track/stub filter), use same animation as filter toggle (smooth rebuild) */
   contentKey?: string;
+  /** Quick flow treemap: упрощённый тултип листа (описание + документация) */
+  tooltipInitiativeVariant?: 'default' | 'descriptionDocReview';
+  /** Каталог кварталов матрицы: если выбраны все, в тултипе quick review не показываем уточнение «за выбранный период». */
+  treemapQuarterCatalog?: string[];
 }
 
 const TreemapContainer = ({
@@ -82,9 +85,10 @@ const TreemapContainer = ({
   initialFocusedPath,
   viewKey,
   showDistributionInTooltip = true,
-  onTrackTreemapAction,
   showMoney = true,
   contentKey,
+  tooltipInitiativeVariant = 'default',
+  treemapQuarterCatalog,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -136,7 +140,14 @@ const TreemapContainer = ({
   
   const isEmpty = !data.children || data.children.length === 0;
   const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
-  
+
+  const docReviewShowCostPeriodNote = useMemo(() => {
+    if (!treemapQuarterCatalog?.length) return true;
+    if (selectedQuarters.length !== treemapQuarterCatalog.length) return true;
+    const sel = new Set(selectedQuarters);
+    return !treemapQuarterCatalog.every((q) => sel.has(q));
+  }, [selectedQuarters, treemapQuarterCatalog]);
+
   // Reset focusedPath only when root data actually changes
   const dataIdRef = useRef(data.name + '|' + (data.children?.length || 0));
   useEffect(() => {
@@ -372,14 +383,12 @@ const TreemapContainer = ({
       node.data.adminInitiativeRowId &&
       onAdminInitiativeRowClick
     ) {
-      onTrackTreemapAction?.('treemap_click', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
       onAdminInitiativeRowClick(node.data.adminInitiativeRowId, node.data);
       return;
     }
 
     // Initiative click → open peek modal (parent may navigate to Gantt from there)
     if (node.data.isInitiative && onInitiativeClick) {
-      onTrackTreemapAction?.('treemap_click', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
       onInitiativeClick(node.data.name, node.path);
       return;
     }
@@ -388,7 +397,6 @@ const TreemapContainer = ({
     const isNonLeaf = node.data.isUnit || node.data.isTeam || node.data.isStakeholder;
     
     if (isNonLeaf) {
-      onTrackTreemapAction?.('treemap_zoom', { view: viewKey ?? 'budget', path: node.path, name: node.data.name });
       // Smart auto-enable: show children based on node type
       if (node.data.isUnit || node.data.isStakeholder) {
         if (!showTeams) onAutoEnableTeams?.();
@@ -420,7 +428,6 @@ const TreemapContainer = ({
     showInitiatives,
     onAutoEnableTeams,
     onFocusedPathChange,
-    onTrackTreemapAction,
     viewKey,
   ]);
   
@@ -563,6 +570,8 @@ const TreemapContainer = ({
         totalValue={totalValue}
         showDistributionInTooltip={showDistributionInTooltip}
         showMoney={showMoney}
+        tooltipInitiativeVariant={tooltipInitiativeVariant}
+        docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
       />
       
       {/* Framer Motion treemap rendering */}

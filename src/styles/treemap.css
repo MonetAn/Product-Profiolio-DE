@@ -184,6 +184,93 @@ html.admin-engineering .treemap-node.admin-effort-changed {
   opacity: 1;
 }
 
+/* Quick flow «описание / документация»: компактная карточка, выравнивание слева, без лишней ширины */
+.treemap-tooltip.treemap-tooltip--quick-doc-review {
+  min-width: 0;
+  max-width: min(288px, calc(100vw - 2rem));
+  padding: 12px 14px;
+  border: 1px solid hsl(var(--border) / 0.85);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.08),
+    0 12px 28px -8px rgb(0 0 0 / 0.12);
+}
+
+.dark .treemap-tooltip.treemap-tooltip--quick-doc-review {
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.35),
+    0 12px 28px -8px rgb(0 0 0 / 0.45);
+}
+
+.tooltip-doc-review {
+  text-align: left;
+}
+
+.tooltip-doc-review-head {
+  margin-bottom: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+}
+
+.tooltip-doc-review-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+  letter-spacing: -0.01em;
+}
+
+.tooltip-doc-review-cost {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+
+.tooltip-doc-review-cost-note {
+  font-weight: 500;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.tooltip-doc-review-section {
+  margin-top: 10px;
+}
+
+.tooltip-doc-review-kicker {
+  margin: 0 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.3;
+}
+
+.tooltip-doc-review-optional {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: hsl(var(--muted-foreground) / 0.9);
+}
+
+.tooltip-doc-review-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+  color: hsl(var(--foreground));
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.tooltip-doc-review-body.tooltip-doc-review-muted {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
 .tooltip-header {
   display: flex;
   align-items: center;
@@ -222,6 +309,25 @@ html.admin-engineering .treemap-node.admin-effort-changed {
   color: hsl(var(--muted-foreground));
   margin-bottom: 10px;
   letter-spacing: 0.02em;
+}
+
+.tooltip-preliminary {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: hsl(28 85% 22%);
+  background: hsl(38 92% 94%);
+  border: 1px solid hsl(38 80% 78%);
+}
+
+.dark .tooltip-preliminary {
+  color: hsl(48 96% 88%);
+  background: hsl(32 45% 18%);
+  border-color: hsl(38 55% 32%);
 }
 
 .tooltip-admin-effort-compare {
@@ -272,6 +378,17 @@ html.admin-engineering .treemap-node.admin-effort-changed {
 .tooltip-value {
   font-weight: 500;
   flex-shrink: 0;
+}
+
+.tooltip-row-doc-review {
+  align-items: flex-start;
+}
+
+a.tooltip-doc-link {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
 }
 
 /* Distribution block: colored dots left of label; text indented so wrap doesn't go under dot */

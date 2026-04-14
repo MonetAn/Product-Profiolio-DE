@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useContext, DragEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, DragEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, RefreshCw } from 'lucide-react';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
@@ -10,7 +10,8 @@ import StakeholdersTreemap from '@/components/StakeholdersTreemap';
 import GanttView from '@/components/GanttView';
 import { InitiativePeekModal } from '@/components/InitiativePeekModal';
 import { LogoLoader } from '@/components/LogoLoader';
-import { ActivityContext } from '@/contexts/ActivityContext';
+import { useAuth } from '@/hooks/useAuth';
+import { useRecordDailyPresence } from '@/hooks/useRecordDailyPresence';
 import {
   parseCSV,
   convertFromDB,
@@ -31,7 +32,8 @@ import { toast } from 'sonner';
 const Index = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const activityContext = useContext(ActivityContext);
+  const { user } = useAuth();
+  useRecordDailyPresence('portfolio', !!user);
   const { isAdmin, canAccess, canViewMoney, scope } = useAccess();
   // Fetch data from database
   const { data: dbData, isLoading, error, refetch } = useInitiatives();
@@ -404,16 +406,7 @@ const Index = () => {
     // Reuse would mislabel the stakeholder filter with the budget unit segment.
     setZoomPath([]);
     setResetZoomTrigger((prev) => prev + 1);
-    activityContext?.send?.('view_switch', { from, to: view });
   };
-
-  // Sync activity context for tracking (view + zoomPath)
-  useEffect(() => {
-    activityContext?.setContext({
-      view: currentView,
-      zoomPath: currentView !== 'timeline' ? zoomPath : [],
-    });
-  }, [currentView, zoomPath, activityContext?.setContext]);
 
   // Resolve initiative row from treemap path (Unit/Team/Initiative or Stakeholder/Unit/Team/Initiative)
   const initiativePeekRow = (() => {
@@ -648,10 +641,8 @@ const Index = () => {
         currentView={currentView}
       />
 
-      {/* Main Content - full height without padding for immersive treemap */}
-      <main
-        className="mt-[156px] h-[calc(100vh-156px)] overflow-hidden"
-      >
+      {/* Main: хедер + FilterBar (~9.75rem) */}
+      <main className="mt-[9.75rem] h-[calc(100vh-9.75rem)] overflow-hidden">
         {(() => {
           const showLoader =
             (rawData.length === 0 && (isLoading || (dbData && dbData.length > 0))) ||
@@ -699,7 +690,6 @@ const Index = () => {
             onInitiativeClick={(name, path) => {
               setInitiativePeekPath(path);
             }}
-            onTrackTreemapAction={(type, payload) => activityContext?.send?.(type, payload)}
             onFileDrop={processCSVFile}
             hasData={rawData.length > 0}
             onResetFilters={resetFilters}
@@ -727,7 +717,6 @@ const Index = () => {
             onInitiativeClick={(name, path) => {
               setInitiativePeekPath(path);
             }}
-            onTrackTreemapAction={(type, payload) => activityContext?.send?.(type, payload)}
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
             clickedNodeName={clickedNodeName}

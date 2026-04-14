@@ -11,8 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { usePeopleMutations } from '@/hooks/usePeople';
-import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
-import { parseHRStructure, type Person } from '@/lib/peopleDataManager';
+import { parseHRStructure } from '@/lib/peopleDataManager';
 
 interface PersonCreateDialogProps {
   open: boolean;
@@ -20,9 +19,6 @@ interface PersonCreateDialogProps {
   /** Подставляются из выбранного скоупа на странице «Люди», если есть */
   defaultUnit?: string;
   defaultTeam?: string;
-  /** Из шага «Состав команды»: запись как вручную добавленная, ждёт проверки админа в «Люди». */
-  rosterMode?: boolean;
-  onPersonCreated?: (person: Person) => void;
 }
 
 const emptyForm = {
@@ -42,8 +38,6 @@ export default function PersonCreateDialog({
   onOpenChange,
   defaultUnit = '',
   defaultTeam = '',
-  rosterMode = false,
-  onPersonCreated,
 }: PersonCreateDialogProps) {
   const { createPerson } = usePeopleMutations();
   const [formData, setFormData] = useState(emptyForm);
@@ -70,28 +64,18 @@ export default function PersonCreateDialog({
     const name = formData.full_name.trim();
     if (!name) return;
 
-    const who = rosterMode ? await getCurrentUserDisplayName() : null;
-    const created = await createPerson.mutateAsync({
+    await createPerson.mutateAsync({
       external_id: `manual:${crypto.randomUUID()}`,
       full_name: name,
-      email: rosterMode ? null : formData.email.trim() || null,
-      hr_structure: rosterMode ? null : formData.hr_structure.trim() || null,
+      email: formData.email.trim() || null,
+      hr_structure: formData.hr_structure.trim() || null,
       unit: formData.unit.trim() || null,
       team: formData.team.trim() || null,
-      position: rosterMode ? null : formData.position.trim() || null,
-      leader: rosterMode ? null : formData.leader.trim() || null,
-      hired_at: rosterMode ? null : formData.hired_at.trim() || null,
-      terminated_at: rosterMode ? null : formData.terminated_at.trim() || null,
-      ...(rosterMode && who
-        ? {
-            directory_source: 'manual' as const,
-            manual_review_status: 'pending' as const,
-            manual_added_by: who.id,
-            manual_added_by_name: who.name,
-          }
-        : {}),
+      position: formData.position.trim() || null,
+      leader: formData.leader.trim() || null,
+      hired_at: formData.hired_at.trim() || null,
+      terminated_at: formData.terminated_at.trim() || null,
     });
-    onPersonCreated?.(created);
     onOpenChange(false);
   };
 
@@ -101,17 +85,8 @@ export default function PersonCreateDialog({
         <DialogHeader>
           <DialogTitle>Добавить сотрудника</DialogTitle>
           <DialogDescription>
-            {rosterMode ? (
-              <>
-                Сотрудник попадёт в справочник и в текущий состав. Запись будет отмечена как добавленная вручную
-                и останется на проверке у администратора на странице «Люди», пока его не отметят «Проверено».
-              </>
-            ) : (
-              <>
-                Запись попадёт в справочник людей; при необходимости привязки к квартальному составу команды
-                настройте снимки команды отдельно.
-              </>
-            )}
+            Запись попадёт в справочник людей; при необходимости привязки к квартальному составу команды
+            настройте снимки команды отдельно.
           </DialogDescription>
         </DialogHeader>
 
@@ -126,110 +101,93 @@ export default function PersonCreateDialog({
             />
           </div>
 
-          {rosterMode ? (
-            <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2.5 text-sm dark:bg-muted/15">
-              <p className="text-xs font-medium text-muted-foreground">Команда в этом сценарии</p>
-              <p className="mt-1 font-medium text-foreground">
-                {formData.unit?.trim() || '—'}
-                <span className="mx-1.5 text-muted-foreground">→</span>
-                {formData.team?.trim() || '—'}
-              </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Подставляется из выбранного в админке юнита и команды. Изменить привязку можно позже на странице
-                «Люди».
-              </p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Label htmlFor="create_hr_structure">HR-структура</Label>
+                <Input
+                  id="create_hr_structure"
+                  value={formData.hr_structure}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, hr_structure: e.target.value }))}
+                  placeholder="Dodo Engineering.Unit.Team"
+                />
+              </div>
+              <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={applyHrStructure}>
+                → Unit/Team
+              </Button>
             </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <Label htmlFor="create_hr_structure">HR-структура</Label>
-                    <Input
-                      id="create_hr_structure"
-                      value={formData.hr_structure}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, hr_structure: e.target.value }))}
-                      placeholder="Dodo Engineering.Unit.Team"
-                    />
-                  </div>
-                  <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={applyHrStructure}>
-                    → Unit/Team
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Как в выгрузке: после ввода нажмите «→ Unit/Team», либо укажите Unit и Team вручную ниже.
-                </p>
-              </div>
+            <p className="text-xs text-muted-foreground">
+              Как в выгрузке: после ввода нажмите «→ Unit/Team», либо укажите Unit и Team вручную ниже.
+            </p>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create_unit">Unit</Label>
-                  <Input
-                    id="create_unit"
-                    value={formData.unit}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, unit: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create_team">Team</Label>
-                  <Input
-                    id="create_team"
-                    value={formData.team}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, team: e.target.value }))}
-                  />
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="create_unit">Unit</Label>
+              <Input
+                id="create_unit"
+                value={formData.unit}
+                onChange={(e) => setFormData((prev) => ({ ...prev, unit: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="create_team">Team</Label>
+              <Input
+                id="create_team"
+                value={formData.team}
+                onChange={(e) => setFormData((prev) => ({ ...prev, team: e.target.value }))}
+              />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="create_email">Email</Label>
-                <Input
-                  id="create_email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="create_email">Email</Label>
+            <Input
+              id="create_email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+            />
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="create_position">Должность</Label>
-                <Input
-                  id="create_position"
-                  value={formData.position}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, position: e.target.value }))}
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="create_position">Должность</Label>
+            <Input
+              id="create_position"
+              value={formData.position}
+              onChange={(e) => setFormData((prev) => ({ ...prev, position: e.target.value }))}
+            />
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="create_leader">Лидер</Label>
-                <Input
-                  id="create_leader"
-                  value={formData.leader}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, leader: e.target.value }))}
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="create_leader">Лидер</Label>
+            <Input
+              id="create_leader"
+              value={formData.leader}
+              onChange={(e) => setFormData((prev) => ({ ...prev, leader: e.target.value }))}
+            />
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create_hired_at">Дата приёма</Label>
-                  <Input
-                    id="create_hired_at"
-                    type="date"
-                    value={formData.hired_at}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, hired_at: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create_terminated_at">Дата увольнения</Label>
-                  <Input
-                    id="create_terminated_at"
-                    type="date"
-                    value={formData.terminated_at}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, terminated_at: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </>
-          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="create_hired_at">Дата приёма</Label>
+              <Input
+                id="create_hired_at"
+                type="date"
+                value={formData.hired_at}
+                onChange={(e) => setFormData((prev) => ({ ...prev, hired_at: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="create_terminated_at">Дата увольнения</Label>
+              <Input
+                id="create_terminated_at"
+                type="date"
+                value={formData.terminated_at}
+                onChange={(e) => setFormData((prev) => ({ ...prev, terminated_at: e.target.value }))}
+              />
+            </div>
+          </div>
         </div>
 
         <DialogFooter>

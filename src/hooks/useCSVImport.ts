@@ -8,6 +8,7 @@ import {
   AdminQuarterData,
   normalizeSupportCascade,
   createEmptyQuarterData,
+  confirmFinanceForAllQuartersInData,
   type CostOnlyRow,
 } from '@/lib/adminDataManager';
 import { quarterlyDataToJson } from '@/hooks/useInitiatives';
@@ -120,6 +121,9 @@ export function useCSVImport() {
         for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
           const batch = toUpdate.slice(i, i + BATCH_SIZE);
           for (const { id, row } of batch) {
+            const qdJson = quarterlyDataToJson(
+              confirmFinanceForAllQuartersInData(row.quarterlyData)
+            );
             const { error: updateError } = await supabase
               .from('initiatives')
               .update({
@@ -128,7 +132,7 @@ export function useCSVImport() {
                 stakeholders: row.stakeholders,
                 description: row.description,
                 documentation_link: row.documentationLink,
-                quarterly_data: row.quarterlyData,
+                quarterly_data: qdJson,
               })
               .eq('id', id);
 
@@ -151,7 +155,7 @@ export function useCSVImport() {
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        const insertData = batch.map(row => ({
+        const insertData = batch.map((row) => ({
           unit: row.unit,
           team: row.team,
           initiative: row.initiative,
@@ -160,7 +164,7 @@ export function useCSVImport() {
           description: row.description,
           documentation_link: row.documentationLink,
           stakeholders: row.stakeholders,
-          quarterly_data: row.quarterlyData,
+          quarterly_data: quarterlyDataToJson(confirmFinanceForAllQuartersInData(row.quarterlyData)),
         }));
 
         const { error: insertError } = await supabase
@@ -276,7 +280,9 @@ export function useCSVImport() {
 
           const { error: updateError } = await supabase
             .from('initiatives')
-            .update({ quarterly_data: quarterlyDataToJson(merged) })
+            .update({
+              quarterly_data: quarterlyDataToJson(confirmFinanceForAllQuartersInData(merged)),
+            })
             .eq('id', match.id);
 
           if (updateError) {

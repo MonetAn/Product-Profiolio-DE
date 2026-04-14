@@ -105,7 +105,7 @@ export function useCSVExport({ quarters, marketCountries = [] }: UseCSVExportOpt
       downloadGeoSplitCSV(
         data,
         `portfolio-geo-split-all-${date}.csv`,
-        `Распределение по странам: ${data.length} инициатив`
+        `Распредели по странам стоимость инициативы — ${data.length} инициатив`
       );
     },
     [downloadGeoSplitCSV]
@@ -117,7 +117,7 @@ export function useCSVExport({ quarters, marketCountries = [] }: UseCSVExportOpt
       downloadGeoSplitCSV(
         data,
         `portfolio-geo-split-filtered-${date}.csv`,
-        `Распределение по странам: ${data.length} строк`
+        `Распредели по странам стоимость инициативы — ${data.length} строк`
       );
     },
     [downloadGeoSplitCSV]

@@ -91,6 +91,7 @@ function flattenHierarchy(
     isTimelineStub: node.data.isTimelineStub,
     distributedValue: node.data.distributedValue,
     unallocatedValue: node.data.unallocatedValue,
+    hasPreliminaryQuarterInPeriod: node.data.hasPreliminaryQuarterInPeriod,
   };
   
   // Process children if we haven't reached max depth

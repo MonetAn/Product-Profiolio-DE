@@ -7,7 +7,7 @@ import {
   applyEffortCompareToTreeChildren,
   buildEffortTreemapPreviewModel,
 } from '@/lib/adminEffortTreemapPreviewModel';
-import type { TreeNode } from '@/lib/dataManager';
+import { PRELIMINARY_COST_USER_MESSAGE, type TreeNode } from '@/lib/dataManager';
 import { compareQuarters } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 
@@ -127,7 +127,11 @@ export function AdminQuickFlowEffortComparePanel({
             <span className="font-medium tabular-nums text-foreground/85">
               {formatQuarterRangeForHint(qs)}
             </span>
-            <span> · Treemap по этим кварталам. Выбирается в чипах слева.</span>
+            <span>
+              {' '}
+              · Общая стоимость{' '}
+              <span className="tabular-nums text-foreground/90">{formatMoney(beforeModel.effectiveTotal)}</span>
+            </span>
           </p>
         ) : null}
       </div>
@@ -142,12 +146,12 @@ export function AdminQuickFlowEffortComparePanel({
           кварталам.
         </p>
       ) : immersive ? (
-        <div className="flex min-h-0 flex-1 flex-col divide-y divide-border/55">
-          <section className="flex min-h-[min(12rem,28vh)] flex-1 flex-col">
-            <p className="shrink-0 border-b border-border/45 bg-muted/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-muted/25">
-              До изменений · общая стоимость {formatMoney(beforeModel.effectiveTotal)}
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 [grid-template-rows:minmax(0,1fr)_minmax(0,1fr)]">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-border/55">
+            <p className="shrink-0 border-b border-border/45 bg-muted/25 px-2.5 py-1 text-[11px] font-semibold text-foreground dark:bg-muted/30">
+              До изменений
             </p>
-            <div className="min-h-0 flex-1 w-full min-w-0">
+            <div className="flex min-h-0 h-full min-w-0 flex-1 flex-col overflow-hidden">
               {beforeModel.effectiveTotal > 0 && beforeChildren.length > 0 ? (
                 <TreemapContainer
                   data={treeBefore}
@@ -168,11 +172,17 @@ export function AdminQuickFlowEffortComparePanel({
               )}
             </div>
           </section>
-          <section className="flex min-h-[min(12rem,28vh)] flex-1 flex-col">
-            <p className="shrink-0 border-b border-border/45 bg-muted/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:bg-muted/25">
-              После изменений · общая стоимость {formatMoney(afterModel.effectiveTotal)}
-            </p>
-            <div className="min-h-0 flex-1 w-full min-w-0">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <div
+              className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 border-b border-border/45 bg-muted/25 px-2.5 py-1 dark:bg-muted/30"
+              title={PRELIMINARY_COST_USER_MESSAGE}
+            >
+              <span className="text-[11px] font-semibold text-foreground">После изменений</span>
+              <span className="min-w-0 max-w-full text-right text-[10px] font-medium leading-snug text-amber-900 dark:text-amber-100">
+                {PRELIMINARY_COST_USER_MESSAGE}
+              </span>
+            </div>
+            <div className="flex min-h-0 h-full min-w-0 flex-1 flex-col overflow-hidden">
               {afterModel.effectiveTotal > 0 && afterChildren.length > 0 ? (
                 <TreemapContainer
                   data={treeAfter}
@@ -197,8 +207,8 @@ export function AdminQuickFlowEffortComparePanel({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           <section className="flex min-h-[220px] flex-1 flex-col gap-1 rounded-lg border border-border bg-muted/10 p-2 lg:min-h-[280px]">
-            <p className="shrink-0 text-xs font-medium text-muted-foreground px-1">
-              До изменений · общая стоимость {formatMoney(beforeModel.effectiveTotal)}
+            <p className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground px-1">
+              Общая стоимость {formatMoney(beforeModel.effectiveTotal)}
             </p>
             <div className="min-h-[200px] flex-1 w-full min-w-0">
               {beforeModel.effectiveTotal > 0 && beforeChildren.length > 0 ? (
@@ -222,8 +232,11 @@ export function AdminQuickFlowEffortComparePanel({
             </div>
           </section>
           <section className="flex min-h-[220px] flex-1 flex-col gap-1 rounded-lg border border-border bg-muted/10 p-2 lg:min-h-[280px]">
-            <p className="shrink-0 text-xs font-medium text-muted-foreground px-1">
-              После изменений · общая стоимость {formatMoney(afterModel.effectiveTotal)}
+            <p
+              className="shrink-0 rounded-md border border-amber-500/45 bg-amber-500/18 px-2 py-1.5 text-[11px] font-semibold leading-tight text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/25 dark:text-amber-50"
+              title={PRELIMINARY_COST_USER_MESSAGE}
+            >
+              <span className="block min-w-0 truncate">{PRELIMINARY_COST_USER_MESSAGE}</span>
             </p>
             <div className="min-h-0 flex-1 w-full min-w-0">
               {afterModel.effectiveTotal > 0 && afterChildren.length > 0 ? (

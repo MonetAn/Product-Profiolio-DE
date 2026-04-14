@@ -1,4 +1,4 @@
-import { isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
+import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
 
 // ===== GEO COST SPLIT (квартал: % от cost по строкам справочника market_countries) =====
 
@@ -8,6 +8,8 @@ export type GeoCostSplitEntry =
 
 export interface GeoCostSplit {
   entries: GeoCostSplitEntry[];
+  /** Комментарий ко всему сплиту квартала (один на квартал). */
+  note?: string;
 }
 
 // ===== ADMIN DATA TYPES =====
@@ -20,6 +22,8 @@ export interface AdminQuarterData {
   metricFact: string;     // Editable
   comment: string;        // Editable
   effortCoefficient: number; // 0-100% effort for this quarter
+  /** false — предварительная стоимость (Quick Flow); true/undefined — подтверждено финансами */
+  costFinanceConfirmed?: boolean;
   /** Распределение стоимости квартала по строкам «Рынки» (в т.ч. Drinkit как одна строка справочника). */
   geoCostSplit?: GeoCostSplit;
 }
@@ -73,7 +77,11 @@ export function sortStakeholderLabels(labels: string[]): string[] {
 }
 
 /** JSON для `quarterly_data.*.geoCostSplit` (без пустых note). */
-export function geoCostSplitToJson(split: GeoCostSplit): { entries: Record<string, unknown>[] } {
+export function geoCostSplitToJson(split: GeoCostSplit): {
+  entries: Record<string, unknown>[];
+  note?: string;
+} {
+  const splitNote = typeof split.note === 'string' && split.note.trim() ? split.note.trim() : undefined;
   return {
     entries: split.entries.map((e) => {
       const note = typeof e.note === 'string' && e.note.trim() ? e.note.trim() : undefined;
@@ -92,6 +100,7 @@ export function geoCostSplitToJson(split: GeoCostSplit): { entries: Record<strin
         ...(note ? { note } : {}),
       };
     }),
+    ...(splitNote ? { note: splitNote } : {}),
   };
 }
 
@@ -115,13 +124,17 @@ export function parseGeoCostSplit(raw: unknown): GeoCostSplit | undefined {
     }
   }
   if (entries.length === 0) return undefined;
-  return { entries };
+  const splitNoteRaw = o.note;
+  const splitNote =
+    typeof splitNoteRaw === 'string' && splitNoteRaw.trim() ? splitNoteRaw.trim() : undefined;
+  return { entries, ...(splitNote ? { note: splitNote } : {}) };
 }
 
 /** Копия сплита без общих ссылок на объекты строк (другой квартал, правки не затронут источник). */
 export function cloneGeoCostSplit(split: GeoCostSplit | undefined): GeoCostSplit | undefined {
   if (!split?.entries?.length) return undefined;
-  return { entries: split.entries.map((e) => ({ ...e })) };
+  const n = typeof split.note === 'string' && split.note.trim() ? split.note.trim() : undefined;
+  return { entries: split.entries.map((e) => ({ ...e })), ...(n ? { note: n } : {}) };
 }
 
 export function geoCostSplitPercentsTotal(entries: GeoCostSplitEntry[]): number {
@@ -133,6 +146,34 @@ export function isGeoCostSplitCompleteForCost(cost: number, split: GeoCostSplit 
   if (cost <= 0) return true;
   if (!split?.entries?.length) return false;
   return geoCostSplitPercentsTotal(split.entries) === 100;
+}
+
+/** Кварталы интервала quick flow с cost &gt; 0 по инициативе (по возрастанию). */
+export function quickFlowPaidQuartersForRow(row: AdminDataRow, fillQuarters: string[]): string[] {
+  const sortedFill = [...fillQuarters].filter(Boolean).sort(compareQuarters);
+  return sortedFill.filter((q) => (row.quarterlyData[q]?.cost ?? 0) > 0);
+}
+
+/** По всем кварталам интервала с затратами — geo split на 100%. Иначе false; нет затрат в интервале — false. */
+export function isQuickFlowGeoCompleteForRow(row: AdminDataRow, fillQuarters: string[]): boolean {
+  const paid = quickFlowPaidQuartersForRow(row, fillQuarters);
+  if (paid.length === 0) return false;
+  return paid.every((q) => {
+    const qd = row.quarterlyData[q];
+    const cost = qd?.cost ?? 0;
+    if (cost <= 0) return true;
+    return isGeoCostSplitCompleteForCost(cost, qd?.geoCostSplit);
+  });
+}
+
+/** Инициативы с затратами в интервале, у которых не везде заполнено распределение по странам. */
+export function getQuickFlowRowsWithIncompleteGeoSplit(
+  rows: AdminDataRow[],
+  fillQuarters: string[]
+): AdminDataRow[] {
+  return rows.filter(
+    (r) => quickFlowPaidQuartersForRow(r, fillQuarters).length > 0 && !isQuickFlowGeoCompleteForRow(r, fillQuarters)
+  );
 }
 
 /**
@@ -236,6 +277,18 @@ export interface AdminDataRow {
   isTimelineStub?: boolean;
   isNew?: boolean;
   isModified?: boolean;
+}
+
+/** Всем кварталам YYYY-Qn в объекте — флаг подтверждения финансами. */
+export function confirmFinanceForAllQuartersInData(
+  qd: Record<string, AdminQuarterData>
+): Record<string, AdminQuarterData> {
+  const next = { ...qd };
+  for (const k of Object.keys(next)) {
+    if (!isQuarterPeriodKey(k)) continue;
+    next[k] = { ...createEmptyQuarterData(), ...next[k], costFinanceConfirmed: true };
+  }
+  return next;
 }
 
 /** Ключи вида «2025-Q1». Не служебные вложения в quarterly_data (например sheet_out_itog_2025). */
@@ -576,13 +629,16 @@ export function exportGeoCostSplitCSV(
     'Percent',
     'AmountRub',
     'Entry_note',
+    'Quarter_split_note',
   ];
   const out: string[] = [];
   out.push(headers.join(','));
   for (const row of data) {
     for (const q of quarters) {
       const qd = row.quarterlyData[q];
-      const split = qd?.geoCostSplit?.entries;
+      const geo = qd?.geoCostSplit;
+      const split = geo?.entries;
+      const quarterSplitNote = geo?.note?.trim() ?? '';
       const cost = qd?.cost ?? 0;
       if (!split?.length || cost <= 0) continue;
       const rubles = rubleAmountsForGeoSplit(cost, split);
@@ -609,6 +665,7 @@ export function exportGeoCostSplitCSV(
             String(e.percent),
             String(rubles[i] ?? 0),
             escapeCSVValue(entryNote),
+            escapeCSVValue(quarterSplitNote),
           ].join(',')
         );
       });
@@ -688,7 +745,8 @@ export function createEmptyQuarterData(): AdminQuarterData {
     metricPlan: '',
     metricFact: '',
     comment: '',
-    effortCoefficient: 0
+    effortCoefficient: 0,
+    costFinanceConfirmed: true,
   };
 }
 
@@ -738,16 +796,10 @@ export function getInitiativeQuarterFillTone(
   row: AdminDataRow,
   quarter: string
 ): InitiativeQuarterFillTone {
-  if (row.isTimelineStub) return 'stub';
-  if (getMissingInitiativeFields(row).length > 0) return 'blocker';
-  const qd = row.quarterlyData[quarter];
-  if (!qd) return 'ok';
-  if (quarterRequiresPlanFact(qd)) {
-    const planOk = !!(qd.metricPlan && String(qd.metricPlan).trim());
-    const factRequired = isMetricFactRequiredForQuarter(quarter);
-    const factOk = !factRequired || !!(qd.metricFact && String(qd.metricFact).trim());
-    if (!planOk || !factOk) return 'metrics';
-  }
+  const r = getQuickFlowCellReadiness(row, quarter);
+  if (r.level === 'na') return row.isTimelineStub ? 'stub' : 'ok';
+  if (r.level === 'blocker') return 'blocker';
+  if (r.level === 'warn') return 'metrics';
   return 'ok';
 }
 
@@ -760,7 +812,62 @@ export function getMissingInitiativeFields(row: AdminDataRow): string[] {
   return missing;
 }
 
-/** Validation issues for quick flow step 2: initiatives with effort > 0 on nextQuarter that have missing required fields. */
+/** Уровень готовности ячейки «инициатива × квартал» на шаге проверки quick flow. */
+export type QuickFlowReadinessLevel = 'na' | 'ok' | 'warn' | 'blocker';
+
+export type QuickFlowCellReadiness = {
+  level: QuickFlowReadinessLevel;
+  reasons: string[];
+};
+
+/**
+ * Единые правила для матрицы проверки и подсветок: активная ячейка = есть усилия или стоимость в квартале.
+ * Блокер: карточка или гео при cost &gt; 0; предупреждение: план/факт при учётной стоимости и не поддержке.
+ */
+export function getQuickFlowCellReadiness(row: AdminDataRow, quarter: string): QuickFlowCellReadiness {
+  if (row.isTimelineStub) {
+    return { level: 'na', reasons: ['Заглушка команды — не редактируется'] };
+  }
+  const qd = row.quarterlyData[quarter];
+  if (!qd) {
+    return { level: 'na', reasons: ['Нет данных по кварталу'] };
+  }
+  const effort = qd.effortCoefficient ?? 0;
+  const cost = qd.cost ?? 0;
+  const otherCosts = qd.otherCosts ?? 0;
+  const totalCost = cost + otherCosts;
+  const active = effort > 0 || totalCost > 0;
+  if (!active) {
+    return { level: 'na', reasons: ['Нет усилий и стоимости в квартале'] };
+  }
+
+  const blockerReasons: string[] = [];
+  const cardMissing = getMissingInitiativeFields(row);
+  if (cardMissing.length > 0) {
+    blockerReasons.push(`Карточка: ${cardMissing.join(', ')}`);
+  }
+  if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd.geoCostSplit)) {
+    blockerReasons.push('Распределение по рынкам (100%)');
+  }
+  if (blockerReasons.length > 0) {
+    return { level: 'blocker', reasons: blockerReasons };
+  }
+
+  const warnReasons: string[] = [];
+  if (quarterRequiresPlanFact(qd)) {
+    if (!qd.metricPlan?.trim()) warnReasons.push('План метрики');
+    if (isMetricFactRequiredForQuarter(quarter) && !qd.metricFact?.trim()) {
+      warnReasons.push('Факт метрики');
+    }
+  }
+  if (warnReasons.length > 0) {
+    return { level: 'warn', reasons: warnReasons };
+  }
+
+  return { level: 'ok', reasons: [] };
+}
+
+/** Validation issues for quick flow: строки с усилиями или стоимостью в квартале и незакрытыми обязательными полями. */
 export function getQuickFlowValidationIssues(
   rows: AdminDataRow[],
   nextQuarter: string
@@ -769,8 +876,14 @@ export function getQuickFlowValidationIssues(
   for (const row of rows) {
     const qd = row.quarterlyData[nextQuarter];
     const effort = qd?.effortCoefficient ?? 0;
-    if (effort <= 0) continue;
+    const cost = qd?.cost ?? 0;
+    const otherCosts = qd?.otherCosts ?? 0;
+    const totalCost = cost + otherCosts;
+    if (effort <= 0 && totalCost <= 0) continue;
     const missing: string[] = [...getMissingInitiativeFields(row)];
+    if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd?.geoCostSplit)) {
+      missing.push('Распределение по рынкам');
+    }
     if (qd && quarterRequiresPlanFact(qd)) {
       if (!qd.metricPlan?.trim()) missing.push('План метрики');
       if (isMetricFactRequiredForQuarter(nextQuarter) && !qd.metricFact?.trim()) {
@@ -816,6 +929,11 @@ export function getQuickFlowTimelineQuarterWarnings(row: AdminDataRow, quarter: 
     }
   }
 
+  const cost = qd.cost ?? 0;
+  if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd.geoCostSplit)) {
+    warnings.push('Гео: не 100% по рынкам');
+  }
+
   return warnings;
 }
 
@@ -834,6 +952,44 @@ export function getQuickFlowCardOnlyIssuesForQuarters(
       const effort = qd?.effortCoefficient ?? 0;
       if (effort <= 0) continue;
       const missing = [...getMissingInitiativeFields(row)];
+      if (missing.length === 0) continue;
+      const cur = byId.get(row.id);
+      if (!cur) {
+        byId.set(row.id, {
+          id: row.id,
+          initiativeName: row.initiative || '—',
+          missing: new Set(missing),
+        });
+      } else {
+        missing.forEach((m) => cur.missing.add(m));
+      }
+    }
+  }
+  return Array.from(byId.values()).map((x) => ({
+    ...x,
+    missing: [...x.missing],
+  }));
+}
+
+/** Только описание (шаг treemap в quick flow; ссылка на документацию — по желанию). */
+export function getMissingDescriptionDocFields(row: AdminDataRow): string[] {
+  const missing: string[] = [];
+  if (!row.description?.trim()) missing.push('Описание');
+  return missing;
+}
+
+/** Как `getQuickFlowCardOnlyIssuesForQuarters`, но только обязательное описание. */
+export function getQuickFlowDescriptionDocIssuesForQuarters(
+  rows: AdminDataRow[],
+  fillQuarters: string[]
+): { id: string; initiativeName: string; missing: string[] }[] {
+  const byId = new Map<string, { id: string; initiativeName: string; missing: Set<string> }>();
+  for (const q of fillQuarters) {
+    for (const row of rows) {
+      const qd = row.quarterlyData[q];
+      const effort = qd?.effortCoefficient ?? 0;
+      if (effort <= 0) continue;
+      const missing = [...getMissingDescriptionDocFields(row)];
       if (missing.length === 0) continue;
       const cur = byId.get(row.id);
       if (!cur) {

@@ -11,6 +11,7 @@ CREATE TABLE public.initiatives (
   documentation_link text,
   initiative text NOT NULL,
   initiative_type text,
+  cost_finance_confirmed boolean NOT NULL DEFAULT true,
   quarterly_data jsonb DEFAULT '{}',
   stakeholders text,
   stakeholders_list text[],
@@ -148,6 +149,7 @@ BEGIN
   UPDATE public.initiatives AS i
   SET
     quarterly_data = x.qd,
+    cost_finance_confirmed = true,
     updated_at = timezone('utc'::text, now())
   FROM (
     SELECT

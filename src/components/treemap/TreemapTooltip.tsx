@@ -3,7 +3,13 @@
 import { useLayoutEffect, useRef, useState, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { TreemapLayoutNode } from './types';
-import { formatBudget, escapeHtml, formatQuarterRange } from '@/lib/dataManager';
+import {
+  formatBudget,
+  escapeHtml,
+  formatQuarterRange,
+  PRELIMINARY_COST_USER_MESSAGE,
+} from '@/lib/dataManager';
+import { cn } from '@/lib/utils';
 
 interface TreemapTooltipProps {
   data: {
@@ -17,6 +23,10 @@ interface TreemapTooltipProps {
   showDistributionInTooltip?: boolean;
   /** If false, hide budget amounts (show only percentages where applicable) */
   showMoney?: boolean;
+  /** Quick flow: только название, стоимость за период, описание и ссылка на документацию */
+  tooltipInitiativeVariant?: 'default' | 'descriptionDocReview';
+  /** Для descriptionDocReview: показывать «за выбранный период» у суммы (false — выбран весь каталог кварталов). */
+  docReviewShowCostPeriodNote?: boolean;
 }
 
 export type { TreemapTooltipProps };
@@ -40,7 +50,17 @@ function sumDistributedUnallocated(node: TreemapLayoutNode): { distributed: numb
   return { distributed, unallocated };
 }
 
-const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedUnitsCount, totalValue, showDistributionInTooltip = true, showMoney = true }) => {
+const TreemapTooltip = memo<TreemapTooltipProps>(
+  ({
+    data,
+    lastQuarter,
+    selectedUnitsCount,
+    totalValue,
+    showDistributionInTooltip = true,
+    showMoney = true,
+    tooltipInitiativeVariant = 'default',
+    docReviewShowCostPeriodNote = true,
+  }) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   
@@ -132,10 +152,51 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
     
     // Initiative: заглушка / поддержка — короткие пометки; про «разработку» не пишем
     if (isInitiative) {
+      if (tooltipInitiativeVariant === 'descriptionDocReview') {
+        const descRaw = (node.data?.description ?? '').trim();
+        const descDisplay = descRaw.length > 260 ? `${descRaw.slice(0, 260)}…` : descRaw;
+        const docRaw = (node.data?.documentationLink ?? '').trim();
+        const costSuffix =
+          docReviewShowCostPeriodNote
+            ? ` <span class="tooltip-doc-review-cost-note">за выбранный период</span>`
+            : '';
+        const costLine =
+          showMoney && node.value > 0
+            ? `<p class="tooltip-doc-review-cost">${escapeHtml(formatBudget(node.value))}${costSuffix}</p>`
+            : '';
+        const docBlock = docRaw
+          ? `<p class="tooltip-doc-review-body"><a class="tooltip-doc-link" href="${escapeHtml(docRaw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(docRaw)}</a></p>`
+          : `<p class="tooltip-doc-review-body tooltip-doc-review-muted">Не указана</p>`;
+        return `<div class="tooltip-doc-review">
+  <div class="tooltip-doc-review-head">
+    <p class="tooltip-doc-review-title">${escapeHtml(node.name)}</p>
+    ${costLine}
+  </div>
+  <div class="tooltip-doc-review-section">
+    <p class="tooltip-doc-review-kicker">Описание</p>
+    <p class="tooltip-doc-review-body">${escapeHtml(descDisplay || '—')}</p>
+  </div>
+  <div class="tooltip-doc-review-section">
+    <p class="tooltip-doc-review-kicker">Документация <span class="tooltip-doc-review-optional">необязательно</span></p>
+    ${docBlock}
+  </div>
+</div>`;
+      }
       if (node.isTimelineStub) {
         html += `<div class="tooltip-type-line">Заглушка — нераспределённая стоимость команды</div>`;
       } else if (node.support) {
         html += `<div class="tooltip-type-line">Инициатива в поддержке в выбранном периоде</div>`;
+      }
+
+      if (showMoney && !node.isTimelineStub && node.value > 0) {
+        html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет за период</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
+        if (totalValue > 0) {
+          const pct = ((node.value / totalValue) * 100).toFixed(1);
+          html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${pct}%</span></div>`;
+        }
+      }
+      if (showMoney && node.hasPreliminaryQuarterInPeriod) {
+        html += `<div class="tooltip-preliminary">${escapeHtml(PRELIMINARY_COST_USER_MESSAGE)}</div>`;
       }
       
       const quarterRange = formatQuarterRange(node.data.quarterlyData);
@@ -220,11 +281,18 @@ const TreemapTooltip = memo<TreemapTooltipProps>(({ data, lastQuarter, selectedU
     }),
   };
   
+  const quickDocReviewChrome =
+    tooltipInitiativeVariant === 'descriptionDocReview' && Boolean(data?.node?.isInitiative);
+
   // Render tooltip via portal to document.body to avoid transform-related positioning issues
   const tooltipElement = (
-    <div 
-      ref={tooltipRef} 
-      className={`treemap-tooltip ${data && position ? 'visible' : ''}`}
+    <div
+      ref={tooltipRef}
+      className={cn(
+        'treemap-tooltip',
+        data && position && 'visible',
+        quickDocReviewChrome && 'treemap-tooltip--quick-doc-review'
+      )}
       style={style}
       dangerouslySetInnerHTML={{ __html: renderContent() }}
     />

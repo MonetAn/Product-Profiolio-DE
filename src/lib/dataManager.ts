@@ -8,6 +8,10 @@ export interface QuarterData {
   metricPlan: string;
   metricFact: string;
   comment: string;
+  /** Доля усилий команды в квартале (0–100), из админки; для таймлайна/treemap при стоимости 0 в выгрузке */
+  effortCoefficient?: number;
+  /** false — предварительная стоимость квартала (например после Quick Flow) */
+  costFinanceConfirmed?: boolean;
 }
 
 export interface RawDataRow {
@@ -44,6 +48,8 @@ export interface TreeNode {
   unallocatedValue?: number;
   /** Admin quick flow: initiative row id on effort-preview treemap leaves */
   adminInitiativeRowId?: string;
+  /** Ссылка на документацию (для тултипа quick flow / обогащения листьев) */
+  documentationLink?: string;
   adminEffortChanged?: boolean;
   adminEffortCompare?: {
     effortBefore: number;
@@ -55,6 +61,8 @@ export interface TreeNode {
   adminQuickReviewIssue?: boolean;
   /** Подписи незаполненных обязательных полей карточки (для подсказки на плитке) */
   adminQuickReviewMissing?: string[];
+  /** Лист treemap: в выбранном периоде есть квартал с предварительной стоимостью (не провалидировано финансами) */
+  hasPreliminaryQuarterInPeriod?: boolean;
 }
 
 /** Sum of values in a node's subtree (node.value if set, else sum of children recursively). */
@@ -117,13 +125,16 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
     Object.entries(row.quarterlyData || {}).forEach(([quarter, qData]) => {
       if (!isQuarterPeriodKey(quarter)) return;
       const adminQData = qData as AdminQuarterData;
+      const qBudget = (adminQData.cost || 0) + (adminQData.otherCosts || 0);
       quarterlyData[quarter] = {
-        budget: (adminQData.cost || 0) + (adminQData.otherCosts || 0),
+        budget: qBudget,
         support: adminQData.support ?? false,
         onTrack: adminQData.onTrack ?? true,
         metricPlan: adminQData.metricPlan || '',
         metricFact: adminQData.metricFact || '',
-        comment: adminQData.comment || ''
+        comment: adminQData.comment || '',
+        effortCoefficient: adminQData.effortCoefficient ?? 0,
+        ...(adminQData.costFinanceConfirmed === false ? { costFinanceConfirmed: false } : {}),
       };
     });
 
@@ -377,6 +388,24 @@ export function calculateBudget(row: RawDataRow, selectedQuarters: string[]): nu
   return total;
 }
 
+/** Сумма % усилий по выбранным кварталам (если стоимость в выгрузке ещё 0, инициатива всё равно «в периоде»). */
+export function periodEffortSum(row: RawDataRow, selectedQuarters: string[]): number {
+  let total = 0;
+  for (const q of selectedQuarters) {
+    total += row.quarterlyData[q]?.effortCoefficient ?? 0;
+  }
+  return total;
+}
+
+/**
+ * Вес листа treemap: рубли за период; если 0 — относительный вес по сумме % усилий (новые инициативы до появления cost в выгрузке).
+ */
+export function treemapLeafValue(row: RawDataRow, selectedQuarters: string[]): number {
+  const rub = calculateBudget(row, selectedQuarters);
+  if (rub > 0) return rub;
+  return periodEffortSum(row, selectedQuarters);
+}
+
 // Calculate total budget across ALL quarters (for Gantt total cost)
 export function calculateTotalBudget(row: RawDataRow): number {
   let total = 0;
@@ -419,6 +448,20 @@ export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]
   const qData = row.quarterlyData[lastQuarter];
   return qData ? !qData.onTrack : false;
 }
+
+/** В выбранных кварталах есть хотя бы один с предварительной стоимостью (costFinanceConfirmed === false). */
+export function hasPreliminaryQuarterInPeriod(row: RawDataRow, selectedQuarters: string[]): boolean {
+  const qd = row.quarterlyData || {};
+  for (const q of selectedQuarters) {
+    if (!isQuarterPeriodKey(q)) continue;
+    if (qd[q]?.costFinanceConfirmed === false) return true;
+  }
+  return false;
+}
+
+/** Текст для тултипа treemap, карточки инициативы и панели сравнения в Quick Flow (предварительная стоимость). */
+export const PRELIMINARY_COST_USER_MESSAGE =
+  'Предварительный расчёт стоимости. Данные могут измениться';
 
 // ===== DATA TREE BUILDING =====
 export type SupportFilter = 'all' | 'exclude' | 'only';
@@ -464,8 +507,9 @@ export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions
 }
 
 // Helper: filter row based on options
-function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions, budget: number): boolean {
-  if (budget === 0) return false;
+function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions): boolean {
+  const qs = options.selectedQuarters;
+  if (calculateBudget(row, qs) <= 0 && periodEffortSum(row, qs) <= 0) return false;
 
   const isSupport = isInitiativeSupport(row, options.selectedQuarters);
   const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
@@ -493,7 +537,7 @@ function buildUnitsOnlyTree(rawData: RawDataRow[], options: BuildTreeOptions): T
 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, value: 0, distributedValue: 0, unallocatedValue: 0, isUnit: true, children: [] };
@@ -533,7 +577,7 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true, distributedValue: 0, unallocatedValue: 0 };
@@ -578,11 +622,11 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
   const unitMap: Record<string, { name: string; children: TreeNode[]; teamMap: Record<string, TreeNode>; isUnit: boolean }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+    const leafValue = treemapLeafValue(row, options.selectedQuarters);
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
@@ -598,14 +642,15 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
 
     unit.teamMap[teamName].children!.push({
       name: row.initiative,
-      value: budget,
+      value: leafValue,
       description: row.description,
       stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
       isInitiative: true,
-      isTimelineStub: row.isTimelineStub ?? false
+      isTimelineStub: row.isTimelineStub ?? false,
+      hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
 
@@ -627,11 +672,11 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
   const unitMap: Record<string, { name: string; children: TreeNode[]; isUnit: boolean }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+    const leafValue = treemapLeafValue(row, options.selectedQuarters);
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], isUnit: true };
@@ -639,14 +684,15 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
 
     unitMap[row.unit].children.push({
       name: row.initiative,
-      value: budget,
+      value: leafValue,
       description: row.description,
       stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
       isInitiative: true,
-      isTimelineStub: row.isTimelineStub ?? false
+      isTimelineStub: row.isTimelineStub ?? false,
+      hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
 
@@ -880,7 +926,7 @@ function buildStakeholdersUnitsOnlyTree(rawData: RawDataRow[], options: BuildTre
 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
 
@@ -928,7 +974,7 @@ function buildStakeholdersUnitsTeamsTree(rawData: RawDataRow[], options: BuildTr
 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
 
@@ -992,12 +1038,12 @@ function buildStakeholdersFullTree(rawData: RawDataRow[], options: BuildTreeOpti
   }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+    const leafValue = treemapLeafValue(row, options.selectedQuarters);
 
     if (!stakeholderMap[stakeholderKey]) {
       stakeholderMap[stakeholderKey] = { 
@@ -1030,14 +1076,15 @@ function buildStakeholdersFullTree(rawData: RawDataRow[], options: BuildTreeOpti
 
     unit.teamMap[teamName].children!.push({
       name: row.initiative,
-      value: budget,
+      value: leafValue,
       description: row.description,
       stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
       isInitiative: true,
-      isTimelineStub: row.isTimelineStub ?? false
+      isTimelineStub: row.isTimelineStub ?? false,
+      hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
 
@@ -1077,12 +1124,12 @@ function buildStakeholdersUnitsInitiativesTree(rawData: RawDataRow[], options: B
   }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters);
-    if (!shouldIncludeRow(row, options, budget)) return;
+    if (!shouldIncludeRow(row, options)) return;
 
     const stakeholderKey = getStakeholderSetKey(row.stakeholders || '');
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+    const leafValue = treemapLeafValue(row, options.selectedQuarters);
 
     if (!stakeholderMap[stakeholderKey]) {
       stakeholderMap[stakeholderKey] = { 
@@ -1105,14 +1152,15 @@ function buildStakeholdersUnitsInitiativesTree(rawData: RawDataRow[], options: B
 
     stakeholder.unitMap[row.unit].children.push({
       name: row.initiative,
-      value: budget,
+      value: leafValue,
       description: row.description,
       stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
       support: isSupport,
       offTrack: isOffTrack,
       quarterlyData: row.quarterlyData,
       isInitiative: true,
-      isTimelineStub: row.isTimelineStub ?? false
+      isTimelineStub: row.isTimelineStub ?? false,
+      hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
 

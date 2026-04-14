@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Tooltip,
   TooltipContent,
@@ -39,7 +40,8 @@ import {
 } from '@/lib/adminDataManager';
 import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
-import { compareQuarters } from '@/lib/quarterUtils';
+import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
+import { cn } from '@/lib/utils';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -98,17 +100,25 @@ function supportScenarioSelectValue(row: AdminDataRow, sortedQs: string[]): stri
   return matches ? `from|${fromQ}` : 'mixed';
 }
 
+/** Одно значение для UI: «все в поддержке» → первый квартал периода (эквивалентно «с Q1…»). */
+function supportScenarioToggleValue(row: AdminDataRow, sortedQs: string[]): string {
+  if (sortedQs.length === 0) return '';
+  const raw = supportScenarioSelectValue(row, sortedQs);
+  if (raw === 'never') return 'never';
+  if (raw === 'all') return `from|${sortedQs[0]}`;
+  if (raw.startsWith('from|')) return raw;
+  return '';
+}
+
 function applySupportScenario(
   initiativeId: string,
   sortedQs: string[],
-  mode: 'never' | 'all' | 'from',
+  mode: 'never' | 'from',
   fromQuarter: string | undefined,
   onQuarterDataChange: QuarterFieldsProps['onQuarterDataChange']
 ) {
   for (const q of sortedQs) {
-    let support = false;
-    if (mode === 'all') support = true;
-    else if (mode === 'from' && fromQuarter) support = compareQuarters(q, fromQuarter) >= 0;
+    const support = mode === 'from' && fromQuarter ? compareQuarters(q, fromQuarter) >= 0 : false;
     onQuarterDataChange(initiativeId, q, 'support', support);
   }
 }
@@ -155,6 +165,11 @@ const QuarterFields = ({
     [initiative, sortedScenarioQs, scenarioSupportFingerprint]
   );
 
+  const supportToggleValue = useMemo(
+    () => supportScenarioToggleValue(initiative, sortedScenarioQs),
+    [initiative, sortedScenarioQs, scenarioSupportFingerprint]
+  );
+
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K ₽`;
@@ -165,152 +180,179 @@ const QuarterFields = ({
     `${Math.round(value).toLocaleString('ru-RU')} ₽`;
 
   if (variant === 'quickTimeline') {
-    return (
-      <div className="space-y-5">
-        <div className="flex flex-col gap-4 rounded-xl border border-border/80 bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-lg bg-primary/10 px-3 py-1.5 text-lg font-semibold tabular-nums text-primary">
-              {quarter}
-            </span>
-            {qData.support ? (
-              <Badge variant="secondary" className="text-xs">
-                Поддержка
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
-                Разработка
-              </Badge>
+    const showMetricBlock = quarterRequiresPlanFact(qData) || qData.support;
+    const metricsMandatory = quarterRequiresPlanFact(qData);
+    const showFactInput = showMetricBlock && isMetricFactRequiredForQuarter(quarter);
+    const factNoteOnly = showMetricBlock && !showFactInput;
+    const supportChipSelected =
+      'data-[state=on]:border-violet-500 data-[state=on]:bg-violet-100 data-[state=on]:text-violet-950 data-[state=on]:shadow-sm dark:data-[state=on]:border-violet-500 dark:data-[state=on]:bg-violet-950/90 dark:data-[state=on]:text-violet-50';
+
+    const onSupportToggleChange = (v: string) => {
+      if (v === 'never') applySupportScenario(initiativeId, sortedScenarioQs, 'never', undefined, onQuarterDataChange);
+      else if (v.startsWith('from|')) {
+        applySupportScenario(initiativeId, sortedScenarioQs, 'from', v.slice(5), onQuarterDataChange);
+      }
+    };
+
+    const supportQuarterChips = sortedScenarioQs.length > 0 && (
+      <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-3 dark:bg-muted/10">
+        <h3 className="text-sm font-semibold text-foreground">В каком квартале инициатива переходит на поддержку?</h3>
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          До выбранного квартала — разработка, с выбранного и до конца периода — поддержка.
+        </p>
+        {supportSelectValue === 'mixed' ? (
+          <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-500">
+            Сейчас настройка по кварталам различается — выберите один вариант.
+          </p>
+        ) : null}
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          className="mt-3 flex flex-wrap justify-start gap-1.5"
+          value={supportToggleValue === '' ? undefined : supportToggleValue}
+          onValueChange={(v) => {
+            if (!v) return;
+            onSupportToggleChange(v);
+          }}
+        >
+          <ToggleGroupItem
+            value="never"
+            aria-label="Не в поддержке в периоде"
+            className={cn(
+              'h-8 shrink-0 px-2.5 text-xs font-medium transition-colors',
+              supportChipSelected
             )}
-            <div className="text-sm text-muted-foreground">
-              Сумма по кварталу:{' '}
-              <span className="font-semibold tabular-nums text-foreground">{formatCurrencyFull(totalCost)}</span>
+          >
+            Не в поддержке
+          </ToggleGroupItem>
+          {sortedScenarioQs.map((q) => (
+            <ToggleGroupItem
+              key={q}
+              value={`from|${q}`}
+              aria-label={`Поддержка с ${q}`}
+              className={cn(
+                'h-8 min-w-[3.25rem] shrink-0 px-2 text-xs font-medium tabular-nums transition-colors',
+                supportChipSelected
+              )}
+            >
+              {q.replace('-', ' ')}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+    );
+
+    return (
+      <TooltipProvider delayDuration={200}>
+        <div className="space-y-6">
+          {showMetricBlock ? (
+            <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
+              <p className="text-sm font-semibold text-foreground">План и факт метрики</p>
+              {qData.support ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Квартал в поддержке — план и факт по желанию; без обязательной подсветки.
+                </p>
+              ) : null}
+              <div
+                className={cn('mt-3 grid gap-4', showFactInput ? 'md:grid-cols-2' : 'md:grid-cols-1')}
+              >
+                <div className={cn('space-y-1.5', !showFactInput && 'md:max-w-none')}>
+                  {metricsMandatory ? (
+                    <RequiredLabel className="text-xs">План метрики</RequiredLabel>
+                  ) : (
+                    <Label className="text-xs text-muted-foreground">План метрики</Label>
+                  )}
+                  <Textarea
+                    value={metricPlan.value}
+                    onChange={(e) => metricPlan.onChange(e.target.value)}
+                    onBlur={metricPlan.onBlur}
+                    placeholder="Планируемое значение метрики..."
+                    className={cn(
+                      'min-h-[120px] resize-y',
+                      metricsMandatory && !qData.metricPlan?.trim() && 'ring-2 ring-destructive/40'
+                    )}
+                  />
+                </div>
+                {showFactInput ? (
+                  <div className="space-y-1.5">
+                    {metricsMandatory ? (
+                      <RequiredLabel className="text-xs">Факт метрики</RequiredLabel>
+                    ) : (
+                      <Label className="text-xs text-muted-foreground">Факт метрики</Label>
+                    )}
+                    <Textarea
+                      value={metricFact.value}
+                      onChange={(e) => metricFact.onChange(e.target.value)}
+                      onBlur={metricFact.onBlur}
+                      placeholder="Фактическое значение метрики..."
+                      className={cn(
+                        'min-h-[120px] resize-y',
+                        metricsMandatory && requiresMetricFact && !qData.metricFact?.trim() && 'ring-2 ring-destructive/40'
+                      )}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              {factNoteOnly ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Факт метрики заполняется после окончания квартала; для текущего и будущих кварталов поле скрыто.
+                </p>
+              ) : null}
             </div>
+          ) : null}
+
+          <div className="space-y-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-sm font-semibold text-foreground">Инициатива on-track?</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-full text-muted-foreground outline-none ring-offset-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Что значит on-track"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-[280px] text-sm leading-snug">
+                  On-track — экспертная оценка лидера: попадаем ли мы в ожидания в этом квартале по этой инициативе.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={qData.onTrack ? 'on' : 'off'}
+              onValueChange={(v) => {
+                if (!v) return;
+                if (v === 'on') onQuarterDataChange(initiativeId, quarter, 'onTrack', true);
+                else if (v === 'off') onQuarterDataChange(initiativeId, quarter, 'onTrack', false);
+              }}
+              className="grid w-full grid-cols-2 gap-2"
+            >
+              <ToggleGroupItem value="on" className="h-10 flex-1 text-sm font-medium">
+                Да, on-track
+              </ToggleGroupItem>
+              <ToggleGroupItem value="off" className="h-10 flex-1 text-sm font-medium">
+                Нет, не on-track
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
-          <div className="flex items-center gap-3 rounded-lg border border-primary/25 bg-primary/[0.06] px-4 py-3 dark:bg-primary/10">
-            <Label htmlFor={`qt-ontrack-${initiativeId}-${quarter}`} className="text-sm font-medium">
-              On-track
-            </Label>
-            <Switch
-              id={`qt-ontrack-${initiativeId}-${quarter}`}
-              checked={qData.onTrack}
-              onCheckedChange={(checked) => onQuarterDataChange(initiativeId, quarter, 'onTrack', checked)}
+
+          {supportQuarterChips}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">Комментарий</Label>
+            <Textarea
+              value={comment.value}
+              onChange={(e) => comment.onChange(e.target.value)}
+              onBlur={comment.onBlur}
+              placeholder="По желанию — контекст по кварталу…"
+              className="min-h-[72px] resize-y"
             />
           </div>
         </div>
-
-        <div className="rounded-xl border border-border/60 bg-muted/25 p-4 dark:bg-muted/15">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Стоимость и усилия
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Коэффициент трудозатрат</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums">{qData.effortCoefficient ?? 0}%</p>
-              <p
-                className={`mt-1 text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-400'}`}
-              >
-                Команда {initiative.team} в {quarter}: {teamEffort.total}% из 100%
-                {!teamEffort.isValid ? ' — превышение' : ''}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Стоимость (из выгрузки)</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrencyFull(qData.cost ?? 0)}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Доп. расходы</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums">{formatCurrencyFull(qData.otherCosts ?? 0)}</p>
-            </div>
-          </div>
-        </div>
-
-        {sortedScenarioQs.length > 0 ? (
-          <div className="rounded-xl border border-border/60 bg-muted/25 p-4 dark:bg-muted/15">
-            <h3 className="text-sm font-semibold leading-snug text-foreground">
-              В каком квартале инициатива переходит на поддержку?
-            </h3>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Действует на все кварталы выбранного в сценарии периода:{' '}
-              <span className="font-medium text-foreground">{sortedScenarioQs.join(' · ')}</span>
-            </p>
-            <Select
-              value={supportSelectValue === 'mixed' ? undefined : supportSelectValue}
-              onValueChange={(v) => {
-                if (v === 'never') applySupportScenario(initiativeId, sortedScenarioQs, 'never', undefined, onQuarterDataChange);
-                else if (v === 'all') applySupportScenario(initiativeId, sortedScenarioQs, 'all', undefined, onQuarterDataChange);
-                else if (v.startsWith('from|')) {
-                  const fq = v.slice(5);
-                  applySupportScenario(initiativeId, sortedScenarioQs, 'from', fq, onQuarterDataChange);
-                }
-              }}
-            >
-              <SelectTrigger className="mt-3 w-full max-w-md">
-                <SelectValue
-                  placeholder={
-                    supportSelectValue === 'mixed'
-                      ? 'Сейчас настройка смешанная — выберите вариант'
-                      : 'Выберите вариант'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="never">Нет поддержки в этом периоде (все кварталы — разработка)</SelectItem>
-                <SelectItem value="all">На поддержке во всех кварталах периода</SelectItem>
-                {sortedScenarioQs.map((q) => (
-                  <SelectItem key={q} value={`from|${q}`}>
-                    Переход на поддержку с {q} (и далее по периоду)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
-
-        <div className="rounded-xl border-2 border-primary/25 bg-primary/[0.04] p-4 shadow-sm dark:border-primary/35 dark:bg-primary/[0.08]">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">План и факт метрики</p>
-          <div className="mt-3 grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              {requiresMetricPlan ? (
-                <RequiredLabel className="text-xs">План метрики</RequiredLabel>
-              ) : (
-                <Label className="text-xs text-muted-foreground">План метрики</Label>
-              )}
-              <Textarea
-                value={metricPlan.value}
-                onChange={(e) => metricPlan.onChange(e.target.value)}
-                onBlur={metricPlan.onBlur}
-                placeholder="Планируемое значение метрики..."
-                className={`min-h-[140px] resize-y ${requiresMetricPlan && !qData.metricPlan?.trim() ? 'ring-2 ring-primary/55' : ''}`}
-              />
-            </div>
-            <div className="space-y-1.5">
-              {requiresMetricFact ? (
-                <RequiredLabel className="text-xs">Факт метрики</RequiredLabel>
-              ) : (
-                <Label className="text-xs text-muted-foreground">Факт метрики</Label>
-              )}
-              <Textarea
-                value={metricFact.value}
-                onChange={(e) => metricFact.onChange(e.target.value)}
-                onBlur={metricFact.onBlur}
-                placeholder="Фактическое значение метрики..."
-                className={`min-h-[140px] resize-y ${requiresMetricFact && !qData.metricFact?.trim() ? 'ring-2 ring-primary/55' : ''}`}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-muted-foreground">Комментарий</Label>
-          <Textarea
-            value={comment.value}
-            onChange={(e) => comment.onChange(e.target.value)}
-            onBlur={comment.onBlur}
-            placeholder="По желанию — контекст по кварталу…"
-            className="min-h-[72px] resize-y"
-          />
-        </div>
-      </div>
+      </TooltipProvider>
     );
   }
 
@@ -340,6 +382,17 @@ const QuarterFields = ({
             />
           </div>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+        <Label htmlFor={`q-finance-${initiativeId}-${quarter}`} className="text-xs text-muted-foreground">
+          Провалидировано финансами
+        </Label>
+        <Switch
+          id={`q-finance-${initiativeId}-${quarter}`}
+          checked={qData.costFinanceConfirmed !== false}
+          onCheckedChange={(v) => onQuarterDataChange(initiativeId, quarter, 'costFinanceConfirmed', v)}
+        />
       </div>
 
       {/* Effort Coefficient */}

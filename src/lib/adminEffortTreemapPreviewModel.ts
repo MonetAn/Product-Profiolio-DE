@@ -34,6 +34,61 @@ export function meanEffortCoefficient(row: AdminDataRow, quarters: string[]): nu
   return s / quarters.length;
 }
 
+const COL_OVERFLOW_EPS = 1e-4;
+
+/** Сумма % усилий по команде в одном квартале (колонка матрицы). */
+export function columnEffortSum(rows: AdminDataRow[], quarter: string): number {
+  return rows.reduce((s, row) => {
+    const qd = row.quarterlyData[quarter] ?? createEmptyQuarterData();
+    return s + Math.max(0, Math.min(100, Number(qd.effortCoefficient) || 0));
+  }, 0);
+}
+
+/**
+ * Доля квартального бюджета команды Tq для строки: eff% от столбца,
+ * при сумме % > 100 в колонке — нормализация (как при записи в БД из quick flow).
+ */
+export function initiativeShareInQuarter(
+  row: AdminDataRow,
+  quarter: string,
+  teamRows: AdminDataRow[]
+): number {
+  const Tq = teamQuarterCostSum(teamRows, quarter);
+  const colSum = columnEffortSum(teamRows, quarter);
+  const qd = row.quarterlyData[quarter] ?? createEmptyQuarterData();
+  const eff = Math.max(0, Math.min(100, Number(qd.effortCoefficient) || 0));
+  if (colSum <= 1e-9) return 0;
+  if (colSum > 100 + COL_OVERFLOW_EPS) {
+    return (Tq * eff) / colSum;
+  }
+  return (Tq * eff) / 100;
+}
+
+/** Сумма долей по preview-кварталам (соответствует cost+other цели после пересчёта). */
+export function initiativePeriodCostFromCoefficients(
+  row: AdminDataRow,
+  previewQuarters: string[],
+  teamRows: AdminDataRow[]
+): number {
+  let s = 0;
+  for (const q of previewQuarters) {
+    s += initiativeShareInQuarter(row, q, teamRows);
+  }
+  return s;
+}
+
+/** Часть периода, не покрытая суммой % по кварталам (< 100% в колонке). */
+export function unallocatedPeriodTotal(rows: AdminDataRow[], previewQuarters: string[]): number {
+  let u = 0;
+  for (const q of previewQuarters) {
+    const Tq = teamQuarterCostSum(rows, q);
+    const col = columnEffortSum(rows, q);
+    if (col > 100 + COL_OVERFLOW_EPS) continue;
+    u += Tq * (1 - col / 100);
+  }
+  return u;
+}
+
 function uniqueInitiativeLabel(base: string, used: Map<string, number>): string {
   const n = (used.get(base) ?? 0) + 1;
   used.set(base, n);
@@ -61,7 +116,8 @@ export type EffortTreemapPreviewModel = {
 };
 
 /**
- * Treemap листья по средним коэффициентам усилий за период (как в диалоге превью).
+ * Treemap превью и запись стоимостей в quick flow: доля в каждом квартале = Tq × (eff/100);
+ * если в колонке сумма % > 100 — нормализация на сумму %. «Нераспределено» — слабые колонки (&lt; 100%).
  * `effectiveTotal` — сумма (cost + otherCosts) команды за `previewQuarters`.
  */
 export function buildEffortTreemapPreviewModel(
@@ -85,35 +141,21 @@ export function buildEffortTreemapPreviewModel(
     };
   }
 
-  let sumEffortAcc = 0;
-  const withPct: { label: string; rowId: string; effort: number; stub: boolean }[] = [];
+  let maxColEffort = 0;
+  for (const q of previewQuarters) {
+    maxColEffort = Math.max(maxColEffort, columnEffortSum(rows, q));
+  }
+  const overflowPct = previewQuarters.some((q) => columnEffortSum(rows, q) > 100 + COL_OVERFLOW_EPS);
+
+  const unalloc = unallocatedPeriodTotal(rows, previewQuarters);
   const zeroNames: string[] = [];
   const labelUsed = new Map<string, number>();
-
-  for (const row of rows) {
-    const effort = meanEffortCoefficient(row, previewQuarters);
-    const rounded = Math.round(effort * 1000) / 1000;
-    const base = row.initiative?.trim() || '—';
-    if (rounded > 1e-6) {
-      sumEffortAcc += effort;
-      withPct.push({
-        label: uniqueInitiativeLabel(base, labelUsed),
-        rowId: row.id,
-        effort,
-        stub: Boolean(row.isTimelineStub),
-      });
-    } else {
-      zeroNames.push(base);
-    }
-  }
-
-  const overflow = sumEffortAcc > 100 + 1e-4;
   const treeChildren: TreeNode[] = [];
   const stubNames = new Set<string>();
   const leaves: EffortTreemapLeaf[] = [];
 
   const pushLeaf = (name: string, rowId: string, value: number, effort: number, stub: boolean) => {
-    if (value <= 0) return;
+    if (value <= 1e-6) return;
     if (stub) stubNames.add(name);
     treeChildren.push({
       name,
@@ -125,34 +167,41 @@ export function buildEffortTreemapPreviewModel(
     leaves.push({ label: name, rowId, effort, stub, value });
   };
 
-  if (overflow) {
-    for (const w of withPct) {
-      const share = w.effort / sumEffortAcc;
-      pushLeaf(w.label, w.rowId, effectiveTotal * share, w.effort, w.stub);
+  for (const row of rows) {
+    const periodValue = initiativePeriodCostFromCoefficients(row, previewQuarters, rows);
+    const meanEff = meanEffortCoefficient(row, previewQuarters);
+    const base = row.initiative?.trim() || '—';
+    if (periodValue > 1e-6) {
+      pushLeaf(
+        uniqueInitiativeLabel(base, labelUsed),
+        row.id,
+        periodValue,
+        meanEff,
+        Boolean(row.isTimelineStub)
+      );
+    } else if (meanEff <= 1e-6) {
+      zeroNames.push(base);
     }
-  } else {
-    for (const w of withPct) {
-      pushLeaf(w.label, w.rowId, (effectiveTotal * w.effort) / 100, w.effort, w.stub);
-    }
-    const restPct = Math.max(0, 100 - sumEffortAcc);
-    if (restPct > 1e-4) {
-      treeChildren.push({
-        name: 'Нераспределено',
-        value: (effectiveTotal * restPct) / 100,
-        isInitiative: true,
-      });
-    }
+  }
+
+  if (unalloc > 1e-2) {
+    treeChildren.push({
+      name: 'Нераспределено',
+      value: unalloc,
+      isInitiative: true,
+    });
   }
 
   const contentKey = [
     previewQuarters.join(','),
     Math.round(effectiveTotal * 100),
-    sumEffortAcc.toFixed(3),
+    maxColEffort.toFixed(3),
+    overflowPct ? 'ov1' : 'ov0',
     treeChildren.map((c) => `${c.name}:${Math.round(c.value ?? 0)}`).join('|'),
   ].join('::');
 
-  const note = overflow
-    ? 'Сумма средних коэффициентов больше 100% — площади пропорциональны долям, база не меняется.'
+  const note = overflowPct
+    ? 'В одном или нескольких кварталах сумма % больше 100% — доли в этих колонках нормализованы; Tq по кварталам из текущих данных.'
     : null;
 
   const getPreviewColor = (name: string) => {
@@ -164,8 +213,8 @@ export function buildEffortTreemapPreviewModel(
 
   return {
     effectiveTotal,
-    sumEffort: sumEffortAcc,
-    overflowPct: overflow,
+    sumEffort: maxColEffort,
+    overflowPct,
     leaves,
     zeroEffortLabels: zeroNames,
     treeChildren,

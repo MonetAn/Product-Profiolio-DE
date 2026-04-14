@@ -41,6 +41,7 @@ function applySheetCostsToQuarters(
             effortCoefficient: 0,
           };
     base.cost = cost;
+    base.costFinanceConfirmed = true;
     qd[quarterKey] = base;
   }
 }

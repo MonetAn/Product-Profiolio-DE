@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Select,
   SelectContent,
@@ -24,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { ChevronDown, Info } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
 
@@ -37,7 +36,6 @@ export type NewInitiativeSubmitData = {
   description: string;
   documentationLink: string;
   isTimelineStub?: boolean;
-  effortPercent?: number;
 };
 
 interface NewInitiativeDialogProps {
@@ -47,8 +45,6 @@ interface NewInitiativeDialogProps {
   teams: string[];
   defaultUnit?: string;
   defaultTeam?: string;
-  mode?: 'full' | 'quick';
-  nextQuarter?: string;
   onSubmit: (data: NewInitiativeSubmitData) => void;
 }
 
@@ -59,8 +55,6 @@ const NewInitiativeDialog = ({
   teams,
   defaultUnit = '',
   defaultTeam = '',
-  mode = 'full',
-  nextQuarter,
   onSubmit
 }: NewInitiativeDialogProps) => {
   const [unit, setUnit] = useState(defaultUnit);
@@ -71,29 +65,20 @@ const NewInitiativeDialog = ({
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
   const [isTimelineStub, setIsTimelineStub] = useState(false);
-  const [effortPercent, setEffortPercent] = useState<number>(0);
-  const [quickDetailsOpen, setQuickDetailsOpen] = useState(false);
-
-  const isQuick = mode === 'quick';
 
   // Sync with filter selection when dialog opens
   useEffect(() => {
     if (open) {
       setUnit(defaultUnit);
       setTeam(defaultTeam);
-      setEffortPercent(0);
-      setQuickDetailsOpen(false);
     }
   }, [open, defaultUnit, defaultTeam]);
 
   const handleSubmit = () => {
-    const u = isQuick ? defaultUnit : unit;
-    const t = isQuick ? defaultTeam : team;
-    if (!u || !initiative) return;
-    if (isQuick && nextQuarter == null) return;
+    if (!unit || !initiative) return;
     const payload: NewInitiativeSubmitData = {
-      unit: u,
-      team: t,
+      unit,
+      team,
       initiative,
       initiativeType,
       stakeholdersList,
@@ -101,7 +86,6 @@ const NewInitiativeDialog = ({
       documentationLink,
       isTimelineStub,
     };
-    if (isQuick) payload.effortPercent = effortPercent ?? 0;
     onSubmit(payload);
     // Reset form
     setInitiative('');
@@ -110,7 +94,6 @@ const NewInitiativeDialog = ({
     setDescription('');
     setDocumentationLink('');
     setIsTimelineStub(false);
-    setEffortPercent(0);
     onOpenChange(false);
   };
 
@@ -138,134 +121,68 @@ const NewInitiativeDialog = ({
         <div className="shrink-0 space-y-1.5 border-b border-border/80 px-6 pb-4 pr-14 pt-6">
           <DialogTitle className="text-left">Новая инициатива</DialogTitle>
           <DialogDescription className="text-left">
-            {isQuick
-              ? `Название и % усилий на ${nextQuarter ?? 'квартал'} — достаточно для добавления. Остальное можно указать сейчас в блоке ниже или позже в карточке.`
-              : 'Создайте новую инициативу. Она будет добавлена с пустыми квартальными данными.'}
+            Создайте новую инициативу. Она будет добавлена с пустыми квартальными данными.
           </DialogDescription>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
         <div className="grid gap-4">
-          {isQuick ? (
-            <p className="rounded-md border border-border/80 bg-muted/25 px-2.5 py-1.5 text-xs leading-snug text-muted-foreground">
-              <span className="font-medium text-foreground/80">Контекст:</span>{' '}
-              {defaultUnit || '—'} · {defaultTeam || '—'}
-            </p>
-          ) : (
-            <>
-              {/* Unit */}
-              <div className="grid gap-2">
-                <Label htmlFor="unit">Unit *</Label>
-                <Select value={unit} onValueChange={setUnit}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите юнит" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {units.map(u => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Team */}
-              <div className="grid gap-2">
-                <Label htmlFor="team">Team</Label>
-                <Select value={team} onValueChange={setTeam} disabled={!unit}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите команду (опционально)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTeams.map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          )}
-
-          {/* Initiative name + quick effort: one row on wider screens */}
-          <div
-            className={cn(
-              'grid gap-3',
-              isQuick && nextQuarter && 'sm:grid-cols-[minmax(0,1fr)_6.5rem] sm:items-end'
-            )}
-          >
-            <div className="grid gap-2">
-              <Label htmlFor="initiative">Название инициативы *</Label>
-              <Input
-                id="initiative"
-                value={initiative}
-                onChange={(e) => setInitiative(e.target.value)}
-                placeholder="Введите название"
-              />
-            </div>
-            {isQuick && nextQuarter ? (
-              <div className="grid gap-2">
-                <Label htmlFor="quick-effort">% на {nextQuarter}</Label>
-                <Input
-                  id="quick-effort"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={effortPercent === 0 ? '' : effortPercent}
-                  onChange={(e) => setEffortPercent(parseInt(e.target.value, 10) || 0)}
-                  placeholder="0"
-                  className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none sm:tabular-nums"
-                />
-              </div>
-            ) : null}
+          {/* Unit */}
+          <div className="grid gap-2">
+            <Label htmlFor="unit">Unit *</Label>
+            <Select value={unit} onValueChange={setUnit}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите юнит" />
+              </SelectTrigger>
+              <SelectContent>
+                {units.map((u) => (
+                  <SelectItem key={u} value={u}>
+                    {u}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          {isQuick ? (
-            <Collapsible open={quickDetailsOpen} onOpenChange={setQuickDetailsOpen}>
-              <CollapsibleTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="flex w-full items-center justify-between gap-2 font-normal"
-                >
-                  <span>Дополнительные поля</span>
-                  <ChevronDown
-                    className={cn(
-                      'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
-                      quickDetailsOpen && 'rotate-180'
-                    )}
-                    aria-hidden
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 pt-3 data-[state=closed]:animate-none">
-                <OptionalInitiativeFields
-                  initiativeType={initiativeType}
-                  setInitiativeType={setInitiativeType}
-                  stakeholdersList={stakeholdersList}
-                  handleStakeholderToggle={handleStakeholderToggle}
-                  description={description}
-                  setDescription={setDescription}
-                  documentationLink={documentationLink}
-                  setDocumentationLink={setDocumentationLink}
-                  isTimelineStub={isTimelineStub}
-                  setIsTimelineStub={setIsTimelineStub}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-          ) : (
-            <OptionalInitiativeFields
-              initiativeType={initiativeType}
-              setInitiativeType={setInitiativeType}
-              stakeholdersList={stakeholdersList}
-              handleStakeholderToggle={handleStakeholderToggle}
-              description={description}
-              setDescription={setDescription}
-              documentationLink={documentationLink}
-              setDocumentationLink={setDocumentationLink}
-              isTimelineStub={isTimelineStub}
-              setIsTimelineStub={setIsTimelineStub}
+          {/* Team */}
+          <div className="grid gap-2">
+            <Label htmlFor="team">Team</Label>
+            <Select value={team} onValueChange={setTeam} disabled={!unit}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите команду (опционально)" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTeams.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="initiative">Название инициативы *</Label>
+            <Input
+              id="initiative"
+              value={initiative}
+              onChange={(e) => setInitiative(e.target.value)}
+              placeholder="Введите название"
             />
-          )}
+          </div>
+
+          <OptionalInitiativeFields
+            initiativeType={initiativeType}
+            setInitiativeType={setInitiativeType}
+            stakeholdersList={stakeholdersList}
+            handleStakeholderToggle={handleStakeholderToggle}
+            description={description}
+            setDescription={setDescription}
+            documentationLink={documentationLink}
+            setDocumentationLink={setDocumentationLink}
+            isTimelineStub={isTimelineStub}
+            setIsTimelineStub={setIsTimelineStub}
+          />
         </div>
         </div>
 
@@ -273,11 +190,8 @@ const NewInitiativeDialog = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isQuick ? !defaultUnit || !initiative : !unit || !initiative}
-          >
-            {isQuick ? 'Добавить' : 'Создать'}
+          <Button onClick={handleSubmit} disabled={!unit || !initiative}>
+            Создать
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   AdminDataRow,
@@ -12,32 +12,52 @@ import { Tables, Json } from '@/integrations/supabase/types';
 
 type DBInitiative = Tables<'initiatives'>;
 
+export function parseAdminQuarterFromJson(
+  quarterKey: string,
+  qData: Record<string, unknown>
+): AdminQuarterData | null {
+  if (!isQuarterPeriodKey(quarterKey)) return null;
+  const geoCostSplit = parseGeoCostSplit(qData.geoCostSplit);
+  const cfc = qData.costFinanceConfirmed;
+  return {
+    cost: typeof qData.cost === 'number' ? qData.cost : 0,
+    otherCosts: typeof qData.otherCosts === 'number' ? qData.otherCosts : 0,
+    support: typeof qData.support === 'boolean' ? qData.support : false,
+    onTrack: typeof qData.onTrack === 'boolean' ? qData.onTrack : true,
+    metricPlan: typeof qData.metricPlan === 'string' ? qData.metricPlan : '',
+    metricFact: typeof qData.metricFact === 'string' ? qData.metricFact : '',
+    comment: typeof qData.comment === 'string' ? qData.comment : '',
+    effortCoefficient: typeof qData.effortCoefficient === 'number' ? qData.effortCoefficient : 0,
+    costFinanceConfirmed: cfc === false ? false : true,
+    ...(geoCostSplit ? { geoCostSplit } : {}),
+  };
+}
+
+/** Разбор quarterly_data из JSON (для optimistic updates). */
+export function quarterlyJsonToAdminRecord(raw: unknown): Record<string, AdminQuarterData> {
+  const quarterlyData: Record<string, AdminQuarterData> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return quarterlyData;
+  Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const parsed = parseAdminQuarterFromJson(key, value as Record<string, unknown>);
+    if (parsed) quarterlyData[key] = parsed;
+  });
+  return quarterlyData;
+}
+
 // Convert database row to client format
 export function dbToAdminRow(db: DBInitiative): AdminDataRow {
-  // Safely cast JSONB to our format
   const rawQuarterlyData = db.quarterly_data;
   const quarterlyData: Record<string, AdminQuarterData> = {};
-  
+
   if (rawQuarterlyData && typeof rawQuarterlyData === 'object' && !Array.isArray(rawQuarterlyData)) {
     Object.entries(rawQuarterlyData).forEach(([key, value]) => {
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const qData = value as Record<string, unknown>;
-        const geoCostSplit = parseGeoCostSplit(qData.geoCostSplit);
-        quarterlyData[key] = {
-          cost: typeof qData.cost === 'number' ? qData.cost : 0,
-          otherCosts: typeof qData.otherCosts === 'number' ? qData.otherCosts : 0,
-          support: typeof qData.support === 'boolean' ? qData.support : false,
-          onTrack: typeof qData.onTrack === 'boolean' ? qData.onTrack : true,
-          metricPlan: typeof qData.metricPlan === 'string' ? qData.metricPlan : '',
-          metricFact: typeof qData.metricFact === 'string' ? qData.metricFact : '',
-          comment: typeof qData.comment === 'string' ? qData.comment : '',
-          effortCoefficient: typeof qData.effortCoefficient === 'number' ? qData.effortCoefficient : 0,
-          ...(geoCostSplit ? { geoCostSplit } : {}),
-        };
-      }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+      const parsed = parseAdminQuarterFromJson(key, value as Record<string, unknown>);
+      if (parsed) quarterlyData[key] = parsed;
     });
   }
-  
+
   return {
     id: db.id,
     unit: db.unit,
@@ -69,6 +89,9 @@ function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
     };
     if (value.geoCostSplit?.entries?.length) {
       row.geoCostSplit = geoCostSplitToJson(value.geoCostSplit);
+    }
+    if (value.costFinanceConfirmed === false) {
+      row.costFinanceConfirmed = false;
     }
     result[key] = row;
   });
@@ -131,6 +154,8 @@ export function useInitiatives() {
     queryFn: fetchInitiatives,
     staleTime: 1000 * 60 * 3, // 3 minutes — меньше повторных запросов при переходах
     gcTime: 1000 * 60 * 10, // 10 minutes in cache
+    /** При refetch после сохранений не отдаём пустой снимок — избегаем «мигания» UI в Quick Flow */
+    placeholderData: keepPreviousData,
   });
 }
 
