@@ -24,6 +24,14 @@ import {
 import { buildCountryIdToClusterMap, type MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
 import { AdminQuickFlowMatrixPeriodPicker } from '@/components/admin/AdminQuickFlowMatrixPeriodPicker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 /**
@@ -51,6 +59,196 @@ const UNALLOCATED_FILL = '#94A3B8';
 
 /** Задержка сброса подсветки при уходе с пункта легенды — быстрый переход между соседними кластерами без «мигания». */
 const LEGEND_HOVER_CLEAR_MS = 100;
+
+const MONTH_LABELS_RU = [
+  'янв',
+  'фев',
+  'мар',
+  'апр',
+  'май',
+  'июн',
+  'июл',
+  'авг',
+  'сен',
+  'окт',
+  'ноя',
+  'дек',
+];
+
+const MONTHLY_FILTER_ALL = '__all__';
+const OTHER_INITIATIVE_LABEL = 'Прочие';
+
+function quarterToMonthInfos(quarter: string): Array<{ key: string; label: string }> {
+  const match = quarter.match(/^(\d{4})-Q(\d)$/);
+  if (!match) return [];
+  const year = parseInt(match[1], 10);
+  const qn = parseInt(match[2], 10);
+  if (qn < 1 || qn > 4) return [];
+  const startMonth = (qn - 1) * 3 + 1;
+  return [0, 1, 2].map((i) => {
+    const m = startMonth + i;
+    const key = `${year}-${String(m).padStart(2, '0')}`;
+    const label = `${MONTH_LABELS_RU[m - 1]} ${year}`;
+    return { key, label };
+  });
+}
+
+function orderedMonthsFromQuarters(quarters: string[]): Array<{ key: string; label: string }> {
+  const out: Array<{ key: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (const q of quarters) {
+    for (const mi of quarterToMonthInfos(q)) {
+      if (!seen.has(mi.key)) {
+        seen.add(mi.key);
+        out.push(mi);
+      }
+    }
+  }
+  out.sort((a, b) => a.key.localeCompare(b.key));
+  return out;
+}
+
+type MonthStackRow = Record<string, number | string> & {
+  monthKey: string;
+  monthLabel: string;
+  totalRub: number;
+};
+
+function rubForRowQuarterInCluster(
+  row: AdminDataRow,
+  quarter: string,
+  countryIdToClusterKey: Map<string, string>,
+  clusterLabel: string
+): number {
+  const qd = row.quarterlyData[quarter];
+  const cost = qd?.cost ?? 0;
+  const c = Math.round(Number(cost) || 0);
+  if (c <= 0) return 0;
+  const byCluster = new Map<string, number>();
+  const unallocatedAcc = { rub: 0 };
+  addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+  if (clusterLabel === UNALLOCATED_LABEL) return unallocatedAcc.rub;
+  return byCluster.get(clusterLabel) ?? 0;
+}
+
+function buildMonthlyRowsByCluster(
+  rows: AdminDataRow[],
+  quarters: string[],
+  countryIdToClusterKey: Map<string, string>,
+  stackKeys: string[]
+): MonthStackRow[] {
+  const monthOrder = orderedMonthsFromQuarters(quarters);
+  const acc = new Map<string, Map<string, number>>();
+  for (const { key } of monthOrder) acc.set(key, new Map());
+
+  for (const q of quarters) {
+    const mins = quarterToMonthInfos(q);
+    if (mins.length === 0) continue;
+    for (const row of rows) {
+      const qd = row.quarterlyData[q];
+      const cost = qd?.cost ?? 0;
+      const c = Math.round(Number(cost) || 0);
+      if (c <= 0) continue;
+      const byCluster = new Map<string, number>();
+      const unallocatedAcc = { rub: 0 };
+      addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+
+      const pushThird = (label: string, rub: number) => {
+        if (rub <= 0) return;
+        const third = Math.round(rub / 3);
+        if (third <= 0) return;
+        for (const mi of mins) {
+          const m = acc.get(mi.key);
+          if (m) m.set(label, (m.get(label) ?? 0) + third);
+        }
+      };
+      for (const [label, rub] of byCluster) pushThird(label, rub);
+      if (unallocatedAcc.rub > 0) pushThird(UNALLOCATED_LABEL, unallocatedAcc.rub);
+    }
+  }
+
+  return monthOrder.map(({ key, label }) => {
+    const m = acc.get(key) ?? new Map();
+    let totalRub = 0;
+    const rec: MonthStackRow = { monthKey: key, monthLabel: label, totalRub: 0 };
+    for (const k of stackKeys) {
+      const v = m.get(k) ?? 0;
+      rec[k] = v;
+      totalRub += v;
+    }
+    rec.totalRub = totalRub;
+    return rec;
+  });
+}
+
+function buildMonthlyRowsByInitiativesInCluster(
+  rows: AdminDataRow[],
+  quarters: string[],
+  countryIdToClusterKey: Map<string, string>,
+  clusterLabel: string,
+  topN: number
+): { chartRows: MonthStackRow[]; barKeys: string[] } {
+  const initiativeTotals = new Map<string, number>();
+  for (const row of rows) {
+    const name = truncateLabel(row.initiative || 'Без названия');
+    let sum = 0;
+    for (const q of quarters) {
+      sum += rubForRowQuarterInCluster(row, q, countryIdToClusterKey, clusterLabel);
+    }
+    if (sum > 0) initiativeTotals.set(name, (initiativeTotals.get(name) ?? 0) + sum);
+  }
+  const sorted = [...initiativeTotals.entries()].sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, topN).map(([n]) => n);
+  const rest = sorted.slice(topN);
+  const hasOther = rest.length > 0;
+  const barKeys = hasOther ? [...top, OTHER_INITIATIVE_LABEL] : top;
+  const topSet = new Set(top);
+
+  const monthOrder = orderedMonthsFromQuarters(quarters);
+  const acc = new Map<string, Map<string, number>>();
+  for (const { key } of monthOrder) acc.set(key, new Map());
+
+  for (const q of quarters) {
+    const mins = quarterToMonthInfos(q);
+    if (mins.length === 0) continue;
+    for (const row of rows) {
+      const rub = rubForRowQuarterInCluster(row, q, countryIdToClusterKey, clusterLabel);
+      if (rub <= 0) continue;
+      const third = Math.round(rub / 3);
+      if (third <= 0) continue;
+      const name = truncateLabel(row.initiative || 'Без названия');
+      const targetKey =
+        hasOther && !topSet.has(name) ? OTHER_INITIATIVE_LABEL : name;
+      if (!hasOther && !topSet.has(name)) continue;
+      for (const mi of mins) {
+        const m = acc.get(mi.key);
+        if (m) m.set(targetKey, (m.get(targetKey) ?? 0) + third);
+      }
+    }
+  }
+
+  const chartRows: MonthStackRow[] = monthOrder.map(({ key, label }) => {
+    const m = acc.get(key) ?? new Map();
+    let totalRub = 0;
+    const rec: MonthStackRow = { monthKey: key, monthLabel: label, totalRub: 0 };
+    for (const k of barKeys) {
+      const v = m.get(k) ?? 0;
+      rec[k] = v;
+      totalRub += v;
+    }
+    rec.totalRub = totalRub;
+    return rec;
+  });
+
+  return { chartRows, barKeys };
+}
+
+function formatRubAxis(n: number): string {
+  const x = Math.abs(n);
+  if (x >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} млн`;
+  if (x >= 1000) return `${Math.round(n / 1000)} тыс`;
+  return `${Math.round(n)}`;
+}
 
 function uniqueSortedQuarters(qs: string[]): string[] {
   return [...new Set(qs.filter(Boolean))].sort(compareQuarters);
@@ -265,6 +463,28 @@ function BarStackTooltip({ active, label, payload }: BarTooltipProps) {
   );
 }
 
+type MonthlyTooltipProps = {
+  active?: boolean;
+  label?: string;
+  payload?: Array<{ name?: string; value?: number; dataKey?: string | number }>;
+};
+
+function MonthlyStackTooltip({ active, label, payload }: MonthlyTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0];
+  const segment = String(p.name ?? p.dataKey ?? '');
+  const rub = Number(p.value);
+  if (!Number.isFinite(rub) || rub <= 0) return null;
+  const monthTitle = typeof label === 'string' && label.trim().length > 0 ? label : '—';
+  return (
+    <div className="max-w-[min(100vw-2rem,18rem)] rounded-md border border-border bg-popover px-2.5 py-2 text-xs text-popover-foreground shadow-md">
+      <p className="font-medium leading-snug">{monthTitle}</p>
+      <p className="mt-1 text-muted-foreground">{segment}</p>
+      <p className="mt-1 tabular-nums">{Math.round(rub).toLocaleString('ru-RU')} ₽</p>
+    </div>
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts Sector props
 function pieActiveShape(props: any) {
   const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
@@ -294,15 +514,19 @@ function ClusterAllocationsLegend({
   pieSlices,
   pieTotalRub,
   highlightedKey,
+  lockedKey,
   onHighlightKey,
   onScheduleClearHighlight,
+  onToggleClusterLock,
 }: {
   payload?: LegendPayloadEntry[];
   pieSlices: PieSliceDatum[];
   pieTotalRub: number;
   highlightedKey: string | null;
+  lockedKey: string | null;
   onHighlightKey: (name: string) => void;
   onScheduleClearHighlight: () => void;
+  onToggleClusterLock: (name: string) => void;
 }) {
   if (!payload?.length) return null;
   const rubByName = new Map<string, number>();
@@ -314,20 +538,29 @@ function ClusterAllocationsLegend({
         const name = String(item.value ?? '');
         const rub = rubByName.get(name) ?? 0;
         const pct = pieTotalRub > 0 ? Math.round((rub / pieTotalRub) * 100) : 0;
-        const active = highlightedKey === name;
+        const fromHover = highlightedKey === name;
+        const fromLock = lockedKey === name;
+        const emphasized = fromHover || fromLock;
         const isUnalloc = name === UNALLOCATED_LABEL;
         return (
           <button
             key={name}
             type="button"
             aria-label={`${name}${pieTotalRub > 0 ? `, ${pct}%` : ''}`}
+            aria-pressed={fromLock}
             className={cn(
-              'inline-flex max-w-[min(100%,14rem)] cursor-default items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-1 text-[11px] leading-snug outline-none transition-all duration-150',
+              'inline-flex max-w-[min(100%,14rem)] cursor-pointer items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-1 text-[11px] leading-snug outline-none transition-all duration-150',
               'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              active
-                ? 'scale-[1.07] bg-muted shadow-md ring-1 ring-primary/30'
-                : 'hover:bg-muted/60'
+              fromLock
+                ? 'scale-[1.07] bg-muted shadow-md ring-2 ring-primary ring-offset-2 ring-offset-background'
+                : emphasized
+                  ? 'scale-[1.07] bg-muted shadow-md ring-1 ring-primary/30'
+                  : 'hover:bg-muted/60'
             )}
+            onClick={(e) => {
+              e.preventDefault();
+              onToggleClusterLock(name);
+            }}
             onMouseEnter={() => onHighlightKey(name)}
             onMouseLeave={onScheduleClearHighlight}
             onFocus={() => onHighlightKey(name)}
@@ -346,7 +579,7 @@ function ClusterAllocationsLegend({
             >
               {name}
             </span>
-            {active ? (
+            {emphasized ? (
               <span className="shrink-0 tabular-nums font-semibold text-foreground">{pct}%</span>
             ) : null}
           </button>
@@ -387,7 +620,6 @@ export function AdminQuickFlowCountryAllocationsSummary({
     () => [...fillQuarters].filter(Boolean).sort(compareQuarters),
     [fillQuarters]
   );
-  const sortedFillKey = sortedFill.join('|');
 
   const summaryCatalogQuarters = useMemo(() => {
     const cat = uniqueSortedQuarters(quartersCatalog);
@@ -397,10 +629,19 @@ export function AdminQuickFlowCountryAllocationsSummary({
 
   const countryIdToClusterKey = useMemo(() => buildCountryIdToClusterMap(countries), [countries]);
 
-  /** Подсветка сегментов только от ховера/фокуса легенды. */
+  /** Подсветка сегментов от ховера/фокуса легенды. */
   const [highlightedClusterKey, setHighlightedClusterKey] = useState<string | null>(null);
+  /** Закрепление кластера кликом по легенде/сектору (пока наведён другой — круг остаётся на закреплённом). */
+  const [lockedClusterKey, setLockedClusterKey] = useState<string | null>(null);
+  const [monthlyClusterFilter, setMonthlyClusterFilter] = useState<string>(MONTHLY_FILTER_ALL);
   const [hoverBarCell, setHoverBarCell] = useState<{ row: number; key: string } | null>(null);
   const legendClearTimerRef = useRef<number | null>(null);
+
+  const toggleClusterLock = useCallback((name: string) => {
+    setLockedClusterKey((prev) => (prev === name ? null : name));
+  }, []);
+
+  const pieFocusKey = lockedClusterKey ?? highlightedClusterKey;
 
   const cancelLegendClearTimer = useCallback(() => {
     if (legendClearTimerRef.current != null) {
@@ -459,18 +700,18 @@ export function AdminQuickFlowCountryAllocationsSummary({
   const stackClusterKeys = allocationSummary.stackKeys;
 
   const pieActiveHighlightIndex = useMemo(() => {
-    if (!highlightedClusterKey) return undefined;
-    const i = pieData.findIndex((d) => d.name === highlightedClusterKey);
+    if (!pieFocusKey) return undefined;
+    const i = pieData.findIndex((d) => d.name === pieFocusKey);
     return i >= 0 ? i : undefined;
-  }, [highlightedClusterKey, pieData]);
+  }, [pieFocusKey, pieData]);
 
   const highlightedPieStat = useMemo(() => {
-    if (!highlightedClusterKey) return null;
-    const rub = pieData.find((d) => d.name === highlightedClusterKey)?.value ?? 0;
+    if (!pieFocusKey) return null;
+    const rub = pieData.find((d) => d.name === pieFocusKey)?.value ?? 0;
     if (rub <= 0) return null;
     const pct = pieTotalRub > 0 ? (rub / pieTotalRub) * 100 : 0;
-    return { name: highlightedClusterKey, rub, pct };
-  }, [highlightedClusterKey, pieData, pieTotalRub]);
+    return { name: pieFocusKey, rub, pct };
+  }, [pieFocusKey, pieData, pieTotalRub]);
 
   const includeUnallocatedInStack = allocationSummary.unallocatedRub > 0;
   const initiativeRublesRows = useMemo(
@@ -525,14 +766,75 @@ export function AdminQuickFlowCountryAllocationsSummary({
     return map;
   }, [initiativeRublesRows, stackClusterKeys]);
 
+  const panelClusterKey = lockedClusterKey ?? highlightedClusterKey;
+
   const highlightedInitiativeRows = useMemo(() => {
-    if (!highlightedClusterKey) return [];
-    return initiativeRowsByCluster.get(highlightedClusterKey) ?? [];
-  }, [highlightedClusterKey, initiativeRowsByCluster]);
+    if (!panelClusterKey) return [];
+    return initiativeRowsByCluster.get(panelClusterKey) ?? [];
+  }, [panelClusterKey, initiativeRowsByCluster]);
+
+  useEffect(() => {
+    if (
+      monthlyClusterFilter !== MONTHLY_FILTER_ALL &&
+      !stackClusterKeys.includes(monthlyClusterFilter)
+    ) {
+      setMonthlyClusterFilter(MONTHLY_FILTER_ALL);
+    }
+  }, [monthlyClusterFilter, stackClusterKeys]);
+
+  const monthlyAllClusterRows = useMemo(
+    () =>
+      buildMonthlyRowsByCluster(rows, quartersForCharts, countryIdToClusterKey, stackClusterKeys),
+    [rows, quartersForCharts, countryIdToClusterKey, stackClusterKeys]
+  );
+
+  const monthlyInitiativeSplit = useMemo(() => {
+    if (monthlyClusterFilter === MONTHLY_FILTER_ALL) return null;
+    return buildMonthlyRowsByInitiativesInCluster(
+      rows,
+      quartersForCharts,
+      countryIdToClusterKey,
+      monthlyClusterFilter,
+      14
+    );
+  }, [rows, quartersForCharts, countryIdToClusterKey, monthlyClusterFilter]);
+
+  const monthlyChartRows =
+    monthlyClusterFilter === MONTHLY_FILTER_ALL
+      ? monthlyAllClusterRows
+      : (monthlyInitiativeSplit?.chartRows ?? []);
+  const monthlyBarKeys =
+    monthlyClusterFilter === MONTHLY_FILTER_ALL
+      ? stackClusterKeys
+      : (monthlyInitiativeSplit?.barKeys ?? []);
+
+  const monthlyChartHeight = useMemo(() => {
+    const n = monthlyChartRows.length;
+    const perBar = 52;
+    const axisPad = 56;
+    return Math.min(720, Math.max(220, n * perBar + axisPad));
+  }, [monthlyChartRows.length]);
+
+  const monthlyMaxRub = useMemo(() => {
+    return monthlyChartRows.reduce((m, r) => Math.max(m, r.totalRub), 0);
+  }, [monthlyChartRows]);
+
+  const fillForMonthlyBarKey = useCallback(
+    (key: string, idx: number) => {
+      if (monthlyClusterFilter === MONTHLY_FILTER_ALL) {
+        if (key === UNALLOCATED_LABEL) return UNALLOCATED_FILL;
+        const i = stackClusterKeys.indexOf(key);
+        return GEO_CHART_PALETTE[(i >= 0 ? i : idx) % GEO_CHART_PALETTE.length];
+      }
+      if (key === OTHER_INITIATIVE_LABEL) return '#94A3B8';
+      return GEO_CHART_PALETTE[idx % GEO_CHART_PALETTE.length];
+    },
+    [monthlyClusterFilter, stackClusterKeys]
+  );
 
   const chartsAnimating = false;
-  const cellOpacityTransition = highlightedClusterKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.18s ease';
-  const barCellOpacityTransition = highlightedClusterKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.15s ease';
+  const cellOpacityTransition = pieFocusKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.18s ease';
+  const barCellOpacityTransition = pieFocusKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.15s ease';
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto">
@@ -555,220 +857,368 @@ export function AdminQuickFlowCountryAllocationsSummary({
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="mb-2 text-sm font-medium">По кластерам</p>
-          {pieData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Пока нет сумм — добавьте строки и проценты по инициативам.</p>
-          ) : (
-            <div className="relative h-[300px] w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40">
-              {highlightedPieStat ? (
-                <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-border bg-popover/95 px-2.5 py-2 text-xs text-popover-foreground shadow-md backdrop-blur-sm">
-                  <p className="font-medium leading-snug">{highlightedPieStat.name}</p>
-                  <p className="mt-1 tabular-nums text-muted-foreground">
-                    {Math.round(highlightedPieStat.rub).toLocaleString('ru-RU')} ₽ ({highlightedPieStat.pct.toFixed(1)}%)
-                  </p>
-                </div>
-              ) : null}
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 12, right: 12, bottom: 12, left: 12 }}>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="46%"
-                    innerRadius="42%"
-                    outerRadius="68%"
-                    paddingAngle={1.5}
-                    stroke="hsl(var(--border))"
-                    strokeWidth={1}
-                    label={false}
-                    isAnimationActive={chartsAnimating}
-                    animationDuration={480}
-                    animationEasing="ease-out"
-                    activeIndex={pieActiveHighlightIndex}
-                    activeShape={pieActiveShape}
-                  >
-                    {pieData.map((entry, i) => {
-                      const paletteIdx = pieData
-                        .slice(0, i)
-                        .filter((e) => e.name !== UNALLOCATED_LABEL).length;
-                      const fill =
-                        entry.name === UNALLOCATED_LABEL
-                          ? UNALLOCATED_FILL
-                          : GEO_CHART_PALETTE[paletteIdx % GEO_CHART_PALETTE.length];
-                      const dim =
-                        highlightedClusterKey != null && entry.name !== highlightedClusterKey;
-                      return (
-                        <Cell
-                          key={entry.name}
-                          fill={fill}
-                          fillOpacity={dim ? 0.35 : 1}
-                          style={{ transition: cellOpacityTransition }}
-                        />
-                      );
-                    })}
-                  </Pie>
-                  <Tooltip
-                    content={(props) => <PieAllocationTooltip {...props} totalRub={pieTotalRub} />}
-                  />
-                  <Legend
-                    layout="horizontal"
-                    verticalAlign="bottom"
-                    wrapperStyle={{ paddingTop: 4 }}
-                    content={(legendProps) => (
-                      <ClusterAllocationsLegend
-                        payload={legendProps.payload as LegendPayloadEntry[] | undefined}
-                        pieSlices={pieData}
-                        pieTotalRub={pieTotalRub}
-                        highlightedKey={highlightedClusterKey}
-                        onHighlightKey={setLegendHighlight}
-                        onScheduleClearHighlight={scheduleLegendHighlightClear}
-                      />
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+        <span className="text-muted-foreground">Итого за период</span>
+        <span className="text-lg font-semibold tabular-nums text-foreground">
+          {Math.round(pieTotalRub).toLocaleString('ru-RU')} ₽
+        </span>
+        {quartersForCharts.length > 0 ? (
+          <span className="text-xs text-muted-foreground">Кварталы: {quartersForCharts.join(', ')}</span>
+        ) : null}
+      </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 lg:col-span-1">
-          <p className="mb-2 text-sm font-medium">По инициативам</p>
-          {highlightedClusterKey ? (
-            <div className="mb-2 rounded-md border border-border bg-popover/70 px-2.5 py-2 text-xs text-popover-foreground">
-              <p className="font-medium leading-snug">{highlightedClusterKey}</p>
-              {highlightedInitiativeRows.length === 0 ? (
-                <p className="mt-1 text-muted-foreground">Нет сумм по выбранному кластеру.</p>
+      <Tabs defaultValue="period" className="min-h-0 min-w-0">
+        <TabsList className="h-auto flex-wrap justify-start gap-1">
+          <TabsTrigger value="period" className="text-xs sm:text-sm">
+            За период
+          </TabsTrigger>
+          <TabsTrigger value="monthly" className="text-xs sm:text-sm">
+            По месяцам
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="period" className="mt-4 min-w-0">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">По кластерам</p>
+                {lockedClusterKey ? (
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-primary underline-offset-2 hover:underline"
+                    onClick={() => setLockedClusterKey(null)}
+                  >
+                    Сбросить закрепление
+                  </button>
+                ) : null}
+              </div>
+              <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
+                Клик по сектору или пункту легенды закрепляет кластер; наведение подсвечивает без закрепления.
+              </p>
+              {pieData.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Пока нет сумм — добавьте строки и проценты по инициативам.
+                </p>
               ) : (
-                <div className="mt-1.5 max-h-24 space-y-1 overflow-auto pr-1">
-                  {highlightedInitiativeRows.map((row) => (
-                    <p key={row.initiative} className="flex items-center justify-between gap-2 tabular-nums">
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.initiative}</span>
-                      <span>{row.rub.toLocaleString('ru-RU')} ₽ · {row.pct.toFixed(1)}%</span>
-                    </p>
-                  ))}
+                <div className="relative h-[300px] w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40">
+                  {highlightedPieStat ? (
+                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-border bg-popover/95 px-2.5 py-2 text-xs text-popover-foreground shadow-md backdrop-blur-sm">
+                      <p className="font-medium leading-snug">{highlightedPieStat.name}</p>
+                      <p className="mt-1 tabular-nums text-muted-foreground">
+                        {Math.round(highlightedPieStat.rub).toLocaleString('ru-RU')} ₽ (
+                        {highlightedPieStat.pct.toFixed(1)}%)
+                      </p>
+                    </div>
+                  ) : null}
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart margin={{ top: 12, right: 12, bottom: 12, left: 12 }}>
+                      <Pie
+                        data={pieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="46%"
+                        innerRadius="42%"
+                        outerRadius="68%"
+                        paddingAngle={1.5}
+                        stroke="hsl(var(--border))"
+                        strokeWidth={1}
+                        label={false}
+                        isAnimationActive={chartsAnimating}
+                        animationDuration={480}
+                        animationEasing="ease-out"
+                        activeIndex={pieActiveHighlightIndex}
+                        activeShape={pieActiveShape}
+                        cursor="pointer"
+                        onClick={(_, index) => {
+                          const name = pieData[index]?.name;
+                          if (name) toggleClusterLock(name);
+                        }}
+                      >
+                        {pieData.map((entry, i) => {
+                          const paletteIdx = pieData
+                            .slice(0, i)
+                            .filter((e) => e.name !== UNALLOCATED_LABEL).length;
+                          const fill =
+                            entry.name === UNALLOCATED_LABEL
+                              ? UNALLOCATED_FILL
+                              : GEO_CHART_PALETTE[paletteIdx % GEO_CHART_PALETTE.length];
+                          const dim = pieFocusKey != null && entry.name !== pieFocusKey;
+                          return (
+                            <Cell
+                              key={entry.name}
+                              fill={fill}
+                              fillOpacity={dim ? 0.35 : 1}
+                              style={{ transition: cellOpacityTransition, cursor: 'pointer' }}
+                            />
+                          );
+                        })}
+                      </Pie>
+                      <Tooltip
+                        content={(props) => <PieAllocationTooltip {...props} totalRub={pieTotalRub} />}
+                      />
+                      <Legend
+                        layout="horizontal"
+                        verticalAlign="bottom"
+                        wrapperStyle={{ paddingTop: 4 }}
+                        content={(legendProps) => (
+                          <ClusterAllocationsLegend
+                            payload={legendProps.payload as LegendPayloadEntry[] | undefined}
+                            pieSlices={pieData}
+                            pieTotalRub={pieTotalRub}
+                            highlightedKey={highlightedClusterKey}
+                            lockedKey={lockedClusterKey}
+                            onHighlightKey={setLegendHighlight}
+                            onScheduleClearHighlight={scheduleLegendHighlightClear}
+                            onToggleClusterLock={toggleClusterLock}
+                          />
+                        )}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
               )}
             </div>
-          ) : null}
-          {stackData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Нет данных для столбцов.</p>
-          ) : (
-            <div
-              className="w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
-              style={{ height: barChartHeight }}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  layout="vertical"
-                  data={stackData}
-                  margin={{ top: 4, right: 10, left: 2, bottom: 4 }}
-                  barCategoryGap={2}
-                  barGap={0}
-                  maxBarSize={44}
-                  onMouseLeave={() => setHoverBarCell(null)}
+
+            <div className="rounded-xl border border-border bg-card p-4 lg:col-span-1">
+              <p className="mb-2 text-sm font-medium">По инициативам</p>
+              {panelClusterKey ? (
+                <div className="mb-2 rounded-md border border-border bg-popover/70 px-2.5 py-2 text-xs text-popover-foreground">
+                  <p className="font-medium leading-snug">
+                    {panelClusterKey}
+                    {lockedClusterKey === panelClusterKey ? (
+                      <span className="ml-1.5 font-normal text-muted-foreground">(закреплено)</span>
+                    ) : null}
+                  </p>
+                  {highlightedInitiativeRows.length === 0 ? (
+                    <p className="mt-1 text-muted-foreground">Нет сумм по выбранному кластеру.</p>
+                  ) : (
+                    <div className="mt-1.5 max-h-28 space-y-1 overflow-auto pr-1">
+                      {highlightedInitiativeRows.map((row) => (
+                        <p
+                          key={row.initiative}
+                          className="flex items-center justify-between gap-2 tabular-nums"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                            {row.initiative}
+                          </span>
+                          <span>
+                            {row.rub.toLocaleString('ru-RU')} ₽ · {row.pct.toFixed(1)}%
+                          </span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  Наведите на кластер в легенде или закрепите кликом — список инициатив появится здесь.
+                </p>
+              )}
+              {stackData.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Нет данных для столбцов.</p>
+              ) : (
+                <div
+                  className="w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
+                  style={{ height: barChartHeight }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.45)" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    domain={[0, 100]}
-                    ticks={[0, 25, 50, 75, 100]}
-                    allowDecimals={false}
-                    tickFormatter={(v) => `${Math.round(Number(v))}%`}
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={yAxisWidth}
-                    tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
-                    interval={0}
-                  />
-                  <Tooltip
-                    content={<BarStackTooltip />}
-                    cursor={{ fill: 'hsl(var(--muted) / 0.25)' }}
-                    shared={false}
-                  />
-                  {stackClusterKeys.map((key, clusterIdx) => (
-                    <Bar
-                      key={key}
-                      dataKey={key}
-                      stackId="split"
-                      fill={
-                        key === UNALLOCATED_LABEL
-                          ? UNALLOCATED_FILL
-                          : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
-                      }
-                      isAnimationActive={chartsAnimating}
-                      animationDuration={520}
-                      animationEasing="ease-out"
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={stackData}
+                      margin={{ top: 4, right: 10, left: 2, bottom: 4 }}
+                      barCategoryGap={2}
+                      barGap={0}
+                      maxBarSize={44}
+                      onMouseLeave={() => setHoverBarCell(null)}
                     >
-                      <LabelList
-                        dataKey={key}
-                        position="center"
-                        content={(labelProps: Record<string, unknown>) => {
-                          if (highlightedClusterKey !== key) return null;
-                          const x = Number(labelProps.x);
-                          const y = Number(labelProps.y);
-                          const w = Number(labelProps.width);
-                          const h = Number(labelProps.height);
-                          const value = Number(labelProps.value);
-                          if (!Number.isFinite(value) || value < 5) return null;
-                          if (!Number.isFinite(w) || w < 12) return null;
-                          return (
-                            <text
-                              x={x + w / 2}
-                              y={y + h / 2}
-                              textAnchor="middle"
-                              dominantBaseline="central"
-                              fill="#fff"
-                              fontSize={10}
-                              fontWeight={700}
-                              className="tabular-nums"
-                              style={{
-                                paintOrder: 'stroke',
-                                stroke: 'rgba(0,0,0,0.45)',
-                                strokeWidth: 2,
-                                strokeLinejoin: 'round',
-                              }}
-                            >
-                              {`${Math.round(value)}%`}
-                            </text>
-                          );
-                        }}
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border) / 0.45)"
+                        horizontal={false}
                       />
-                      {stackData.map((_, rowIndex) => {
-                        const dimFromLegend =
-                          highlightedClusterKey != null && key !== highlightedClusterKey;
-                        const dimFromBar =
-                          !highlightedClusterKey &&
-                          hoverBarCell != null &&
-                          (hoverBarCell.row !== rowIndex || hoverBarCell.key !== key);
-                        const dim = highlightedClusterKey != null ? dimFromLegend : dimFromBar;
-                        return (
-                          <Cell
-                            key={`${key}-${rowIndex}`}
-                            fill={
-                              key === UNALLOCATED_LABEL
-                                ? UNALLOCATED_FILL
-                                : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
-                            }
-                            fillOpacity={dim ? 0.32 : 1}
-                            style={{ transition: barCellOpacityTransition }}
-                            onMouseEnter={() => setHoverBarCell({ row: rowIndex, key })}
+                      <XAxis
+                        type="number"
+                        domain={[0, 100]}
+                        ticks={[0, 25, 50, 75, 100]}
+                        allowDecimals={false}
+                        tickFormatter={(v) => `${Math.round(Number(v))}%`}
+                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={yAxisWidth}
+                        tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
+                        interval={0}
+                      />
+                      <Tooltip
+                        content={<BarStackTooltip />}
+                        cursor={{ fill: 'hsl(var(--muted) / 0.25)' }}
+                        shared={false}
+                      />
+                      {stackClusterKeys.map((key, clusterIdx) => (
+                        <Bar
+                          key={key}
+                          dataKey={key}
+                          stackId="split"
+                          fill={
+                            key === UNALLOCATED_LABEL
+                              ? UNALLOCATED_FILL
+                              : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
+                          }
+                          isAnimationActive={chartsAnimating}
+                          animationDuration={520}
+                          animationEasing="ease-out"
+                        >
+                          <LabelList
+                            dataKey={key}
+                            position="center"
+                            content={(labelProps: Record<string, unknown>) => {
+                              if (pieFocusKey !== key) return null;
+                              const x = Number(labelProps.x);
+                              const y = Number(labelProps.y);
+                              const w = Number(labelProps.width);
+                              const h = Number(labelProps.height);
+                              const value = Number(labelProps.value);
+                              if (!Number.isFinite(value) || value < 5) return null;
+                              if (!Number.isFinite(w) || w < 12) return null;
+                              return (
+                                <text
+                                  x={x + w / 2}
+                                  y={y + h / 2}
+                                  textAnchor="middle"
+                                  dominantBaseline="central"
+                                  fill="#fff"
+                                  fontSize={10}
+                                  fontWeight={700}
+                                  className="tabular-nums"
+                                  style={{
+                                    paintOrder: 'stroke',
+                                    stroke: 'rgba(0,0,0,0.45)',
+                                    strokeWidth: 2,
+                                    strokeLinejoin: 'round',
+                                  }}
+                                >
+                                  {`${Math.round(value)}%`}
+                                </text>
+                              );
+                            }}
                           />
-                        );
-                      })}
-                    </Bar>
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
+                          {stackData.map((_, rowIndex) => {
+                            const dimFromLegend = pieFocusKey != null && key !== pieFocusKey;
+                            const dimFromBar =
+                              !pieFocusKey &&
+                              hoverBarCell != null &&
+                              (hoverBarCell.row !== rowIndex || hoverBarCell.key !== key);
+                            const dim = pieFocusKey != null ? dimFromLegend : dimFromBar;
+                            return (
+                              <Cell
+                                key={`${key}-${rowIndex}`}
+                                fill={
+                                  key === UNALLOCATED_LABEL
+                                    ? UNALLOCATED_FILL
+                                    : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
+                                }
+                                fillOpacity={dim ? 0.32 : 1}
+                                style={{ transition: barCellOpacityTransition }}
+                                onMouseEnter={() => setHoverBarCell({ row: rowIndex, key })}
+                              />
+                            );
+                          })}
+                        </Bar>
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="monthly" className="mt-4 min-w-0">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <p className="text-sm font-medium">Распределение по месяцам</p>
+              <div className="flex min-w-0 flex-col gap-1 sm:max-w-xs sm:flex-1 sm:items-end">
+                <span className="text-[11px] text-muted-foreground">Кластер</span>
+                <Select value={monthlyClusterFilter} onValueChange={setMonthlyClusterFilter}>
+                  <SelectTrigger className="h-9 w-full min-w-[12rem] sm:w-[min(100%,280px)]">
+                    <SelectValue placeholder="Кластер" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" className="z-[60]">
+                    <SelectItem value={MONTHLY_FILTER_ALL}>Все кластеры</SelectItem>
+                    {stackClusterKeys.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {k}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="mb-3 text-[11px] leading-snug text-muted-foreground">
+              Квартальные суммы распределены равномерно по трём месяцам каждого квартала (упрощение до
+              помесячной отчётности).
+            </p>
+            {monthlyClusterFilter !== MONTHLY_FILTER_ALL && monthlyBarKeys.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                По выбранному кластеру нет распределённых сумм за этот период.
+              </p>
+            ) : monthlyChartRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Нет данных за выбранные кварталы.</p>
+            ) : (
+              <div
+                className="w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
+                style={{ height: monthlyChartHeight }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={monthlyChartRows}
+                    margin={{ top: 8, right: 12, left: 8, bottom: 8 }}
+                    barCategoryGap="18%"
+                    maxBarSize={56}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border) / 0.45)"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="monthLabel"
+                      type="category"
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <YAxis
+                      type="number"
+                      domain={[0, Math.max(monthlyMaxRub * 1.08, 1)]}
+                      tickFormatter={(v) => `${formatRubAxis(Number(v))} ₽`}
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      width={56}
+                    />
+                    <Tooltip
+                      content={<MonthlyStackTooltip />}
+                      cursor={{ fill: 'hsl(var(--muted) / 0.2)' }}
+                      shared={false}
+                    />
+                    {monthlyBarKeys.map((key, idx) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="monthly"
+                        fill={fillForMonthlyBarKey(key, idx)}
+                        isAnimationActive={chartsAnimating}
+                        animationDuration={480}
+                        animationEasing="ease-out"
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
