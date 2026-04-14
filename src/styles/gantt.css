@@ -110,7 +110,7 @@
   min-width: 0;
   border-bottom: 1px solid hsl(var(--border));
   min-height: 96px;
-  cursor: pointer;
+  cursor: default;
   transition: background 0.15s ease;
 }
 

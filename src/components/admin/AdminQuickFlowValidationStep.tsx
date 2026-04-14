@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { LayoutGrid, MapPin, Pencil } from 'lucide-react';
+import { LayoutGrid, MapPin } from 'lucide-react';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
@@ -56,7 +55,6 @@ type Props = {
   ) => void;
   onGeoCostSplitDraftChange: (initiativeId: string, quarter: string, split: GeoCostSplit | undefined) => void;
   onInitiativeDraftChange?: (id: string, field: DraftField, value: string | string[] | boolean) => void;
-  onOpenFillInitiative?: (id: string) => void;
   onNavigateToCoefficients: () => void;
   onNavigateToTimeline: () => void;
   onNavigateToGeoSplit: () => void;
@@ -64,17 +62,10 @@ type Props = {
 };
 
 const LEVEL_CELL: Record<QuickFlowReadinessLevel, string> = {
-  na: 'bg-muted/55 text-muted-foreground border-border/60 hover:bg-muted/75',
-  ok: 'bg-emerald-600/90 text-white border-emerald-700/50 hover:bg-emerald-600',
-  warn: 'bg-amber-500/90 text-amber-950 border-amber-600/50 hover:bg-amber-500',
-  blocker: 'bg-rose-600/90 text-white border-rose-700/50 hover:bg-rose-600',
-};
-
-const LEVEL_DOT: Record<QuickFlowReadinessLevel, string> = {
-  na: 'bg-muted-foreground/35',
-  ok: 'bg-emerald-500',
-  warn: 'bg-amber-500',
-  blocker: 'bg-rose-500',
+  na: 'bg-muted/55 text-muted-foreground border-border/60',
+  ok: 'bg-emerald-600/90 text-white border-emerald-700/50',
+  warn: 'bg-rose-600/90 text-white border-rose-700/50',
+  blocker: 'bg-rose-600/90 text-white border-rose-700/50',
 };
 
 function mergeQuarterData(row: AdminDataRow, quarter: string): AdminQuarterData {
@@ -95,7 +86,6 @@ export function AdminQuickFlowValidationStep({
   onQuarterDataChange,
   onGeoCostSplitDraftChange,
   onInitiativeDraftChange,
-  onOpenFillInitiative,
   onNavigateToCoefficients,
   onNavigateToTimeline,
   onNavigateToGeoSplit,
@@ -114,19 +104,21 @@ export function AdminQuickFlowValidationStep({
   }, [rows, sortedQuarters]);
 
   const counts = useMemo(() => {
-    let ok = 0;
-    let warn = 0;
-    let blocker = 0;
-    let na = 0;
+    let ready = 0;
+    let missing = 0;
+    let inactive = 0;
     for (const { cells } of matrix) {
       for (const { readiness } of cells) {
-        if (readiness.level === 'ok') ok += 1;
-        else if (readiness.level === 'warn') warn += 1;
-        else if (readiness.level === 'blocker') blocker += 1;
-        else na += 1;
+        if (readiness.level === 'na') {
+          inactive += 1;
+        } else if (readiness.level === 'ok') {
+          ready += 1;
+        } else {
+          missing += 1;
+        }
       }
     }
-    return { ok, warn, blocker, na, total: ok + warn + blocker + na };
+    return { ready, missing, inactive, active: ready + missing, total: ready + missing + inactive };
   }, [matrix]);
 
   const [selection, setSelection] = useState<CellSelection | null>(null);
@@ -143,33 +135,28 @@ export function AdminQuickFlowValidationStep({
       <div>
         <h2 className="text-lg font-semibold">Проверка перед завершением</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Матрица по инициативам и кварталам: зелёный — всё обязательное закрыто, жёлтый — план/факт, красный — карточка или
-          гео по рынкам. Серый — в квартале нет усилий и стоимости. Нажмите ячейку, чтобы дозаполнить справа.
+          Сверху — общий статус, ниже — матрица по инициативам и кварталам. Красный означает, что не заполнено хотя бы одно
+          обязательное поле. Зелёный — всё обязательное заполнено. Серые кварталы без усилий и стоимости не требуют действий.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/15 px-3 py-2.5 text-xs">
-        <span className="font-medium text-foreground">Ячейки:</span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2 w-2 rounded-full', LEVEL_DOT.blocker)} />
-          <span className="tabular-nums text-foreground">{counts.blocker}</span>
-          <span className="text-muted-foreground">критично</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2 w-2 rounded-full', LEVEL_DOT.warn)} />
-          <span className="tabular-nums text-foreground">{counts.warn}</span>
-          <span className="text-muted-foreground">план/факт</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2 w-2 rounded-full', LEVEL_DOT.ok)} />
-          <span className="tabular-nums text-foreground">{counts.ok}</span>
-          <span className="text-muted-foreground">готово</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cn('h-2 w-2 rounded-full', LEVEL_DOT.na)} />
-          <span className="tabular-nums text-foreground">{counts.na}</span>
-          <span className="text-muted-foreground">не активны</span>
-        </span>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Проблемные ячейки</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-rose-700 dark:text-rose-300">{counts.missing}</p>
+        </div>
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Закрыто</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{counts.ready}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/10 px-3 py-2">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Активные ячейки</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{counts.active}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/10 px-3 py-2">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Неактивные ячейки</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-muted-foreground">{counts.inactive}</p>
+        </div>
       </div>
 
       <div className="rounded-lg border border-border bg-card">
@@ -211,18 +198,42 @@ export function AdminQuickFlowValidationStep({
                           —
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          className={cn(
-                            'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums shadow-sm transition-colors',
-                            LEVEL_CELL[readiness.level]
-                          )}
-                          title={`${quarter}: ${readiness.reasons.length ? readiness.reasons.join(' · ') : readiness.level === 'ok' ? 'Готово' : ''}`}
-                          aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, статус ${readiness.level}`}
-                          onClick={() => setSelection({ rowId: row.id, quarter })}
-                        >
-                          {readiness.level === 'na' ? '·' : readiness.level === 'ok' ? '✓' : '!'}
-                        </button>
+                        readiness.level === 'na' ? (
+                          <div
+                            className={cn(
+                              'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums',
+                              LEVEL_CELL.na
+                            )}
+                            title={`${quarter}: нет усилий и стоимости`}
+                            aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, неактивно`}
+                          >
+                            —
+                          </div>
+                        ) : readiness.level === 'ok' ? (
+                          <div
+                            className={cn(
+                              'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums shadow-sm',
+                              LEVEL_CELL.ok
+                            )}
+                            title={`${quarter}: всё обязательное заполнено`}
+                            aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, заполнено`}
+                          >
+                            ✓
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className={cn(
+                              'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums shadow-sm transition-colors hover:brightness-95',
+                              LEVEL_CELL[readiness.level]
+                            )}
+                            title={`${quarter}: ${readiness.reasons.join(' · ')}`}
+                            aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, не заполнено обязательное`}
+                            onClick={() => setSelection({ rowId: row.id, quarter })}
+                          >
+                            !
+                          </button>
+                        )
                       )}
                     </td>
                   ))}
@@ -231,16 +242,6 @@ export function AdminQuickFlowValidationStep({
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="rounded-lg border border-border bg-muted/10 px-3 py-2.5 text-[11px] text-muted-foreground">
-        <p className="font-medium text-foreground">Легенда</p>
-        <ul className="mt-1.5 grid gap-1 sm:grid-cols-2">
-          <li>✓ зелёный — карточка, гео (если есть cost) и метрики по правилам</li>
-          <li>! жёлтый — не хватает плана или факта метрики</li>
-          <li>! красный — тип/стейкхолдеры/описание или распределение по рынкам</li>
-          <li>· серый — нет усилий и стоимости в квартале (можно открыть и задать усилия)</li>
-        </ul>
       </div>
 
       <Sheet open={selection != null} onOpenChange={(o) => !o && closeSheet()}>
@@ -259,7 +260,6 @@ export function AdminQuickFlowValidationStep({
               onQuarterDataChange={onQuarterDataChange}
               onGeoCostSplitDraftChange={onGeoCostSplitDraftChange}
               onInitiativeDraftChange={onInitiativeDraftChange}
-              onOpenFillInitiative={onOpenFillInitiative}
               onNavigateToCoefficients={onNavigateToCoefficients}
               onNavigateToTimeline={onNavigateToTimeline}
               onNavigateToGeoSplit={onNavigateToGeoSplit}
@@ -283,7 +283,6 @@ function ValidationCellPanel({
   onQuarterDataChange,
   onGeoCostSplitDraftChange,
   onInitiativeDraftChange,
-  onOpenFillInitiative,
   onNavigateToCoefficients,
   onNavigateToTimeline,
   onNavigateToGeoSplit,
@@ -299,7 +298,6 @@ function ValidationCellPanel({
   onQuarterDataChange: Props['onQuarterDataChange'];
   onGeoCostSplitDraftChange: Props['onGeoCostSplitDraftChange'];
   onInitiativeDraftChange?: Props['onInitiativeDraftChange'];
-  onOpenFillInitiative?: Props['onOpenFillInitiative'];
   onNavigateToCoefficients: () => void;
   onNavigateToTimeline: () => void;
   onNavigateToGeoSplit: () => void;
@@ -349,54 +347,34 @@ function ValidationCellPanel({
       </SheetHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4 space-y-6">
-        <section className="space-y-3 rounded-lg border border-border/80 bg-muted/10 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Быстрый переход к шагам</p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => { onClose(); onNavigateToCoefficients(); }}>
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Коэффициенты
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => { onClose(); onNavigateToTreemap(); }}>
-              Карточка / описание
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => { onClose(); onNavigateToTimeline(); }}>
-              Таймлайн
-            </Button>
-            <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => { onClose(); onNavigateToGeoSplit(); }}>
-              <MapPin className="h-3.5 w-3.5" />
-              Гео по странам
-            </Button>
-          </div>
-        </section>
-
-        {onOpenFillInitiative ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="w-full gap-1.5 sm:w-auto"
-            onClick={() => {
-              onOpenFillInitiative(row.id);
-              onClose();
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Полная карточка инициативы
-          </Button>
+        {onInitiativeDraftChange ? (
+          <section className="space-y-1.5">
+            <Label htmlFor={`qv-name-${row.id}`}>Название инициативы</Label>
+            <Input
+              id={`qv-name-${row.id}`}
+              value={row.initiative ?? ''}
+              onChange={(e) => onInitiativeDraftChange(row.id, 'initiative', e.target.value)}
+            />
+          </section>
         ) : null}
 
         <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Название и коэффициент</h3>
-          {onInitiativeDraftChange ? (
-            <div className="space-y-1.5">
-              <Label htmlFor={`qv-name-${row.id}`}>Название</Label>
-              <Input
-                id={`qv-name-${row.id}`}
-                value={row.initiative ?? ''}
-                onChange={(e) => onInitiativeDraftChange(row.id, 'initiative', e.target.value)}
-              />
-            </div>
-          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-foreground">Усилия в квартале</h3>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5"
+              onClick={() => {
+                onClose();
+                onNavigateToCoefficients();
+              }}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Открыть коэффициенты
+            </Button>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor={`qv-eff-${row.id}-${quarter}`}>Усилия в квартале, %</Label>
             <Input
@@ -419,21 +397,25 @@ function ValidationCellPanel({
               {!effortTotal.isValid ? ' — превышает 100%' : null}
             </p>
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">On-track</p>
-              <p className="text-xs text-muted-foreground">Статус в квартале</p>
-            </div>
-            <Switch
-              checked={qd.onTrack !== false}
-              onCheckedChange={(v) => onQuarterDataChange(row.id, quarter, 'onTrack', v)}
-            />
-          </div>
         </section>
 
         {cardMissing.length > 0 && onInitiativeDraftChange ? (
           <section className="space-y-3 rounded-lg border border-rose-500/25 bg-rose-500/5 p-3">
-            <h3 className="text-sm font-semibold text-rose-800 dark:text-rose-200">Карточка инициативы</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-rose-800 dark:text-rose-200">Карточка инициативы</h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => {
+                  onClose();
+                  onNavigateToTreemap();
+                }}
+              >
+                Перейти к шагу
+              </Button>
+            </div>
             <div className="space-y-1.5">
               <Label>Тип</Label>
               <Select
@@ -508,7 +490,21 @@ function ValidationCellPanel({
                 : 'border-border/80 bg-muted/10'
             )}
           >
-            <h3 className="text-sm font-semibold text-foreground">План и факт метрики</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-foreground">План и факт метрики</h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => {
+                  onClose();
+                  onNavigateToTimeline();
+                }}
+              >
+                Перейти к шагу
+              </Button>
+            </div>
             {qd.support ? (
               <p className="text-xs text-muted-foreground">Квартал на поддержке — по правилам план/факт не требуются.</p>
             ) : (
@@ -547,7 +543,22 @@ function ValidationCellPanel({
               geoIncomplete ? 'border-rose-500/25 bg-rose-500/5' : 'border-border/80 bg-muted/10'
             )}
           >
-            <h3 className="text-sm font-semibold text-foreground">Распределение по рынкам</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Распределение по рынкам</h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5"
+                onClick={() => {
+                  onClose();
+                  onNavigateToGeoSplit();
+                }}
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                Перейти к шагу
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
               Стоимость квартала:{' '}
               <span className="font-medium tabular-nums text-foreground">{Math.round(cost).toLocaleString('ru-RU')} ₽</span>
@@ -568,8 +579,8 @@ function ValidationCellPanel({
       </div>
 
       <div className="shrink-0 border-t border-border bg-background px-6 py-3">
-        <Button type="button" className="w-full" variant="secondary" onClick={onClose}>
-          Закрыть
+        <Button type="button" className="w-full" onClick={onClose}>
+          Сохранить и закрыть
         </Button>
       </div>
     </>

@@ -2,7 +2,7 @@
 // Animates x, y, width, height for Flourish-style transitions
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { memo } from 'react';
+import { memo, type CSSProperties } from 'react';
 import { TreemapLayoutNode, AnimationType, getEffectiveDuration, TREEMAP_EASE, TEXT_OPACITY_TRANSITION_MS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
@@ -57,6 +57,8 @@ interface TreemapNodeProps {
   showMoney?: boolean;
   /** When true (e.g. prefers-reduced-motion), use short fixed duration for enter/exit */
   reduceMotion?: boolean;
+  /** Курсор над ячейками (например `default` для превью без клика). */
+  nodeCursor?: CSSProperties['cursor'];
 }
 
 interface TreemapNodeContentProps {
@@ -152,6 +154,7 @@ const TreemapNode = memo(({
   visibleNodeCount,
   showMoney = true,
   reduceMotion = false,
+  nodeCursor = 'pointer',
 }: TreemapNodeProps) => {
   const duration = reduceMotion
     ? 0.15
@@ -243,7 +246,7 @@ const TreemapNode = memo(({
     backgroundColor: node.color,
     borderRadius: 4,
     overflow: 'hidden',
-    cursor: 'pointer',
+    cursor: nodeCursor,
     zIndex: 1,
     ...(leafShadow ? { boxShadow: leafShadow } : {}),
   };
@@ -287,6 +290,7 @@ const TreemapNode = memo(({
           totalValue={totalValue}
           selectedUnitsCount={selectedUnitsCount}
           showMoney={showMoney}
+          nodeCursor={nodeCursor}
         />
       ))}
     </>
@@ -315,7 +319,7 @@ const TreemapNode = memo(({
         backgroundColor: node.color,
         borderRadius: 4,
         overflow: 'hidden',
-        cursor: 'pointer',
+        cursor: nodeCursor,
         transformOrigin: 'center center',
         zIndex: 1,
         ...(leafShadow ? { boxShadow: leafShadow } : {}),

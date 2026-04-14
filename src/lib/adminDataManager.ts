@@ -929,11 +929,6 @@ export function getQuickFlowTimelineQuarterWarnings(row: AdminDataRow, quarter: 
     }
   }
 
-  const cost = qd.cost ?? 0;
-  if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd.geoCostSplit)) {
-    warnings.push('Гео: не 100% по рынкам');
-  }
-
   return warnings;
 }
 

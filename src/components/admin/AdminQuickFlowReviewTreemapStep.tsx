@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { TreemapContainer } from '@/components/treemap';
-import { AdminQuickFlowMatrixPeriodPicker } from '@/components/admin/AdminQuickFlowMatrixPeriodPicker';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -14,8 +13,7 @@ import {
 } from '@/lib/adminDataManager';
 import { buildEffortTreemapPreviewModel } from '@/lib/adminEffortTreemapPreviewModel';
 import type { TreeNode } from '@/lib/dataManager';
-import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
-import { cn } from '@/lib/utils';
+import { compareQuarters } from '@/lib/quarterUtils';
 
 const PREVIEW_ROOT = 'quick-review-root';
 
@@ -31,6 +29,7 @@ type Props = {
   rows: AdminDataRow[];
   fillQuarters: string[];
   quartersCatalog: string[];
+  visibleQuarters: string[];
   onInitiativeDraftChange?: (id: string, field: DraftField, value: string | string[] | boolean) => void;
 };
 
@@ -69,75 +68,16 @@ export function AdminQuickFlowReviewTreemapStep({
   rows,
   fillQuarters,
   quartersCatalog,
+  visibleQuarters,
   onInitiativeDraftChange,
 }: Props) {
   const draft = onInitiativeDraftChange;
 
-  const [previewSelectedQuarters, setPreviewSelectedQuarters] = useState<string[]>([]);
-  const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
-  const [hoverQuarter, setHoverQuarter] = useState<string | null>(null);
-
-  const catalogKey = quartersCatalog.join('|');
-  const fillSortedKey = useMemo(
-    () => [...fillQuarters].filter(Boolean).sort(compareQuarters).join('|'),
-    [fillQuarters]
-  );
-
-  useEffect(() => {
-    setRangeAnchor(null);
-    setHoverQuarter(null);
-    const fromScenario = [...fillQuarters]
-      .filter((q) => quartersCatalog.includes(q))
-      .sort(compareQuarters);
-    if (fromScenario.length > 0) {
-      setPreviewSelectedQuarters(fromScenario);
-    } else if (quartersCatalog.length > 0) {
-      setPreviewSelectedQuarters([...quartersCatalog].sort(compareQuarters));
-    } else {
-      setPreviewSelectedQuarters([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fillQuarters / quartersCatalog синхронны с fillSortedKey / catalogKey
-  }, [catalogKey, fillSortedKey]);
-
   /** Кварталы периода в порядке каталога (как у матрицы коэффициентов). */
   const previewPeriodQuarters = useMemo(() => {
-    const sel = new Set(previewSelectedQuarters);
+    const sel = new Set(visibleQuarters);
     return quartersCatalog.filter((q) => sel.has(q));
-  }, [quartersCatalog, previewSelectedQuarters]);
-
-  const previewBand = useMemo(() => {
-    if (rangeAnchor == null || hoverQuarter == null) return null;
-    return filterQuartersInRange(rangeAnchor, hoverQuarter, quartersCatalog);
-  }, [rangeAnchor, hoverQuarter, quartersCatalog]);
-
-  const handleReviewQuarterClick = useCallback(
-    (q: string) => {
-      if (rangeAnchor == null) {
-        setRangeAnchor(q);
-        setHoverQuarter(null);
-        return;
-      }
-      setPreviewSelectedQuarters(filterQuartersInRange(rangeAnchor, q, quartersCatalog));
-      setRangeAnchor(null);
-      setHoverQuarter(null);
-    },
-    [rangeAnchor, quartersCatalog]
-  );
-
-  const handleReviewQuarterHover = useCallback((q: string | null) => {
-    setHoverQuarter(q);
-  }, []);
-
-  const handleReviewReplaceQuarters = useCallback((next: string[]) => {
-    setPreviewSelectedQuarters([...next].sort(compareQuarters));
-    setRangeAnchor(null);
-    setHoverQuarter(null);
-  }, []);
-
-  const handleReviewDismissTransient = useCallback(() => {
-    setRangeAnchor(null);
-    setHoverQuarter(null);
-  }, []);
+  }, [quartersCatalog, visibleQuarters]);
 
   const model = useMemo(
     () => buildEffortTreemapPreviewModel(rows, previewPeriodQuarters),
@@ -196,29 +136,6 @@ export function AdminQuickFlowReviewTreemapStep({
           </span>
         ) : null}
       </div>
-
-      {quartersCatalog.length > 0 ? (
-        <div
-          className={cn(
-            'overflow-hidden rounded-xl border border-border/80 bg-card/90 shadow-sm',
-            'animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none motion-reduce:opacity-100'
-          )}
-        >
-          <AdminQuickFlowMatrixPeriodPicker
-            catalogQuarters={quartersCatalog}
-            visibleQuarters={previewPeriodQuarters}
-            previewQuarters={previewBand}
-            rangeAnchor={rangeAnchor}
-            onQuarterClick={handleReviewQuarterClick}
-            onQuarterHover={handleReviewQuarterHover}
-            onReplaceSelectedQuarters={handleReviewReplaceQuarters}
-            onDismissTransientRangeUI={handleReviewDismissTransient}
-            hideAddInitiativeButton
-            splitImmersive={false}
-            compactPeriodPicker={false}
-          />
-        </div>
-      ) : null}
 
       {model.note ? (
         <p className="rounded-lg border border-blue-500/35 bg-blue-500/5 px-3 py-2 text-xs text-muted-foreground">

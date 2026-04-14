@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import GanttView from '@/components/GanttView';
 import { QuarterFields } from '@/components/admin/InitiativeDetailDialog';
@@ -14,13 +14,20 @@ import {
 import type { AdminDataRow, AdminQuarterData, GeoCostSplit } from '@/lib/adminDataManager';
 import { createEmptyQuarterData, getQuickFlowTimelineQuarterWarnings } from '@/lib/adminDataManager';
 import { convertFromDB } from '@/lib/dataManager';
-import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
+import { compareQuarters } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 
 type Props = {
   rows: AdminDataRow[];
   fillQuarters: string[];
   quartersCatalog: string[];
+  visibleQuarters: string[];
+  previewQuarters: string[] | null;
+  rangeAnchor: string | null;
+  onQuarterClick: (q: string) => void;
+  onQuarterHover: (q: string | null) => void;
+  onReplaceSelectedQuarters: (quarters: string[]) => void;
+  onDismissTransientRangeUI: () => void;
   unit: string;
   team: string;
   onQuarterDataChange: (
@@ -35,76 +42,23 @@ export function AdminQuickFlowTimelineFillStep({
   rows,
   fillQuarters,
   quartersCatalog,
+  visibleQuarters,
+  previewQuarters,
+  rangeAnchor,
+  onQuarterClick,
+  onQuarterHover,
+  onReplaceSelectedQuarters,
+  onDismissTransientRangeUI,
   unit,
   team,
   onQuarterDataChange,
 }: Props) {
-  const [previewSelectedQuarters, setPreviewSelectedQuarters] = useState<string[]>([]);
-  const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
-  const [hoverQuarter, setHoverQuarter] = useState<string | null>(null);
-
   const [quarterEdit, setQuarterEdit] = useState<{ id: string; quarter: string } | null>(null);
 
-  const catalogKey = quartersCatalog.join('|');
-  const fillSortedKey = useMemo(
-    () => [...fillQuarters].filter(Boolean).sort(compareQuarters).join('|'),
-    [fillQuarters]
-  );
-
-  useEffect(() => {
-    setRangeAnchor(null);
-    setHoverQuarter(null);
-    const fromScenario = [...fillQuarters]
-      .filter((q) => quartersCatalog.includes(q))
-      .sort(compareQuarters);
-    if (fromScenario.length > 0) {
-      setPreviewSelectedQuarters(fromScenario);
-    } else if (quartersCatalog.length > 0) {
-      setPreviewSelectedQuarters([...quartersCatalog].sort(compareQuarters));
-    } else {
-      setPreviewSelectedQuarters([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogKey, fillSortedKey]);
-
   const previewPeriodQuarters = useMemo(() => {
-    const sel = new Set(previewSelectedQuarters);
+    const sel = new Set(visibleQuarters);
     return quartersCatalog.filter((q) => sel.has(q));
-  }, [quartersCatalog, previewSelectedQuarters]);
-
-  const previewBand = useMemo(() => {
-    if (rangeAnchor == null || hoverQuarter == null) return null;
-    return filterQuartersInRange(rangeAnchor, hoverQuarter, quartersCatalog);
-  }, [rangeAnchor, hoverQuarter, quartersCatalog]);
-
-  const handleTimelineQuarterClick = useCallback(
-    (q: string) => {
-      if (rangeAnchor == null) {
-        setRangeAnchor(q);
-        setHoverQuarter(null);
-        return;
-      }
-      setPreviewSelectedQuarters(filterQuartersInRange(rangeAnchor, q, quartersCatalog));
-      setRangeAnchor(null);
-      setHoverQuarter(null);
-    },
-    [rangeAnchor, quartersCatalog]
-  );
-
-  const handleTimelineQuarterHover = useCallback((q: string | null) => {
-    setHoverQuarter(q);
-  }, []);
-
-  const handleTimelineReplaceQuarters = useCallback((next: string[]) => {
-    setPreviewSelectedQuarters([...next].sort(compareQuarters));
-    setRangeAnchor(null);
-    setHoverQuarter(null);
-  }, []);
-
-  const handleTimelineDismissTransient = useCallback(() => {
-    setRangeAnchor(null);
-    setHoverQuarter(null);
-  }, []);
+  }, [quartersCatalog, visibleQuarters]);
 
   const rawData = useMemo(() => convertFromDB(rows).rawData, [rows]);
 
@@ -159,19 +113,19 @@ export function AdminQuickFlowTimelineFillStep({
       {quartersCatalog.length > 0 ? (
         <div
           className={cn(
-            'overflow-hidden rounded-xl border border-border/80 bg-card/90 shadow-sm',
+            'overflow-visible rounded-xl border border-border/80 bg-card/90 shadow-sm',
             'animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none motion-reduce:opacity-100'
           )}
         >
           <AdminQuickFlowMatrixPeriodPicker
             catalogQuarters={quartersCatalog}
             visibleQuarters={previewPeriodQuarters}
-            previewQuarters={previewBand}
+            previewQuarters={previewQuarters}
             rangeAnchor={rangeAnchor}
-            onQuarterClick={handleTimelineQuarterClick}
-            onQuarterHover={handleTimelineQuarterHover}
-            onReplaceSelectedQuarters={handleTimelineReplaceQuarters}
-            onDismissTransientRangeUI={handleTimelineDismissTransient}
+            onQuarterClick={onQuarterClick}
+            onQuarterHover={onQuarterHover}
+            onReplaceSelectedQuarters={onReplaceSelectedQuarters}
+            onDismissTransientRangeUI={onDismissTransientRangeUI}
             hideAddInitiativeButton
             splitImmersive={false}
             compactPeriodPicker={false}

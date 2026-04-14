@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -22,8 +23,8 @@ import {
 } from '@/lib/adminDataManager';
 import { buildCountryIdToClusterMap, type MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
-import { Button } from '@/components/ui/button';
 import { AdminQuickFlowMatrixPeriodPicker } from '@/components/admin/AdminQuickFlowMatrixPeriodPicker';
+import { cn } from '@/lib/utils';
 
 /**
  * Качественная палитра: чуть ярче предыдущей, но без «кислоты».
@@ -47,6 +48,9 @@ const GEO_CHART_PALETTE = [
 /** Срез «не попал ни в один рынок»: нет сплита или сумма % меньше 100. */
 const UNALLOCATED_LABEL = 'Не распределено';
 const UNALLOCATED_FILL = '#94A3B8';
+
+/** Задержка сброса подсветки при уходе с пункта легенды — быстрый переход между соседними кластерами без «мигания». */
+const LEGEND_HOVER_CLEAR_MS = 100;
 
 function uniqueSortedQuarters(qs: string[]): string[] {
   return [...new Set(qs.filter(Boolean))].sort(compareQuarters);
@@ -104,6 +108,11 @@ function collectAllocationRubles(
 }
 
 type StackDatum = Record<string, number | string> & { name: string; totalRub: number };
+type InitiativeRublesRow = {
+  name: string;
+  totalRub: number;
+  byCluster: Map<string, number>;
+};
 
 /**
  * Целые проценты по кластерам, сумма строго 100 (без float-дрейфа на оси и в стеке).
@@ -168,6 +177,38 @@ function initiativeStackData(
       rec[k] = intPct[k] ?? 0;
     }
     out.push(rec);
+  }
+  return out;
+}
+
+function collectInitiativeRublesRows(
+  rows: AdminDataRow[],
+  quarterKeys: string[],
+  countryIdToClusterKey: Map<string, string>,
+  includeUnallocated: boolean
+): InitiativeRublesRow[] {
+  const out: InitiativeRublesRow[] = [];
+  for (const row of rows) {
+    const byCluster = new Map<string, number>();
+    const unallocatedAcc = { rub: 0 };
+    let totalRub = 0;
+    for (const q of quarterKeys) {
+      const qd = row.quarterlyData[q];
+      const cost = qd?.cost ?? 0;
+      const c = Math.round(Number(cost) || 0);
+      if (c <= 0) continue;
+      totalRub += c;
+      addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+    }
+    if (totalRub <= 0) continue;
+    if (includeUnallocated && unallocatedAcc.rub > 0) {
+      byCluster.set(UNALLOCATED_LABEL, unallocatedAcc.rub);
+    }
+    out.push({
+      name: truncateLabel(row.initiative || 'Без названия'),
+      totalRub,
+      byCluster,
+    });
   }
   return out;
 }
@@ -244,12 +285,89 @@ function pieActiveShape(props: any) {
   );
 }
 
+type PieSliceDatum = { name: string; value: number };
+
+type LegendPayloadEntry = { value?: unknown; color?: string };
+
+function ClusterAllocationsLegend({
+  payload,
+  pieSlices,
+  pieTotalRub,
+  highlightedKey,
+  onHighlightKey,
+  onScheduleClearHighlight,
+}: {
+  payload?: LegendPayloadEntry[];
+  pieSlices: PieSliceDatum[];
+  pieTotalRub: number;
+  highlightedKey: string | null;
+  onHighlightKey: (name: string) => void;
+  onScheduleClearHighlight: () => void;
+}) {
+  if (!payload?.length) return null;
+  const rubByName = new Map<string, number>();
+  for (const s of pieSlices) rubByName.set(s.name, s.value);
+
+  return (
+    <div className="flex flex-wrap justify-center gap-x-3 gap-y-2 px-1 pt-2">
+      {payload.map((item) => {
+        const name = String(item.value ?? '');
+        const rub = rubByName.get(name) ?? 0;
+        const pct = pieTotalRub > 0 ? Math.round((rub / pieTotalRub) * 100) : 0;
+        const active = highlightedKey === name;
+        const isUnalloc = name === UNALLOCATED_LABEL;
+        return (
+          <button
+            key={name}
+            type="button"
+            aria-label={`${name}${pieTotalRub > 0 ? `, ${pct}%` : ''}`}
+            className={cn(
+              'inline-flex max-w-[min(100%,14rem)] cursor-default items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-1 text-[11px] leading-snug outline-none transition-all duration-150',
+              'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+              active
+                ? 'scale-[1.07] bg-muted shadow-md ring-1 ring-primary/30'
+                : 'hover:bg-muted/60'
+            )}
+            onMouseEnter={() => onHighlightKey(name)}
+            onMouseLeave={onScheduleClearHighlight}
+            onFocus={() => onHighlightKey(name)}
+            onBlur={onScheduleClearHighlight}
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm ring-1 ring-black/10"
+              style={{ backgroundColor: item.color }}
+              aria-hidden
+            />
+            <span
+              className={cn(
+                'min-w-0 flex-1 break-words text-left',
+                isUnalloc ? 'text-slate-500 dark:text-slate-400' : 'text-muted-foreground'
+              )}
+            >
+              {name}
+            </span>
+            {active ? (
+              <span className="shrink-0 tabular-nums font-semibold text-foreground">{pct}%</span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 type Props = {
   rows: AdminDataRow[];
   fillQuarters: string[];
   quartersCatalog: string[];
   countries: MarketCountryRow[];
-  onBackToSplit: () => void;
+  visibleQuarters: string[];
+  previewQuarters: string[] | null;
+  rangeAnchor: string | null;
+  onQuarterClick: (q: string) => void;
+  onQuarterHover: (q: string | null) => void;
+  onReplaceSelectedQuarters: (quarters: string[]) => void;
+  onDismissTransientRangeUI: () => void;
 };
 
 export function AdminQuickFlowCountryAllocationsSummary({
@@ -257,7 +375,13 @@ export function AdminQuickFlowCountryAllocationsSummary({
   fillQuarters,
   quartersCatalog,
   countries,
-  onBackToSplit,
+  visibleQuarters,
+  previewQuarters,
+  rangeAnchor,
+  onQuarterClick,
+  onQuarterHover,
+  onReplaceSelectedQuarters,
+  onDismissTransientRangeUI,
 }: Props) {
   const sortedFill = useMemo(
     () => [...fillQuarters].filter(Boolean).sort(compareQuarters),
@@ -273,59 +397,40 @@ export function AdminQuickFlowCountryAllocationsSummary({
 
   const countryIdToClusterKey = useMemo(() => buildCountryIdToClusterMap(countries), [countries]);
 
-  const [summarySelectedQuarters, setSummarySelectedQuarters] = useState<string[]>([]);
-  const [summaryRangeAnchor, setSummaryRangeAnchor] = useState<string | null>(null);
-  const [summaryPreviewQuarters, setSummaryPreviewQuarters] = useState<string[] | null>(null);
-  const [activePieIndex, setActivePieIndex] = useState<number | undefined>(undefined);
+  /** Подсветка сегментов только от ховера/фокуса легенды. */
+  const [highlightedClusterKey, setHighlightedClusterKey] = useState<string | null>(null);
   const [hoverBarCell, setHoverBarCell] = useState<{ row: number; key: string } | null>(null);
+  const legendClearTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    setSummarySelectedQuarters([...sortedFill]);
-    setSummaryRangeAnchor(null);
-    setSummaryPreviewQuarters(null);
-  }, [sortedFillKey]);
-
-  const handleSummaryReplaceQuarters = useCallback((next: string[]) => {
-    setSummarySelectedQuarters([...next].sort(compareQuarters));
-    setSummaryRangeAnchor(null);
-    setSummaryPreviewQuarters(null);
+  const cancelLegendClearTimer = useCallback(() => {
+    if (legendClearTimerRef.current != null) {
+      window.clearTimeout(legendClearTimerRef.current);
+      legendClearTimerRef.current = null;
+    }
   }, []);
 
-  const handleSummaryDismissRangeUI = useCallback(() => {
-    setSummaryRangeAnchor(null);
-    setSummaryPreviewQuarters(null);
-  }, []);
+  const scheduleLegendHighlightClear = useCallback(() => {
+    cancelLegendClearTimer();
+    legendClearTimerRef.current = window.setTimeout(() => {
+      legendClearTimerRef.current = null;
+      setHighlightedClusterKey(null);
+    }, LEGEND_HOVER_CLEAR_MS);
+  }, [cancelLegendClearTimer]);
 
-  const handleSummaryQuarterClick = useCallback(
-    (q: string) => {
-      if (summaryRangeAnchor == null) {
-        setSummaryRangeAnchor(q);
-        setSummaryPreviewQuarters(null);
-        return;
-      }
-      const range = filterQuartersInRange(summaryRangeAnchor, q, summaryCatalogQuarters);
-      setSummarySelectedQuarters(range);
-      setSummaryRangeAnchor(null);
-      setSummaryPreviewQuarters(null);
+  const setLegendHighlight = useCallback(
+    (name: string) => {
+      cancelLegendClearTimer();
+      setHighlightedClusterKey(name);
     },
-    [summaryRangeAnchor, summaryCatalogQuarters]
+    [cancelLegendClearTimer]
   );
 
-  const handleSummaryQuarterHover = useCallback(
-    (q: string | null) => {
-      if (summaryRangeAnchor == null || q == null) {
-        setSummaryPreviewQuarters(null);
-        return;
-      }
-      setSummaryPreviewQuarters(filterQuartersInRange(summaryRangeAnchor, q, summaryCatalogQuarters));
-    },
-    [summaryRangeAnchor, summaryCatalogQuarters]
-  );
+  useEffect(() => () => cancelLegendClearTimer(), [cancelLegendClearTimer]);
 
   const summaryVisibleInCatalogOrder = useMemo(() => {
-    const sel = new Set(summarySelectedQuarters);
+    const sel = new Set(visibleQuarters);
     return summaryCatalogQuarters.filter((q) => sel.has(q));
-  }, [summaryCatalogQuarters, summarySelectedQuarters]);
+  }, [summaryCatalogQuarters, visibleQuarters]);
 
   const quartersForCharts = useMemo(() => {
     return summaryVisibleInCatalogOrder.length > 0 ? summaryVisibleInCatalogOrder : sortedFill;
@@ -353,16 +458,41 @@ export function AdminQuickFlowCountryAllocationsSummary({
   const pieTotalRub = allocationSummary.pieTotalRub;
   const stackClusterKeys = allocationSummary.stackKeys;
 
-  const stackData = useMemo(
+  const pieActiveHighlightIndex = useMemo(() => {
+    if (!highlightedClusterKey) return undefined;
+    const i = pieData.findIndex((d) => d.name === highlightedClusterKey);
+    return i >= 0 ? i : undefined;
+  }, [highlightedClusterKey, pieData]);
+
+  const highlightedPieStat = useMemo(() => {
+    if (!highlightedClusterKey) return null;
+    const rub = pieData.find((d) => d.name === highlightedClusterKey)?.value ?? 0;
+    if (rub <= 0) return null;
+    const pct = pieTotalRub > 0 ? (rub / pieTotalRub) * 100 : 0;
+    return { name: highlightedClusterKey, rub, pct };
+  }, [highlightedClusterKey, pieData, pieTotalRub]);
+
+  const includeUnallocatedInStack = allocationSummary.unallocatedRub > 0;
+  const initiativeRublesRows = useMemo(
     () =>
-      initiativeStackData(
+      collectInitiativeRublesRows(
         rows,
         quartersForCharts,
         countryIdToClusterKey,
-        stackClusterKeys,
-        allocationSummary.unallocatedRub > 0
+        includeUnallocatedInStack
       ),
-    [rows, quartersForCharts, countryIdToClusterKey, stackClusterKeys, allocationSummary.unallocatedRub]
+    [rows, quartersForCharts, countryIdToClusterKey, includeUnallocatedInStack]
+  );
+
+  const stackData = useMemo(
+    () =>
+      initiativeRublesRows.map((row) => {
+        const rec: StackDatum = { name: row.name, totalRub: row.totalRub };
+        const intPct = integerPercentsByCluster(stackClusterKeys, row.byCluster, row.totalRub);
+        for (const k of stackClusterKeys) rec[k] = intPct[k] ?? 0;
+        return rec;
+      }),
+    [initiativeRublesRows, stackClusterKeys]
   );
 
   const barChartHeight = useMemo(() => {
@@ -377,27 +507,49 @@ export function AdminQuickFlowCountryAllocationsSummary({
     return Math.min(300, Math.max(120, Math.round(maxLen * 7 + 20)));
   }, [stackData]);
 
+  type InitiativeClusterRow = { initiative: string; pct: number; rub: number };
+
+  const initiativeRowsByCluster = useMemo(() => {
+    const map = new Map<string, InitiativeClusterRow[]>();
+    for (const clusterKey of stackClusterKeys) {
+      const rows = initiativeRublesRows
+        .map((row) => {
+          const rub = row.byCluster.get(clusterKey) ?? 0;
+          const pct = row.totalRub > 0 ? (rub / row.totalRub) * 100 : 0;
+          return { initiative: row.name, pct, rub };
+        })
+        .filter((x) => x.pct > 0 && x.rub > 0)
+        .sort((a, b) => b.rub - a.rub);
+      map.set(clusterKey, rows);
+    }
+    return map;
+  }, [initiativeRublesRows, stackClusterKeys]);
+
+  const highlightedInitiativeRows = useMemo(() => {
+    if (!highlightedClusterKey) return [];
+    return initiativeRowsByCluster.get(highlightedClusterKey) ?? [];
+  }, [highlightedClusterKey, initiativeRowsByCluster]);
+
+  const chartsAnimating = false;
+  const cellOpacityTransition = highlightedClusterKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.18s ease';
+  const barCellOpacityTransition = highlightedClusterKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.15s ease';
+
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h2 className="text-lg font-semibold">Сводка по аллокациям</h2>
-        <Button type="button" variant="outline" size="sm" onClick={onBackToSplit}>
-          Назад к распределению
-        </Button>
-      </div>
+      <h2 className="text-lg font-semibold">Сводка по аллокациям</h2>
 
       <div
-        className="sticky top-0 z-20 overflow-hidden rounded-xl border border-border/80 bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80"
+        className="sticky top-0 z-20 overflow-visible rounded-xl border border-border/80 bg-background/95 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/80"
       >
         <AdminQuickFlowMatrixPeriodPicker
           catalogQuarters={summaryCatalogQuarters}
           visibleQuarters={summaryVisibleInCatalogOrder}
-          previewQuarters={summaryPreviewQuarters}
-          rangeAnchor={summaryRangeAnchor}
-          onQuarterClick={handleSummaryQuarterClick}
-          onQuarterHover={handleSummaryQuarterHover}
-          onReplaceSelectedQuarters={handleSummaryReplaceQuarters}
-          onDismissTransientRangeUI={handleSummaryDismissRangeUI}
+          previewQuarters={previewQuarters}
+          rangeAnchor={rangeAnchor}
+          onQuarterClick={onQuarterClick}
+          onQuarterHover={onQuarterHover}
+          onReplaceSelectedQuarters={onReplaceSelectedQuarters}
+          onDismissTransientRangeUI={onDismissTransientRangeUI}
           hideAddInitiativeButton
           hidePeriodPicker={false}
         />
@@ -409,7 +561,15 @@ export function AdminQuickFlowCountryAllocationsSummary({
           {pieData.length === 0 ? (
             <p className="text-sm text-muted-foreground">Пока нет сумм — добавьте строки и проценты по инициативам.</p>
           ) : (
-            <div className="h-[300px] w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40">
+            <div className="relative h-[300px] w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40">
+              {highlightedPieStat ? (
+                <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-border bg-popover/95 px-2.5 py-2 text-xs text-popover-foreground shadow-md backdrop-blur-sm">
+                  <p className="font-medium leading-snug">{highlightedPieStat.name}</p>
+                  <p className="mt-1 tabular-nums text-muted-foreground">
+                    {Math.round(highlightedPieStat.rub).toLocaleString('ru-RU')} ₽ ({highlightedPieStat.pct.toFixed(1)}%)
+                  </p>
+                </div>
+              ) : null}
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart margin={{ top: 12, right: 12, bottom: 12, left: 12 }}>
                   <Pie
@@ -424,13 +584,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
                     stroke="hsl(var(--border))"
                     strokeWidth={1}
                     label={false}
-                    isAnimationActive
+                    isAnimationActive={chartsAnimating}
                     animationDuration={480}
                     animationEasing="ease-out"
-                    activeIndex={activePieIndex}
+                    activeIndex={pieActiveHighlightIndex}
                     activeShape={pieActiveShape}
-                    onMouseEnter={(_, index) => setActivePieIndex(index)}
-                    onMouseLeave={() => setActivePieIndex(undefined)}
                   >
                     {pieData.map((entry, i) => {
                       const paletteIdx = pieData
@@ -440,14 +598,14 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         entry.name === UNALLOCATED_LABEL
                           ? UNALLOCATED_FILL
                           : GEO_CHART_PALETTE[paletteIdx % GEO_CHART_PALETTE.length];
+                      const dim =
+                        highlightedClusterKey != null && entry.name !== highlightedClusterKey;
                       return (
                         <Cell
                           key={entry.name}
                           fill={fill}
-                          fillOpacity={
-                            activePieIndex === undefined || activePieIndex === i ? 1 : 0.35
-                          }
-                          style={{ transition: 'fill-opacity 0.18s ease' }}
+                          fillOpacity={dim ? 0.35 : 1}
+                          style={{ transition: cellOpacityTransition }}
                         />
                       );
                     })}
@@ -458,15 +616,16 @@ export function AdminQuickFlowCountryAllocationsSummary({
                   <Legend
                     layout="horizontal"
                     verticalAlign="bottom"
-                    wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                    formatter={(value) => (
-                      <span
-                        className={
-                          value === UNALLOCATED_LABEL ? 'text-slate-500 dark:text-slate-400' : 'text-muted-foreground'
-                        }
-                      >
-                        {value}
-                      </span>
+                    wrapperStyle={{ paddingTop: 4 }}
+                    content={(legendProps) => (
+                      <ClusterAllocationsLegend
+                        payload={legendProps.payload as LegendPayloadEntry[] | undefined}
+                        pieSlices={pieData}
+                        pieTotalRub={pieTotalRub}
+                        highlightedKey={highlightedClusterKey}
+                        onHighlightKey={setLegendHighlight}
+                        onScheduleClearHighlight={scheduleLegendHighlightClear}
+                      />
                     )}
                   />
                 </PieChart>
@@ -477,6 +636,23 @@ export function AdminQuickFlowCountryAllocationsSummary({
 
         <div className="rounded-xl border border-border bg-card p-4 lg:col-span-1">
           <p className="mb-2 text-sm font-medium">По инициативам</p>
+          {highlightedClusterKey ? (
+            <div className="mb-2 rounded-md border border-border bg-popover/70 px-2.5 py-2 text-xs text-popover-foreground">
+              <p className="font-medium leading-snug">{highlightedClusterKey}</p>
+              {highlightedInitiativeRows.length === 0 ? (
+                <p className="mt-1 text-muted-foreground">Нет сумм по выбранному кластеру.</p>
+              ) : (
+                <div className="mt-1.5 max-h-24 space-y-1 overflow-auto pr-1">
+                  {highlightedInitiativeRows.map((row) => (
+                    <p key={row.initiative} className="flex items-center justify-between gap-2 tabular-nums">
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.initiative}</span>
+                      <span>{row.rub.toLocaleString('ru-RU')} ₽ · {row.pct.toFixed(1)}%</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
           {stackData.length === 0 ? (
             <p className="text-sm text-muted-foreground">Нет данных для столбцов.</p>
           ) : (
@@ -525,28 +701,66 @@ export function AdminQuickFlowCountryAllocationsSummary({
                           ? UNALLOCATED_FILL
                           : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
                       }
-                      isAnimationActive
+                      isAnimationActive={chartsAnimating}
                       animationDuration={520}
                       animationEasing="ease-out"
                     >
-                      {stackData.map((_, rowIndex) => (
-                        <Cell
-                          key={`${key}-${rowIndex}`}
-                          fill={
-                            key === UNALLOCATED_LABEL
-                              ? UNALLOCATED_FILL
-                              : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
-                          }
-                          fillOpacity={
-                            !hoverBarCell ||
-                            (hoverBarCell.row === rowIndex && hoverBarCell.key === key)
-                              ? 1
-                              : 0.32
-                          }
-                          style={{ transition: 'fill-opacity 0.15s ease' }}
-                          onMouseEnter={() => setHoverBarCell({ row: rowIndex, key })}
-                        />
-                      ))}
+                      <LabelList
+                        dataKey={key}
+                        position="center"
+                        content={(labelProps: Record<string, unknown>) => {
+                          if (highlightedClusterKey !== key) return null;
+                          const x = Number(labelProps.x);
+                          const y = Number(labelProps.y);
+                          const w = Number(labelProps.width);
+                          const h = Number(labelProps.height);
+                          const value = Number(labelProps.value);
+                          if (!Number.isFinite(value) || value < 5) return null;
+                          if (!Number.isFinite(w) || w < 12) return null;
+                          return (
+                            <text
+                              x={x + w / 2}
+                              y={y + h / 2}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fill="#fff"
+                              fontSize={10}
+                              fontWeight={700}
+                              className="tabular-nums"
+                              style={{
+                                paintOrder: 'stroke',
+                                stroke: 'rgba(0,0,0,0.45)',
+                                strokeWidth: 2,
+                                strokeLinejoin: 'round',
+                              }}
+                            >
+                              {`${Math.round(value)}%`}
+                            </text>
+                          );
+                        }}
+                      />
+                      {stackData.map((_, rowIndex) => {
+                        const dimFromLegend =
+                          highlightedClusterKey != null && key !== highlightedClusterKey;
+                        const dimFromBar =
+                          !highlightedClusterKey &&
+                          hoverBarCell != null &&
+                          (hoverBarCell.row !== rowIndex || hoverBarCell.key !== key);
+                        const dim = highlightedClusterKey != null ? dimFromLegend : dimFromBar;
+                        return (
+                          <Cell
+                            key={`${key}-${rowIndex}`}
+                            fill={
+                              key === UNALLOCATED_LABEL
+                                ? UNALLOCATED_FILL
+                                : GEO_CHART_PALETTE[clusterIdx % GEO_CHART_PALETTE.length]
+                            }
+                            fillOpacity={dim ? 0.32 : 1}
+                            style={{ transition: barCellOpacityTransition }}
+                            onMouseEnter={() => setHoverBarCell({ row: rowIndex, key })}
+                          />
+                        );
+                      })}
                     </Bar>
                   ))}
                 </BarChart>

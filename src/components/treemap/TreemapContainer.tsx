@@ -1,6 +1,6 @@
 // Treemap container with Framer Motion animations and Flourish-style zoom
 
-import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, type CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
@@ -54,6 +54,8 @@ interface TreemapContainerProps {
   tooltipInitiativeVariant?: 'default' | 'descriptionDocReview';
   /** Каталог кварталов матрицы: если выбраны все, в тултипе quick review не показываем уточнение «за выбранный период». */
   treemapQuarterCatalog?: string[];
+  /** Курсор над ячейками (например `default`, если тремап только для просмотра). */
+  nodeCursor?: CSSProperties['cursor'];
 }
 
 const TreemapContainer = ({
@@ -89,6 +91,7 @@ const TreemapContainer = ({
   contentKey,
   tooltipInitiativeVariant = 'default',
   treemapQuarterCatalog,
+  nodeCursor = 'pointer',
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -597,6 +600,7 @@ const TreemapContainer = ({
                 totalValue={totalValue}
                 selectedUnitsCount={selectedUnitsCount}
                 showMoney={showMoney}
+                nodeCursor={nodeCursor}
               />
             ))}
           </AnimatePresence>

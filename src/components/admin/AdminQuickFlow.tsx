@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } fr
 import {
   Plus,
   ChevronRight,
-  Pencil,
   Loader2,
   Calculator,
   AlertCircle,
@@ -1366,6 +1365,7 @@ export default function AdminQuickFlow({
                 rows={filteredData}
                 fillQuarters={fillQuarters}
                 quartersCatalog={matrixCatalogQuarters}
+                visibleQuarters={matrixVisibleQuarters}
                 onInitiativeDraftChange={onInitiativeDraftChange}
               />
             ) : null}
@@ -1374,6 +1374,13 @@ export default function AdminQuickFlow({
                 rows={filteredData}
                 fillQuarters={fillQuarters}
                 quartersCatalog={matrixCatalogQuarters}
+                visibleQuarters={matrixVisibleQuarters}
+                previewQuarters={matrixPreviewQuarters}
+                rangeAnchor={matrixRangeAnchor}
+                onQuarterClick={handleMatrixQuarterClick}
+                onQuarterHover={handleMatrixQuarterHover}
+                onReplaceSelectedQuarters={handleMatrixReplaceQuarters}
+                onDismissTransientRangeUI={handleMatrixDismissRangeUI}
                 unit={unit}
                 team={team}
                 onQuarterDataChange={onQuarterDataChange}
@@ -1398,9 +1405,15 @@ export default function AdminQuickFlow({
                 <AdminQuickFlowCountryAllocationsSummary
                   rows={filteredData}
                   fillQuarters={fillQuarters}
-                  quartersCatalog={quarters}
+                  quartersCatalog={matrixCatalogQuarters}
                   countries={marketCountries}
-                  onBackToSplit={() => setStep(stepCountrySplit)}
+                  visibleQuarters={matrixVisibleQuarters}
+                  previewQuarters={matrixPreviewQuarters}
+                  rangeAnchor={matrixRangeAnchor}
+                  onQuarterClick={handleMatrixQuarterClick}
+                  onQuarterHover={handleMatrixQuarterHover}
+                  onReplaceSelectedQuarters={handleMatrixReplaceQuarters}
+                  onDismissTransientRangeUI={handleMatrixDismissRangeUI}
                 />
               )
             ) : null}
@@ -1416,47 +1429,11 @@ export default function AdminQuickFlow({
                     onQuarterDataChange={onQuarterDataChange}
                     onGeoCostSplitDraftChange={onGeoCostSplitDraftChange}
                     onInitiativeDraftChange={onInitiativeDraftChange}
-                    onOpenFillInitiative={onOpenFillInitiative}
                     onNavigateToCoefficients={() => setStep(stepCoeff)}
                     onNavigateToTreemap={() => setStep(stepTreemap)}
                     onNavigateToTimeline={() => setStep(stepTimeline)}
                     onNavigateToGeoSplit={() => setStep(stepCountrySplit)}
                   />
-
-                  {validationIssues.length === 0 ? (
-                    <div className="mt-6 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-4">
-                      <p className="text-sm font-medium text-foreground">Сводка по обязательным полям: всё закрыто.</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Можете сохранить и продолжить сценарий или вернуться к предыдущим шагам.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-6 rounded-lg border border-border bg-muted/15 p-4">
-                      <p className="text-sm font-medium text-foreground">Краткий список замечаний</p>
-                      <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
-                        {validationIssues.map(({ id, initiativeName, missing }) => (
-                          <li key={id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                            <span>
-                              <span className="font-medium text-foreground">{initiativeName}</span>
-                              <span className="block text-xs sm:inline sm:ml-1">— {missing.join(', ')}</span>
-                            </span>
-                            {onOpenFillInitiative ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="shrink-0 gap-1.5 self-start sm:self-center"
-                                onClick={() => onOpenFillInitiative(id)}
-                              >
-                                <Pencil size={14} />
-                                Карточка
-                              </Button>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
 
                   {SHOW_GOOGLE_SHEETS_PREVIEW_IN_QUICK_FLOW_VALIDATION &&
                     enableSheetsPreviewStep &&
