@@ -14,6 +14,8 @@ export type AdminQuickFlowMatrixPeriodPickerProps = {
   onReplaceSelectedQuarters: (quarters: string[]) => void;
   onDismissTransientRangeUI: () => void;
   compactPeriodPicker?: boolean;
+  /** Встроен в узкую строку (сводка): без нижней границы и фона панели. */
+  embedded?: boolean;
   hidePeriodPicker?: boolean;
   hideAddInitiativeButton?: boolean;
   onOpenAddInitiative?: () => void;
@@ -31,6 +33,7 @@ export function AdminQuickFlowMatrixPeriodPicker({
   onReplaceSelectedQuarters,
   onDismissTransientRangeUI,
   compactPeriodPicker = false,
+  embedded = false,
   hidePeriodPicker = false,
   hideAddInitiativeButton = false,
   onOpenAddInitiative = () => {},
@@ -104,9 +107,14 @@ export function AdminQuickFlowMatrixPeriodPicker({
   return (
     <div
       className={cn(
-        'relative z-[30] flex shrink-0 flex-col border-b border-border/80 bg-muted/20',
-        compactPeriodPicker ? 'gap-1 px-1.5 py-1 sm:px-2' : 'gap-2 px-2 py-2 sm:px-2.5',
-        splitImmersive && 'border-border/55 bg-transparent'
+        'relative flex shrink-0 flex-col',
+        embedded
+          ? 'z-[1] gap-0 border-0 bg-transparent p-0'
+          : cn(
+              'z-[30] border-b border-border/80 bg-muted/20',
+              compactPeriodPicker ? 'gap-1 px-1.5 py-1 sm:px-2' : 'gap-2 px-2 py-2 sm:px-2.5'
+            ),
+        splitImmersive && !embedded && 'border-border/55 bg-transparent'
       )}
     >
       <div className={cn('flex shrink-0 items-start', compactPeriodPicker ? 'gap-1.5' : 'gap-2')}>
