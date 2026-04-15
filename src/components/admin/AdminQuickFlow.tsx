@@ -7,6 +7,7 @@ import {
   AlertCircle,
   AlertTriangle,
   LayoutGrid,
+  ListChecks,
   Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -71,6 +72,41 @@ export type SheetsPreviewRow = {
 
 /** Блок «Предварительный расчёт в Google Таблице» на шаге проверки. См. `docs/ADMIN_QUICK_FLOW_GOOGLE_SHEETS_PREVIEW.md`. */
 const SHOW_GOOGLE_SHEETS_PREVIEW_IN_QUICK_FLOW_VALIDATION = false;
+
+const BACK_TO_VALIDATION_TITLE =
+  'Вернуться к матрице проверки без прохода следующих шагов сценария';
+
+function QuickFlowBackToValidationButton({
+  onClick,
+  className,
+}: {
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      title={BACK_TO_VALIDATION_TITLE}
+      onClick={onClick}
+      className={cn(
+        'h-8 min-h-8 justify-start gap-2 rounded-lg border-primary/40 bg-primary/[0.04] px-2 py-0 pr-3 text-primary shadow-sm transition-[border-color,box-shadow,background-color] hover:border-primary/55 hover:bg-primary/[0.09] hover:shadow-md dark:border-primary/35 dark:bg-primary/[0.08] dark:hover:bg-primary/[0.14] [&_svg]:size-[15px]',
+        className
+      )}
+    >
+      <span
+        className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/14 text-primary shadow-inner ring-1 ring-primary/15 dark:bg-primary/22 dark:ring-primary/25"
+        aria-hidden
+      >
+        <ListChecks className="size-[15px]" strokeWidth={2.25} />
+      </span>
+      <span className="min-w-0 text-pretty text-left text-[12.5px] font-semibold leading-snug tracking-tight sm:text-sm">
+        Вернуться к проверке перед завершением
+      </span>
+    </Button>
+  );
+}
 
 interface AdminQuickFlowProps {
   filteredData: AdminDataRow[];
@@ -709,6 +745,8 @@ export default function AdminQuickFlow({
   const [quickSessionDeleteConfirmId, setQuickSessionDeleteConfirmId] = useState<string | null>(null);
   const [quickSessionDeleteLoading, setQuickSessionDeleteLoading] = useState(false);
   const [countrySplitIncompleteDialogOpen, setCountrySplitIncompleteDialogOpen] = useState(false);
+  /** Шаг, на который перешли с «Проверки…» через «Вернуться к шагу» — вместо «Далее» показываем возврат к проверке. */
+  const [validationRepairStep, setValidationRepairStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null>(null);
 
   const rosterStep = suppressRosterStep ? null : 1;
   const stepCoeff = suppressRosterStep ? 1 : 2;
@@ -734,6 +772,26 @@ export default function AdminQuickFlow({
   const [costPeriodPreset, setCostPeriodPreset] = useState<CostPeriodPreset>('next');
 
   const noopAddInitiative = useCallback(() => {}, []);
+
+  useEffect(() => {
+    if (step === stepValidation) {
+      setValidationRepairStep(null);
+    }
+  }, [step, stepValidation]);
+
+  useEffect(() => {
+    if (validationRepairStep == null) return;
+    if (step === validationRepairStep || step === stepValidation) return;
+    setValidationRepairStep(null);
+  }, [step, validationRepairStep, stepValidation]);
+
+  const jumpToStepFromValidation = useCallback(
+    (target: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => {
+      setValidationRepairStep(target);
+      setStep(target);
+    },
+    [setStep]
+  );
 
   useEffect(() => {
     if (!enableSheetsPreviewStep && step === stepSheets) {
@@ -1097,8 +1155,13 @@ export default function AdminQuickFlow({
           </Button>
         ) : null}
         {step === stepCoeff ? (
-          <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:mt-0 max-w-[min(100%,220px)]">
-            {!treemapCompareOpen ? (
+          <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:mt-0 max-w-[min(100%,280px)]">
+            {validationRepairStep === stepCoeff ? (
+              <QuickFlowBackToValidationButton
+                onClick={() => setStep(stepValidation)}
+                className="w-full shrink-0 sm:mt-0 sm:w-auto sm:max-w-[min(100%,20rem)]"
+              />
+            ) : !treemapCompareOpen ? (
               <Button
                 type="button"
                 size="sm"
@@ -1144,57 +1207,87 @@ export default function AdminQuickFlow({
           </div>
         ) : null}
         {step === stepTreemap ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
-            title="Перейти к заполнению по кварталам (суммы по коэффициентам уже сохранены на предыдущем шаге)"
-            onClick={handleLeaveTreemapToTimeline}
-          >
-            Далее
-            <ChevronRight size={15} className="shrink-0" aria-hidden />
-          </Button>
-        ) : null}
-        {step === stepTimeline ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
-            title="К шагу распределения по странам"
-            onClick={() => setStep(stepCountrySplit)}
-          >
-            Далее
-            <ChevronRight size={15} className="shrink-0" aria-hidden />
-          </Button>
-        ) : null}
-        {step === stepCountrySplit ? (
-          <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:mt-0 max-w-[min(100%,260px)]">
+          validationRepairStep === stepTreemap ? (
+            <QuickFlowBackToValidationButton
+              onClick={() => setStep(stepValidation)}
+              className="max-w-[min(100%,20rem)] shrink-0 self-start sm:mt-0"
+            />
+          ) : (
             <Button
               type="button"
               size="sm"
-              className="h-8 w-full gap-1.5 sm:w-auto"
-              title="Перейти к сводке по аллокациям"
-              onClick={requestProceedToCountrySummary}
+              className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
+              title="Перейти к заполнению по кварталам (суммы по коэффициентам уже сохранены на предыдущем шаге)"
+              onClick={handleLeaveTreemapToTimeline}
             >
               Далее
               <ChevronRight size={15} className="shrink-0" aria-hidden />
             </Button>
-            <span className="text-[10px] leading-tight text-muted-foreground text-right">
-              Посмотреть сводку по аллокациям
-            </span>
+          )
+        ) : null}
+        {step === stepTimeline ? (
+          validationRepairStep === stepTimeline ? (
+            <QuickFlowBackToValidationButton
+              onClick={() => setStep(stepValidation)}
+              className="max-w-[min(100%,20rem)] shrink-0 self-start sm:mt-0"
+            />
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
+              title="К шагу распределения по странам"
+              onClick={() => setStep(stepCountrySplit)}
+            >
+              Далее
+              <ChevronRight size={15} className="shrink-0" aria-hidden />
+            </Button>
+          )
+        ) : null}
+        {step === stepCountrySplit ? (
+          <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:mt-0 max-w-[min(100%,280px)]">
+            {validationRepairStep === stepCountrySplit ? (
+              <QuickFlowBackToValidationButton
+                onClick={() => setStep(stepValidation)}
+                className="w-full shrink-0 sm:w-auto sm:max-w-[min(100%,20rem)]"
+              />
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 w-full gap-1.5 sm:w-auto"
+                  title="Перейти к сводке по аллокациям"
+                  onClick={requestProceedToCountrySummary}
+                >
+                  Далее
+                  <ChevronRight size={15} className="shrink-0" aria-hidden />
+                </Button>
+                <span className="text-[10px] leading-tight text-muted-foreground text-right">
+                  Посмотреть сводку по аллокациям
+                </span>
+              </>
+            )}
           </div>
         ) : null}
         {step === stepCountrySummary ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
-            title="К шагу «Проверка перед завершением»"
-            onClick={() => setStep(stepValidation)}
-          >
-            Далее
-            <ChevronRight size={15} className="shrink-0" aria-hidden />
-          </Button>
+          validationRepairStep === stepCountrySummary ? (
+            <QuickFlowBackToValidationButton
+              onClick={() => setStep(stepValidation)}
+              className="max-w-[min(100%,20rem)] shrink-0 self-start sm:mt-0"
+            />
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 self-start sm:mt-0"
+              title="К шагу «Проверка перед завершением»"
+              onClick={() => setStep(stepValidation)}
+            >
+              Далее
+              <ChevronRight size={15} className="shrink-0" aria-hidden />
+            </Button>
+          )
         ) : null}
       </div>
     </div>
@@ -1423,10 +1516,10 @@ export default function AdminQuickFlow({
                     onQuarterDataChange={onQuarterDataChange}
                     onGeoCostSplitDraftChange={onGeoCostSplitDraftChange}
                     onInitiativeDraftChange={onInitiativeDraftChange}
-                    onNavigateToCoefficients={() => setStep(stepCoeff)}
-                    onNavigateToTreemap={() => setStep(stepTreemap)}
-                    onNavigateToTimeline={() => setStep(stepTimeline)}
-                    onNavigateToGeoSplit={() => setStep(stepCountrySplit)}
+                    onNavigateToCoefficients={() => jumpToStepFromValidation(stepCoeff)}
+                    onNavigateToTreemap={() => jumpToStepFromValidation(stepTreemap)}
+                    onNavigateToTimeline={() => jumpToStepFromValidation(stepTimeline)}
+                    onNavigateToGeoSplit={() => jumpToStepFromValidation(stepCountrySplit)}
                   />
 
                   {SHOW_GOOGLE_SHEETS_PREVIEW_IN_QUICK_FLOW_VALIDATION &&

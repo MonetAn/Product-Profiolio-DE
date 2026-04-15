@@ -666,3 +666,13 @@ html.admin-engineering {
     transform: none;
   }
 }
+
+/* Сводка по аллокациям: без синей рамки фокуса на Recharts (клик / drag по SVG). */
+.alloc-summary-charts svg,
+.alloc-summary-charts svg * {
+  outline: none !important;
+}
+.alloc-summary-charts svg *:focus,
+.alloc-summary-charts svg *:focus-visible {
+  outline: none !important;
+}

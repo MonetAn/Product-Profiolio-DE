@@ -144,10 +144,11 @@ export function AdminQuickFlowMatrixPeriodPicker({
             <button
               type="button"
               onClick={() => setPeriodMenuOpen((o) => !o)}
+              onMouseDown={(e) => e.preventDefault()}
               aria-expanded={periodMenuOpen}
               aria-haspopup="dialog"
               className={cn(
-                'flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-md border border-border bg-card text-left text-xs font-medium hover:border-muted-foreground',
+                'flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-md border border-border bg-card text-left text-xs font-medium outline-none [-webkit-tap-highlight-color:transparent] hover:border-muted-foreground focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0',
                 compactPeriodPicker ? 'px-2 py-1' : 'px-2.5 py-1.5',
                 periodMenuOpen && 'border-muted-foreground'
               )}
@@ -175,14 +176,16 @@ export function AdminQuickFlowMatrixPeriodPicker({
                 >
                   <button
                     type="button"
-                    className="text-[11px] text-primary underline"
+                    className="text-[11px] text-primary underline outline-none [-webkit-tap-highlight-color:transparent] focus:outline-none focus:ring-0 focus-visible:ring-0"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={handleSelectAllCatalog}
                   >
                     Все
                   </button>
                   <button
                     type="button"
-                    className="text-[11px] text-primary underline"
+                    className="text-[11px] text-primary underline outline-none [-webkit-tap-highlight-color:transparent] focus:outline-none focus:ring-0 focus-visible:ring-0"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={handleResetQuarters}
                   >
                     Сброс
@@ -204,18 +207,12 @@ export function AdminQuickFlowMatrixPeriodPicker({
                       <div key={year} className={cn(compactPeriodPicker ? 'mb-1.5' : 'mb-2', 'last:mb-0')}>
                         <div
                           role="button"
-                          tabIndex={0}
+                          tabIndex={-1}
                           className={cn(
-                            'flex cursor-pointer items-center gap-1.5 rounded px-1 font-semibold hover:bg-secondary',
+                            'flex cursor-pointer items-center gap-1.5 rounded px-1 font-semibold outline-none [-webkit-tap-highlight-color:transparent] hover:bg-secondary focus:outline-none focus:ring-0 focus-visible:ring-0',
                             compactPeriodPicker ? 'py-0.5 text-[11px]' : 'px-1.5 py-1 text-xs'
                           )}
                           onClick={() => handleToggleYear(year)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              handleToggleYear(year);
-                            }
-                          }}
                         >
                           <span
                             className={cn(
@@ -245,11 +242,13 @@ export function AdminQuickFlowMatrixPeriodPicker({
                               <button
                                 key={q}
                                 type="button"
+                                tabIndex={-1}
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => onQuarterClick(q)}
                                 onMouseEnter={() => onQuarterHover(q)}
                                 onMouseLeave={() => onQuarterHover(null)}
                                 className={cn(
-                                  'rounded border transition-all',
+                                  'rounded border outline-none [-webkit-tap-highlight-color:transparent] transition-all focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0',
                                   compactPeriodPicker ? 'px-1 py-0.5 text-[9px]' : 'px-1.5 py-1 text-[10px]',
                                   isStart
                                     ? 'border-primary bg-primary text-primary-foreground ring-1 ring-primary/30'

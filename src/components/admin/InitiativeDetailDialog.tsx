@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ExternalLink, Info, Check, Pencil } from 'lucide-react';
 import {
   Dialog,
@@ -42,6 +42,7 @@ import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -50,25 +51,35 @@ const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode
   </Label>
 );
 
-// Hook for local field state with save-on-blur
+type BlurFieldOptions = { commitOnBlur?: boolean };
+
+// Hook for local field state; по умолчанию сохранение по blur, иначе только через commit()
 function useBlurField<T extends string | number>(
   externalValue: T,
-  onSave: (value: T) => void
+  onSave: (value: T) => void,
+  options?: BlurFieldOptions
 ) {
+  const commitOnBlur = options?.commitOnBlur !== false;
   const [localValue, setLocalValue] = useState<T>(externalValue);
 
-  // Sync when external value changes (e.g. different initiative opened)
   useEffect(() => {
     setLocalValue(externalValue);
   }, [externalValue]);
 
   const handleChange = (value: T) => setLocalValue(value);
-  const handleBlur = () => onSave(localValue);
+  const handleBlur = () => {
+    if (commitOnBlur) onSave(localValue);
+  };
+  const commit = useCallback(() => {
+    onSave(localValue);
+  }, [localValue, onSave]);
 
-  return { value: localValue, onChange: handleChange, onBlur: handleBlur };
+  return { value: localValue, onChange: handleChange, onBlur: handleBlur, commit };
 }
 
 export type QuarterFieldsVariant = 'default' | 'quickTimeline';
+
+export type QuarterFieldsPersistMode = 'blur' | 'explicitSave';
 
 interface QuarterFieldsProps {
   initiativeId: string;
@@ -86,6 +97,10 @@ interface QuarterFieldsProps {
   variant?: QuarterFieldsVariant;
   /** Кварталы сценария quick flow — для вопроса «с какого квартала на поддержке». */
   scenarioQuarters?: string[];
+  /** Для шага таймлайна: сохранение только по кнопке «Сохранить», не по blur. */
+  persistMode?: QuarterFieldsPersistMode;
+  /** Уведомление родителя о несохранённых правках (только при persistMode=explicitSave). */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function supportScenarioSelectValue(row: AdminDataRow, sortedQs: string[]): string {
@@ -132,17 +147,21 @@ const QuarterFields = ({
   onQuarterDataChange,
   variant = 'default',
   scenarioQuarters = [],
+  persistMode = 'blur',
+  onDirtyChange,
 }: QuarterFieldsProps) => {
   const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
+  const useExplicit = persistMode === 'explicitSave' && variant === 'quickTimeline';
   const save = (field: keyof AdminQuarterData) => (value: string | number | boolean) =>
     onQuarterDataChange(initiativeId, quarter, field, value);
 
-  const otherCosts = useBlurField(qData.otherCosts, save('otherCosts'));
-  const costValue = useBlurField(qData.cost ?? 0, save('cost'));
-  const metricPlan = useBlurField(qData.metricPlan, save('metricPlan'));
-  const metricFact = useBlurField(qData.metricFact, save('metricFact'));
-  const comment = useBlurField(qData.comment, save('comment'));
-  const effort = useBlurField(qData.effortCoefficient || 0, save('effortCoefficient'));
+  const blurCommit = { commitOnBlur: !useExplicit };
+  const otherCosts = useBlurField(qData.otherCosts, save('otherCosts'), blurCommit);
+  const costValue = useBlurField(qData.cost ?? 0, save('cost'), blurCommit);
+  const metricPlan = useBlurField(qData.metricPlan, save('metricPlan'), blurCommit);
+  const metricFact = useBlurField(qData.metricFact, save('metricFact'), blurCommit);
+  const comment = useBlurField(qData.comment, save('comment'), blurCommit);
+  const effort = useBlurField(qData.effortCoefficient || 0, save('effortCoefficient'), blurCommit);
 
   const totalCost = (qData.cost ?? 0) + qData.otherCosts;
   const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
@@ -170,6 +189,141 @@ const QuarterFields = ({
     [initiative, sortedScenarioQs, scenarioSupportFingerprint]
   );
 
+  const [draftOnTrack, setDraftOnTrack] = useState(() => qData.onTrack);
+  const [supportDraft, setSupportDraft] = useState(() =>
+    supportToggleValue === '' ? 'never' : supportToggleValue
+  );
+  /** Локальная обратная связь по кнопке «Сохранить» (explicitSave). */
+  const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'unchanged'>('idle');
+  const saveFeedbackTimerRef = useRef<number | null>(null);
+
+  const clearSaveFeedbackTimer = useCallback(() => {
+    if (saveFeedbackTimerRef.current != null) {
+      window.clearTimeout(saveFeedbackTimerRef.current);
+      saveFeedbackTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearSaveFeedbackTimer(), [clearSaveFeedbackTimer]);
+
+  useEffect(() => {
+    setSaveFeedback('idle');
+    clearSaveFeedbackTimer();
+  }, [initiativeId, quarter, clearSaveFeedbackTimer]);
+
+  useEffect(() => {
+    if (!useExplicit) return;
+    setDraftOnTrack(qData.onTrack);
+    setSupportDraft(supportToggleValue === '' ? 'never' : supportToggleValue);
+  }, [useExplicit, qData, supportToggleValue]);
+
+  const effectiveSupportThisQuarter = useMemo(() => {
+    if (!useExplicit) return qData.support === true;
+    if (supportDraft === 'never') return false;
+    if (supportDraft.startsWith('from|')) {
+      const fromQ = supportDraft.slice(5);
+      return compareQuarters(quarter, fromQ) >= 0;
+    }
+    return qData.support === true;
+  }, [useExplicit, supportDraft, quarter, qData.support]);
+
+  const qDataForQuickUi = useMemo(
+    () => ({ ...qData, support: effectiveSupportThisQuarter }),
+    [qData, effectiveSupportThisQuarter]
+  );
+
+  const explicitDirty = useMemo(() => {
+    if (!useExplicit) return false;
+    const committedSupport = supportToggleValue === '' ? 'never' : supportToggleValue;
+    return (
+      metricPlan.value !== (qData.metricPlan ?? '') ||
+      metricFact.value !== (qData.metricFact ?? '') ||
+      comment.value !== (qData.comment ?? '') ||
+      draftOnTrack !== qData.onTrack ||
+      supportDraft !== committedSupport
+    );
+  }, [
+    useExplicit,
+    metricPlan.value,
+    metricFact.value,
+    comment.value,
+    draftOnTrack,
+    qData.metricPlan,
+    qData.metricFact,
+    qData.comment,
+    qData.onTrack,
+    supportDraft,
+    supportToggleValue,
+  ]);
+
+  useEffect(() => {
+    onDirtyChange?.(explicitDirty);
+  }, [explicitDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!useExplicit) return;
+    if (explicitDirty && (saveFeedback === 'saved' || saveFeedback === 'unchanged')) {
+      clearSaveFeedbackTimer();
+      setSaveFeedback('idle');
+    }
+  }, [useExplicit, explicitDirty, saveFeedback, clearSaveFeedbackTimer]);
+
+  const handleExplicitSave = useCallback(() => {
+    if (!useExplicit) return;
+    metricPlan.commit();
+    metricFact.commit();
+    comment.commit();
+    if (draftOnTrack !== qData.onTrack) {
+      onQuarterDataChange(initiativeId, quarter, 'onTrack', draftOnTrack);
+    }
+    const committedSupport = supportToggleValue === '' ? 'never' : supportToggleValue;
+    if (supportDraft !== committedSupport) {
+      if (supportDraft === 'never') {
+        applySupportScenario(initiativeId, sortedScenarioQs, 'never', undefined, onQuarterDataChange);
+      } else if (supportDraft.startsWith('from|')) {
+        applySupportScenario(
+          initiativeId,
+          sortedScenarioQs,
+          'from',
+          supportDraft.slice(5),
+          onQuarterDataChange
+        );
+      }
+    }
+  }, [
+    useExplicit,
+    metricPlan,
+    metricFact,
+    comment,
+    draftOnTrack,
+    qData.onTrack,
+    supportDraft,
+    supportToggleValue,
+    initiativeId,
+    quarter,
+    sortedScenarioQs,
+    onQuarterDataChange,
+  ]);
+
+  const handleExplicitSaveClick = useCallback(() => {
+    if (!useExplicit) return;
+    clearSaveFeedbackTimer();
+    if (!explicitDirty) {
+      setSaveFeedback('unchanged');
+      saveFeedbackTimerRef.current = window.setTimeout(() => {
+        saveFeedbackTimerRef.current = null;
+        setSaveFeedback('idle');
+      }, 1400);
+      return;
+    }
+    handleExplicitSave();
+    setSaveFeedback('saved');
+    saveFeedbackTimerRef.current = window.setTimeout(() => {
+      saveFeedbackTimerRef.current = null;
+      setSaveFeedback('idle');
+    }, 2200);
+  }, [useExplicit, explicitDirty, handleExplicitSave, clearSaveFeedbackTimer]);
+
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K ₽`;
@@ -180,10 +334,12 @@ const QuarterFields = ({
     `${Math.round(value).toLocaleString('ru-RU')} ₽`;
 
   if (variant === 'quickTimeline') {
-    const showMetricBlock = quarterRequiresPlanFact(qData) || qData.support;
-    const metricsMandatory = quarterRequiresPlanFact(qData);
+    const showMetricBlock =
+      quarterRequiresPlanFact(qDataForQuickUi) || qDataForQuickUi.support;
+    const metricsMandatory = quarterRequiresPlanFact(qDataForQuickUi);
     const showFactInput = showMetricBlock && isMetricFactRequiredForQuarter(quarter);
     const factNoteOnly = showMetricBlock && !showFactInput;
+    const requiresMetricFactUi = quarterRequiresMetricFact(qDataForQuickUi, quarter);
     const supportChipSelected =
       'data-[state=on]:border-violet-500 data-[state=on]:bg-violet-100 data-[state=on]:text-violet-950 data-[state=on]:shadow-sm dark:data-[state=on]:border-violet-500 dark:data-[state=on]:bg-violet-950/90 dark:data-[state=on]:text-violet-50';
 
@@ -209,10 +365,11 @@ const QuarterFields = ({
           type="single"
           variant="outline"
           className="mt-3 flex flex-wrap justify-start gap-1.5"
-          value={supportToggleValue === '' ? undefined : supportToggleValue}
+          value={useExplicit ? supportDraft : supportToggleValue === '' ? undefined : supportToggleValue}
           onValueChange={(v) => {
             if (!v) return;
-            onSupportToggleChange(v);
+            if (useExplicit) setSupportDraft(v);
+            else onSupportToggleChange(v);
           }}
         >
           <ToggleGroupItem
@@ -242,13 +399,13 @@ const QuarterFields = ({
       </div>
     );
 
-    return (
+    const quickBody = (
       <TooltipProvider delayDuration={200}>
         <div className="space-y-6">
           {showMetricBlock ? (
             <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
               <p className="text-sm font-semibold text-foreground">План и факт метрики</p>
-              {qData.support ? (
+              {effectiveSupportThisQuarter ? (
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Квартал в поддержке — план и факт по желанию; без обязательной подсветки.
                 </p>
@@ -269,7 +426,7 @@ const QuarterFields = ({
                     placeholder="Планируемое значение метрики..."
                     className={cn(
                       'min-h-[120px] resize-y',
-                      metricsMandatory && !qData.metricPlan?.trim() && 'ring-2 ring-destructive/40'
+                      metricsMandatory && !metricPlan.value?.trim() && 'ring-2 ring-destructive/40'
                     )}
                   />
                 </div>
@@ -287,7 +444,10 @@ const QuarterFields = ({
                       placeholder="Фактическое значение метрики..."
                       className={cn(
                         'min-h-[120px] resize-y',
-                        metricsMandatory && requiresMetricFact && !qData.metricFact?.trim() && 'ring-2 ring-destructive/40'
+                        metricsMandatory &&
+                          requiresMetricFactUi &&
+                          !metricFact.value?.trim() &&
+                          'ring-2 ring-destructive/40'
                       )}
                     />
                   </div>
@@ -322,11 +482,16 @@ const QuarterFields = ({
             <ToggleGroup
               type="single"
               variant="outline"
-              value={qData.onTrack ? 'on' : 'off'}
+              value={(useExplicit ? draftOnTrack : qData.onTrack) ? 'on' : 'off'}
               onValueChange={(v) => {
                 if (!v) return;
-                if (v === 'on') onQuarterDataChange(initiativeId, quarter, 'onTrack', true);
-                else if (v === 'off') onQuarterDataChange(initiativeId, quarter, 'onTrack', false);
+                if (useExplicit) {
+                  setDraftOnTrack(v === 'on');
+                } else if (v === 'on') {
+                  onQuarterDataChange(initiativeId, quarter, 'onTrack', true);
+                } else if (v === 'off') {
+                  onQuarterDataChange(initiativeId, quarter, 'onTrack', false);
+                }
               }}
               className="grid w-full grid-cols-2 gap-2"
             >
@@ -354,6 +519,50 @@ const QuarterFields = ({
         </div>
       </TooltipProvider>
     );
+
+    if (useExplicit) {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto [-webkit-overflow-scrolling:touch]">{quickBody}</div>
+          <div className="shrink-0 border-t border-border/70 bg-background/95 px-1 py-3 backdrop-blur-sm sm:px-0">
+            <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+              <p
+                className="order-2 max-w-full text-right text-[11px] leading-snug text-muted-foreground sm:order-1"
+                aria-live="polite"
+              >
+                {saveFeedback === 'saved' ? (
+                  <span className="font-medium text-emerald-700 dark:text-emerald-400">Изменения записаны.</span>
+                ) : saveFeedback === 'unchanged' ? (
+                  <span>Нечего сохранять.</span>
+                ) : null}
+              </p>
+              <Button
+                type="button"
+                variant={saveFeedback === 'saved' ? 'outline' : 'default'}
+                disabled={saveFeedback === 'saved'}
+                className={cn(
+                  'order-1 min-w-[10.5rem] touch-manipulation transition-transform active:scale-[0.97] active:brightness-95',
+                  saveFeedback === 'saved' &&
+                    'border-emerald-600/45 bg-emerald-600/[0.08] text-emerald-900 hover:bg-emerald-600/[0.12] dark:border-emerald-500/45 dark:bg-emerald-500/10 dark:text-emerald-50'
+                )}
+                onClick={handleExplicitSaveClick}
+              >
+                {saveFeedback === 'saved' ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+                    Сохранено
+                  </>
+                ) : (
+                  'Сохранить'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return quickBody;
   }
 
   return (

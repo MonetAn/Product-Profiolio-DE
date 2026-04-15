@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   Bar,
   BarChart,
@@ -387,9 +388,33 @@ function pieActiveShape(props: any) {
       style={{
         filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.12))',
         transition: 'filter 0.15s ease',
+        outline: 'none',
+        WebkitTapHighlightColor: 'transparent',
       }}
     />
   );
+}
+
+const ALLOCATIONS_RECHARTS_SHELL =
+  'select-none [-webkit-user-select:none] [&_.recharts-responsive-container]:outline-none [&_.recharts-responsive-container]:focus:outline-none [&_.recharts-surface]:outline-none [&_svg]:outline-none [&_svg_*]:outline-none [&_svg_*]:[-webkit-tap-highlight-color:transparent] [&_*:focus]:outline-none [&_*:focus-visible]:outline-none';
+
+function blurActiveElementIfInsideSvg() {
+  requestAnimationFrame(() => {
+    const ae = document.activeElement;
+    if (ae instanceof HTMLElement && ae.closest('svg')) ae.blur();
+  });
+}
+
+function handleAllocationsChartPointerCapture(e: ReactPointerEvent<HTMLDivElement>) {
+  const t = e.target;
+  if (!(t instanceof Element) || !t.closest('svg')) return;
+  blurActiveElementIfInsideSvg();
+}
+
+function handleAllocationsChartPointerDownCapture(e: ReactPointerEvent<HTMLDivElement>) {
+  const t = e.target;
+  if (!(t instanceof Element) || !t.closest('svg')) return;
+  window.setTimeout(() => blurActiveElementIfInsideSvg(), 0);
 }
 
 type PieSliceDatum = { name: string; value: number };
@@ -436,10 +461,8 @@ export function AdminQuickFlowCountryAllocationsSummary({
 
   /** Подсветка сегментов от ховера/фокуса легенды. */
   const [highlightedClusterKey, setHighlightedClusterKey] = useState<string | null>(null);
-  /** Закрепление кластера кликом по легенде/сектору (пока наведён другой — круг остаётся на закреплённом). */
+  /** Закрепление кластера: общее для вкладок «За период» и «По месяцам» (легенда, пирог, помесячные чипы). */
   const [lockedClusterKey, setLockedClusterKey] = useState<string | null>(null);
-  /** Помесячный фильтр: пусто = все кластеры; один кластер = одна серия (выбор чипами сверху). */
-  const [monthlySelectedClusters, setMonthlySelectedClusters] = useState<string[]>([]);
   const [allocationsSummaryTab, setAllocationsSummaryTab] = useState<'period' | 'monthly'>('period');
   const [monthlyLegendHoverKey, setMonthlyLegendHoverKey] = useState<string | null>(null);
   const [hoverBarCell, setHoverBarCell] = useState<{ row: number; key: string } | null>(null);
@@ -593,8 +616,10 @@ export function AdminQuickFlowCountryAllocationsSummary({
   }, [panelClusterKey, initiativeRowsByCluster]);
 
   useEffect(() => {
-    setMonthlySelectedClusters((prev) => prev.filter((k) => stackClusterKeys.includes(k)));
-  }, [stackClusterKeys]);
+    if (lockedClusterKey && !stackClusterKeys.includes(lockedClusterKey)) {
+      setLockedClusterKey(null);
+    }
+  }, [stackClusterKeys, lockedClusterKey]);
 
   const monthlyAllClusterRows = useMemo(
     () =>
@@ -603,12 +628,12 @@ export function AdminQuickFlowCountryAllocationsSummary({
   );
 
   const { monthlyChartRows, monthlyBarKeys } = useMemo(() => {
-    const n = monthlySelectedClusters.length;
-    const fullSet = n === 0 || (stackClusterKeys.length > 0 && n === stackClusterKeys.length);
-    if (fullSet) {
+    const pin =
+      lockedClusterKey && stackClusterKeys.includes(lockedClusterKey) ? lockedClusterKey : null;
+    if (!pin) {
       return { monthlyChartRows: monthlyAllClusterRows, monthlyBarKeys: stackClusterKeys };
     }
-    const keys = sortStakeholderLabels([...monthlySelectedClusters]);
+    const keys = sortStakeholderLabels([pin]);
     return {
       monthlyChartRows: buildMonthlyRowsByCluster(
         rows,
@@ -620,7 +645,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
       monthlyBarKeys: keys,
     };
   }, [
-    monthlySelectedClusters,
+    lockedClusterKey,
     stackClusterKeys,
     monthlyAllClusterRows,
     rows,
@@ -691,15 +716,8 @@ export function AdminQuickFlowCountryAllocationsSummary({
     return { key: effectiveMonthlyLegendHoverKey, rub, pct };
   }, [effectiveMonthlyLegendHoverKey, monthlyLegendTotalsByKey, monthlyLegendTotalRub]);
 
-  const handleMonthlyLegendClick = useCallback((key: string) => {
-    setMonthlySelectedClusters((prev) => {
-      if (prev.length === 1 && prev[0] === key) return [];
-      return [key];
-    });
-  }, []);
-
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-auto">
+    <section className="alloc-summary-charts flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-auto">
       <h2 className="text-lg font-semibold">Сводка по аллокациям</h2>
 
       <Tabs
@@ -738,13 +756,13 @@ export function AdminQuickFlowCountryAllocationsSummary({
                 <TabsList className="inline-flex h-auto flex-wrap justify-end gap-0.5 rounded-lg border border-border/80 bg-background p-0.5 shadow-sm sm:p-1">
                   <TabsTrigger
                     value="period"
-                    className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:px-3 sm:py-2 sm:text-sm"
+                    className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:px-3 sm:py-2 sm:text-sm"
                   >
                     За период
                   </TabsTrigger>
                   <TabsTrigger
                     value="monthly"
-                    className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:px-3 sm:py-2 sm:text-sm"
+                    className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:px-3 sm:py-2 sm:text-sm"
                   >
                     По месяцам
                   </TabsTrigger>
@@ -753,9 +771,18 @@ export function AdminQuickFlowCountryAllocationsSummary({
             </div>
 
             {stackClusterKeys.length > 0 ? (
-              <div className="flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto pb-0.5 pt-0.5">
-                {allocationsSummaryTab === 'period' && pieData.length > 0
-                  ? pieData.map((entry, idx) => {
+              <div className="mt-1.5 border-t border-border/45 pt-1.5">
+                <div
+                  className={cn(
+                    'flex max-w-full min-w-0 flex-nowrap items-stretch gap-1.5 rounded-lg px-1 py-1 sm:gap-2 sm:px-1.5',
+                    lockedClusterKey
+                      ? 'bg-muted/25 ring-1 ring-border/50'
+                      : 'bg-muted/10 ring-1 ring-border/35'
+                  )}
+                >
+                  <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1">
+                  {allocationsSummaryTab === 'period' && pieData.length > 0
+                    ? pieData.map((entry, idx) => {
                       const name = entry.name;
                       const locked = lockedClusterKey === name;
                       const emphasized = pieFocusKey === name;
@@ -765,8 +792,9 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         <button
                           key={name}
                           type="button"
+                          tabIndex={-1}
                           className={cn(
-                            'inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-background/90 px-2 py-0.5 text-[10px] leading-tight text-foreground shadow-sm transition-colors outline-none focus:outline-none',
+                            'inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-background/90 px-2 py-0.5 text-[10px] leading-tight text-foreground shadow-sm transition-colors outline-none [-webkit-tap-highlight-color:transparent] focus:outline-none focus:ring-0 focus-visible:ring-0',
                             locked
                               ? 'border-primary bg-primary/10'
                               : emphasized
@@ -778,8 +806,6 @@ export function AdminQuickFlowCountryAllocationsSummary({
                           onMouseDown={(e) => e.preventDefault()}
                           onMouseEnter={() => setLegendHighlight(name)}
                           onMouseLeave={scheduleLegendHighlightClear}
-                          onFocus={() => setLegendHighlight(name)}
-                          onBlur={scheduleLegendHighlightClear}
                           onClick={() => toggleClusterLock(name)}
                         >
                           <span
@@ -794,43 +820,55 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         </button>
                       );
                     })
-                  : null}
-                {allocationsSummaryTab === 'monthly'
-                  ? stackClusterKeys.map((key, idx) => {
-                      const selectedSingle =
-                        monthlySelectedClusters.length === 1 && monthlySelectedClusters[0] === key;
-                      const dimmed =
-                        monthlySelectedClusters.length > 0 &&
-                        !(monthlySelectedClusters.length === 1 && monthlySelectedClusters[0] === key);
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          className={cn(
-                            'inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-background/90 px-2 py-0.5 text-[10px] leading-tight text-foreground shadow-sm transition-colors outline-none focus:outline-none',
-                            selectedSingle
-                              ? 'border-primary bg-primary/10'
-                              : 'border-border/70 hover:bg-muted/80',
-                            dimmed ? 'opacity-55' : 'opacity-100'
-                          )}
-                          title={key}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onMouseEnter={() => setMonthlyLegendHoverKey(key)}
-                          onMouseLeave={() => setMonthlyLegendHoverKey(null)}
-                          onFocus={() => setMonthlyLegendHoverKey(key)}
-                          onBlur={() => setMonthlyLegendHoverKey(null)}
-                          onClick={() => handleMonthlyLegendClick(key)}
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-sm ring-1 ring-black/10"
-                            style={{ backgroundColor: fillForMonthlyBarKey(key, idx) }}
-                            aria-hidden
-                          />
-                          <span className="max-w-[8rem] truncate">{key}</span>
-                        </button>
-                      );
-                    })
-                  : null}
+                    : null}
+                  {allocationsSummaryTab === 'monthly'
+                    ? stackClusterKeys.map((key, idx) => {
+                        const selectedSingle = lockedClusterKey === key;
+                        const dimmed =
+                          lockedClusterKey != null && lockedClusterKey !== key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            tabIndex={-1}
+                            className={cn(
+                              'inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-background/90 px-2 py-0.5 text-[10px] leading-tight text-foreground shadow-sm transition-colors outline-none [-webkit-tap-highlight-color:transparent] focus:outline-none focus:ring-0 focus-visible:ring-0',
+                              selectedSingle
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border/70 hover:bg-muted/80',
+                              dimmed ? 'opacity-55' : 'opacity-100'
+                            )}
+                            title={key}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => setMonthlyLegendHoverKey(key)}
+                            onMouseLeave={() => setMonthlyLegendHoverKey(null)}
+                            onClick={() => toggleClusterLock(key)}
+                          >
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-sm ring-1 ring-black/10"
+                              style={{ backgroundColor: fillForMonthlyBarKey(key, idx) }}
+                              aria-hidden
+                            />
+                            <span className="max-w-[8rem] truncate">{key}</span>
+                          </button>
+                        );
+                      })
+                    : null}
+                  </div>
+                  {lockedClusterKey ? (
+                    <div className="flex shrink-0 items-center border-l border-border/50 pl-2 sm:pl-2.5">
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-left text-[10px] font-medium text-primary underline-offset-2 outline-none [-webkit-tap-highlight-color:transparent] hover:bg-background/80 hover:underline focus:outline-none focus:ring-0 focus-visible:ring-0 sm:text-xs"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setLockedClusterKey(null)}
+                      >
+                        Сбросить фильтр
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ) : null}
             {allocationsSummaryTab === 'period' && pieData.length === 0 ? (
@@ -839,20 +877,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
           </div>
         </div>
 
-        <TabsContent value="period" className="mt-4 min-w-0">
+        <TabsContent value="period" className="mt-4 min-w-0 outline-none focus-visible:ring-0">
           <div className="grid min-h-0 items-start gap-6 lg:grid-cols-2">
             <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium">По кластерам</p>
-                {lockedClusterKey ? (
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-primary underline-offset-2 outline-none hover:underline focus:outline-none"
-                    onClick={() => setLockedClusterKey(null)}
-                  >
-                    Сбросить закрепление
-                  </button>
-                ) : null}
               </div>
               {pieData.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -870,6 +899,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         </p>
                       </div>
                     ) : null}
+                    <div
+                      className={cn('h-full w-full min-h-0', ALLOCATIONS_RECHARTS_SHELL)}
+                      onPointerDownCapture={handleAllocationsChartPointerDownCapture}
+                      onPointerUpCapture={handleAllocationsChartPointerCapture}
+                    >
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart margin={{ top: 12, right: 12, bottom: 8, left: 12 }}>
                         <Pie
@@ -881,6 +915,8 @@ export function AdminQuickFlowCountryAllocationsSummary({
                           innerRadius="42%"
                           outerRadius="70%"
                           paddingAngle={1.5}
+                          /** Убирает фокус с корневого Layer (rootTabIndex по умолчанию 0) — иначе синяя outline у всего пирога. */
+                          rootTabIndex={-1}
                           stroke="hsl(var(--border))"
                           strokeWidth={1}
                           label={false}
@@ -903,7 +939,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
                                 key={entry.name}
                                 fill={fill}
                                 fillOpacity={dim ? 0.35 : 1}
-                                style={{ transition: cellOpacityTransition, cursor: 'pointer' }}
+                                style={{
+                                  transition: cellOpacityTransition,
+                                  cursor: 'pointer',
+                                  outline: 'none',
+                                }}
                               />
                             );
                           })}
@@ -913,15 +953,13 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         />
                       </PieChart>
                     </ResponsiveContainer>
+                    </div>
                   </div>
                   {panelClusterKey ? (
                     <div className="mt-3 min-h-0 border-t border-border/50 pt-3">
                       <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Состав кластера
+                        Стоимость инициатив кластера
                         <span className="ml-1.5 normal-case text-foreground">{panelClusterKey}</span>
-                        {lockedClusterKey === panelClusterKey ? (
-                          <span className="ml-1.5 font-normal normal-case text-muted-foreground">· закреплено</span>
-                        ) : null}
                       </p>
                       {highlightedInitiativeRows.length === 0 ? (
                         <p className="text-xs text-muted-foreground">Нет сумм по выбранному кластеру.</p>
@@ -959,6 +997,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
                   className="w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
                   style={{ height: barChartHeight }}
                 >
+                  <div
+                    className={cn('h-full w-full min-h-0', ALLOCATIONS_RECHARTS_SHELL)}
+                    onPointerDownCapture={handleAllocationsChartPointerDownCapture}
+                    onPointerUpCapture={handleAllocationsChartPointerCapture}
+                  >
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       layout="vertical"
@@ -1067,16 +1110,17 @@ export function AdminQuickFlowCountryAllocationsSummary({
                       ))}
                     </BarChart>
                   </ResponsiveContainer>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="monthly" className="mt-3 min-w-0">
+        <TabsContent value="monthly" className="mt-3 min-w-0 outline-none focus-visible:ring-0">
           <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
             <p className="mb-2 text-sm font-medium">Распределение по месяцам</p>
-            {monthlySelectedClusters.length === 1 && monthlyBarKeys.length === 0 ? (
+            {lockedClusterKey && monthlyBarKeys.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 По выбранному кластеру нет распределённых сумм за этот период.
               </p>
@@ -1099,7 +1143,14 @@ export function AdminQuickFlowCountryAllocationsSummary({
                       </p>
                     </div>
                   ) : null}
-                  <div className="h-[clamp(160px,27vh,220px)] w-full min-h-[160px]">
+                  <div
+                    className={cn(
+                      'h-[clamp(160px,27vh,220px)] w-full min-h-[160px]',
+                      ALLOCATIONS_RECHARTS_SHELL
+                    )}
+                    onPointerDownCapture={handleAllocationsChartPointerDownCapture}
+                    onPointerUpCapture={handleAllocationsChartPointerCapture}
+                  >
                     <MonthlyMorphStackedChart
                       rows={monthlyChartRows}
                       seriesKeys={monthlyBarKeys}

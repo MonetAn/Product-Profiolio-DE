@@ -79,6 +79,8 @@ export function MonthlyMorphStackedChart({
   className?: string;
 }) {
   const reduceMotion = useReducedMotion();
+  /** Пока ширина графика не измерена, не анимируем геометрию — иначе колонки «едут» слева при первом показе вкладки. */
+  const [layoutAnimFrozen, setLayoutAnimFrozen] = useState(true);
   const [hoverSegmentId, setHoverSegmentId] = useState<string | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const lastPointerRef = useRef({ x: 0, y: 0 });
@@ -94,9 +96,14 @@ export function MonthlyMorphStackedChart({
       width: { type: 'tween' as const, duration: 0.44, ease: BAR_MOTION_EASE },
       height: { type: 'tween' as const, duration: 0.44, ease: BAR_MOTION_EASE },
       fill: { type: 'tween' as const, duration: 0.32, ease: 'easeInOut' as const },
-      opacity: { type: 'tween' as const, duration: 0.1, ease: 'easeOut' as const },
+      opacity: { type: 'tween' as const, duration: 0.18, ease: 'easeOut' as const },
     };
   }, [reduceMotion]);
+
+  const barMotionTransition = useMemo(() => {
+    if (reduceMotion || layoutAnimFrozen) return { duration: 0 } as const;
+    return barTransition;
+  }, [reduceMotion, layoutAnimFrozen, barTransition]);
 
   /** Только для уходящих сегментов (смена набора кластеров). */
   const segmentExitTransition = useMemo(() => {
@@ -124,6 +131,11 @@ export function MonthlyMorphStackedChart({
   const svgH = Math.max(0, size.height);
   const plotW = Math.max(0, svgW - margin.left - margin.right);
   const plotH = Math.max(0, svgH - margin.top - margin.bottom);
+
+  useLayoutEffect(() => {
+    if (plotW > 24) setLayoutAnimFrozen(false);
+    else setLayoutAnimFrozen(true);
+  }, [plotW]);
 
   const yMax = useMemo(() => Math.max(1, ...rows.map((r) => Number(r.totalRub) || 0)) * 1.12, [rows]);
 
@@ -214,7 +226,7 @@ export function MonthlyMorphStackedChart({
                     y: bottomY,
                     transition: segmentExitTransition,
                   }}
-                  transition={barTransition}
+                  transition={barMotionTransition}
                   rx={1.5}
                   style={{ cursor: 'default' }}
                   onMouseEnter={(e) => {
