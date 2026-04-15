@@ -14,6 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { ChevronDown } from 'lucide-react';
 import type { AdminDataRow, GeoCostSplitEntry } from '@/lib/adminDataManager';
 import {
   geoCostSplitPercentsTotal,
@@ -24,13 +25,9 @@ import {
 import { buildCountryIdToClusterMap, type MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
 import { AdminQuickFlowMatrixPeriodPicker } from '@/components/admin/AdminQuickFlowMatrixPeriodPicker';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -75,7 +72,6 @@ const MONTH_LABELS_RU = [
   'дек',
 ];
 
-const MONTHLY_FILTER_ALL = '__all__';
 const OTHER_INITIATIVE_LABEL = 'Прочие';
 
 function quarterToMonthInfos(quarter: string): Array<{ key: string; label: string }> {
@@ -135,8 +131,12 @@ function buildMonthlyRowsByCluster(
   rows: AdminDataRow[],
   quarters: string[],
   countryIdToClusterKey: Map<string, string>,
-  stackKeys: string[]
+  stackKeys: string[],
+  /** Если задан и непустой — в столбцах и в totalRub только эти кластеры (остальные не показываем). */
+  visibleClusterKeys?: string[]
 ): MonthStackRow[] {
+  const keysOut =
+    visibleClusterKeys && visibleClusterKeys.length > 0 ? visibleClusterKeys : stackKeys;
   const monthOrder = orderedMonthsFromQuarters(quarters);
   const acc = new Map<string, Map<string, number>>();
   for (const { key } of monthOrder) acc.set(key, new Map());
@@ -171,7 +171,7 @@ function buildMonthlyRowsByCluster(
     const m = acc.get(key) ?? new Map();
     let totalRub = 0;
     const rec: MonthStackRow = { monthKey: key, monthLabel: label, totalRub: 0 };
-    for (const k of stackKeys) {
+    for (const k of keysOut) {
       const v = m.get(k) ?? 0;
       rec[k] = v;
       totalRub += v;
@@ -633,7 +633,9 @@ export function AdminQuickFlowCountryAllocationsSummary({
   const [highlightedClusterKey, setHighlightedClusterKey] = useState<string | null>(null);
   /** Закрепление кластера кликом по легенде/сектору (пока наведён другой — круг остаётся на закреплённом). */
   const [lockedClusterKey, setLockedClusterKey] = useState<string | null>(null);
-  const [monthlyClusterFilter, setMonthlyClusterFilter] = useState<string>(MONTHLY_FILTER_ALL);
+  /** Пусто или полный набор кластеров = помесячно «все кластеры»; ровно один = разбивка по инициативам; 2+ = только выбранные кластеры в стеке. */
+  const [monthlySelectedClusters, setMonthlySelectedClusters] = useState<string[]>([]);
+  const [monthlyClusterPickerOpen, setMonthlyClusterPickerOpen] = useState(false);
   const [hoverBarCell, setHoverBarCell] = useState<{ row: number; key: string } | null>(null);
   const legendClearTimerRef = useRef<number | null>(null);
 
@@ -774,13 +776,8 @@ export function AdminQuickFlowCountryAllocationsSummary({
   }, [panelClusterKey, initiativeRowsByCluster]);
 
   useEffect(() => {
-    if (
-      monthlyClusterFilter !== MONTHLY_FILTER_ALL &&
-      !stackClusterKeys.includes(monthlyClusterFilter)
-    ) {
-      setMonthlyClusterFilter(MONTHLY_FILTER_ALL);
-    }
-  }, [monthlyClusterFilter, stackClusterKeys]);
+    setMonthlySelectedClusters((prev) => prev.filter((k) => stackClusterKeys.includes(k)));
+  }, [stackClusterKeys]);
 
   const monthlyAllClusterRows = useMemo(
     () =>
@@ -789,52 +786,144 @@ export function AdminQuickFlowCountryAllocationsSummary({
   );
 
   const monthlyInitiativeSplit = useMemo(() => {
-    if (monthlyClusterFilter === MONTHLY_FILTER_ALL) return null;
+    if (monthlySelectedClusters.length !== 1) return null;
     return buildMonthlyRowsByInitiativesInCluster(
       rows,
       quartersForCharts,
       countryIdToClusterKey,
-      monthlyClusterFilter,
+      monthlySelectedClusters[0],
       14
     );
-  }, [rows, quartersForCharts, countryIdToClusterKey, monthlyClusterFilter]);
+  }, [rows, quartersForCharts, countryIdToClusterKey, monthlySelectedClusters]);
 
-  const monthlyChartRows =
-    monthlyClusterFilter === MONTHLY_FILTER_ALL
-      ? monthlyAllClusterRows
-      : (monthlyInitiativeSplit?.chartRows ?? []);
-  const monthlyBarKeys =
-    monthlyClusterFilter === MONTHLY_FILTER_ALL
-      ? stackClusterKeys
-      : (monthlyInitiativeSplit?.barKeys ?? []);
+  const { monthlyChartRows, monthlyBarKeys } = useMemo(() => {
+    const n = monthlySelectedClusters.length;
+    if (n === 1) {
+      return {
+        monthlyChartRows: monthlyInitiativeSplit?.chartRows ?? [],
+        monthlyBarKeys: monthlyInitiativeSplit?.barKeys ?? [],
+      };
+    }
+    const fullSet = n === 0 || (stackClusterKeys.length > 0 && n === stackClusterKeys.length);
+    if (fullSet) {
+      return { monthlyChartRows: monthlyAllClusterRows, monthlyBarKeys: stackClusterKeys };
+    }
+    const keys = sortStakeholderLabels([...monthlySelectedClusters]);
+    return {
+      monthlyChartRows: buildMonthlyRowsByCluster(
+        rows,
+        quartersForCharts,
+        countryIdToClusterKey,
+        stackClusterKeys,
+        keys
+      ),
+      monthlyBarKeys: keys,
+    };
+  }, [
+    monthlySelectedClusters,
+    stackClusterKeys,
+    monthlyAllClusterRows,
+    monthlyInitiativeSplit,
+    rows,
+    quartersForCharts,
+    countryIdToClusterKey,
+  ]);
 
-  const monthlyChartHeight = useMemo(() => {
+  const monthlyPickerSummary = useMemo(() => {
+    const n = monthlySelectedClusters.length;
+    const full = n === 0 || (stackClusterKeys.length > 0 && n === stackClusterKeys.length);
+    if (full) return 'Все кластеры';
+    if (n === 1) return monthlySelectedClusters[0];
+    const sorted = sortStakeholderLabels([...monthlySelectedClusters]);
+    if (sorted.length <= 2) return sorted.join(', ');
+    return `${sorted.length} кластеров`;
+  }, [monthlySelectedClusters, stackClusterKeys]);
+
+  const toggleMonthlyClusterKey = useCallback((k: string) => {
+    setMonthlySelectedClusters((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      const arr = sortStakeholderLabels([...next]);
+      if (stackClusterKeys.length > 0 && arr.length === stackClusterKeys.length) return [];
+      return arr;
+    });
+  }, [stackClusterKeys]);
+
+  const clearMonthlyClusterSelection = useCallback(() => {
+    setMonthlySelectedClusters([]);
+  }, []);
+
+  /** Ширина области графика: при длинном ряду месяцев — горизонтальный скролл, высота не от суммы месяцев. */
+  const monthlyScrollMinWidth = useMemo(() => {
     const n = monthlyChartRows.length;
-    const perBar = 52;
-    const axisPad = 56;
-    return Math.min(720, Math.max(220, n * perBar + axisPad));
+    if (n === 0) return 0;
+    return Math.min(2600, Math.max(360, n * 28 + 100));
   }, [monthlyChartRows.length]);
 
   const monthlyMaxRub = useMemo(() => {
     return monthlyChartRows.reduce((m, r) => Math.max(m, r.totalRub), 0);
   }, [monthlyChartRows]);
 
+  const monthlyChartKind = monthlySelectedClusters.length === 1 ? 'initiative' : 'cluster';
+
   const fillForMonthlyBarKey = useCallback(
     (key: string, idx: number) => {
-      if (monthlyClusterFilter === MONTHLY_FILTER_ALL) {
-        if (key === UNALLOCATED_LABEL) return UNALLOCATED_FILL;
-        const i = stackClusterKeys.indexOf(key);
-        return GEO_CHART_PALETTE[(i >= 0 ? i : idx) % GEO_CHART_PALETTE.length];
+      if (monthlyChartKind === 'initiative') {
+        if (key === OTHER_INITIATIVE_LABEL) return '#94A3B8';
+        return GEO_CHART_PALETTE[idx % GEO_CHART_PALETTE.length];
       }
-      if (key === OTHER_INITIATIVE_LABEL) return '#94A3B8';
-      return GEO_CHART_PALETTE[idx % GEO_CHART_PALETTE.length];
+      if (key === UNALLOCATED_LABEL) return UNALLOCATED_FILL;
+      const i = stackClusterKeys.indexOf(key);
+      return GEO_CHART_PALETTE[(i >= 0 ? i : idx) % GEO_CHART_PALETTE.length];
     },
-    [monthlyClusterFilter, stackClusterKeys]
+    [monthlyChartKind, stackClusterKeys]
   );
 
   const chartsAnimating = false;
   const cellOpacityTransition = pieFocusKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.18s ease';
   const barCellOpacityTransition = pieFocusKey ? 'fill-opacity 80ms ease' : 'fill-opacity 0.15s ease';
+
+  const [allocationsSummaryTab, setAllocationsSummaryTab] = useState<'period' | 'monthly'>('period');
+  const [monthlyLegendHoverKey, setMonthlyLegendHoverKey] = useState<string | null>(null);
+
+  const monthlyXAxisInterval = useMemo(() => {
+    const n = monthlyChartRows.length;
+    if (n > 20) return 2;
+    if (n > 12) return 1;
+    return 0;
+  }, [monthlyChartRows.length]);
+
+  useEffect(() => {
+    if (monthlyLegendHoverKey && !monthlyBarKeys.includes(monthlyLegendHoverKey)) {
+      setMonthlyLegendHoverKey(null);
+    }
+  }, [monthlyLegendHoverKey, monthlyBarKeys]);
+
+  const monthlyLegendTotalsByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const k of monthlyBarKeys) m.set(k, 0);
+    for (const row of monthlyChartRows) {
+      for (const k of monthlyBarKeys) {
+        const v = Number(row[k] ?? 0);
+        if (!Number.isFinite(v) || v <= 0) continue;
+        m.set(k, (m.get(k) ?? 0) + v);
+      }
+    }
+    return m;
+  }, [monthlyBarKeys, monthlyChartRows]);
+
+  const monthlyLegendTotalRub = useMemo(() => {
+    return [...monthlyLegendTotalsByKey.values()].reduce((s, v) => s + v, 0);
+  }, [monthlyLegendTotalsByKey]);
+
+  const monthlyHoveredLegendStat = useMemo(() => {
+    if (!monthlyLegendHoverKey) return null;
+    const rub = monthlyLegendTotalsByKey.get(monthlyLegendHoverKey) ?? 0;
+    if (rub <= 0) return null;
+    const pct = monthlyLegendTotalRub > 0 ? (rub / monthlyLegendTotalRub) * 100 : 0;
+    return { key: monthlyLegendHoverKey, rub, pct };
+  }, [monthlyLegendHoverKey, monthlyLegendTotalsByKey, monthlyLegendTotalRub]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto">
@@ -857,17 +946,66 @@ export function AdminQuickFlowCountryAllocationsSummary({
         />
       </div>
 
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm">
-        <span className="text-muted-foreground">Итого за период</span>
-        <span className="text-lg font-semibold tabular-nums text-foreground">
-          {Math.round(pieTotalRub).toLocaleString('ru-RU')} ₽
-        </span>
-        {quartersForCharts.length > 0 ? (
-          <span className="text-xs text-muted-foreground">Кварталы: {quartersForCharts.join(', ')}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="text-muted-foreground">Итого за период</span>
+          <span className="text-lg font-semibold tabular-nums text-foreground">
+            {Math.round(pieTotalRub).toLocaleString('ru-RU')} ₽
+          </span>
+        </div>
+        {allocationsSummaryTab === 'monthly' && stackClusterKeys.length > 0 ? (
+          <div className="flex w-full min-w-0 shrink-0 justify-end sm:ml-auto sm:w-auto sm:max-w-[min(100%,22rem)]">
+            <Popover open={monthlyClusterPickerOpen} onOpenChange={setMonthlyClusterPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 w-full max-w-full justify-between gap-2 font-normal"
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">{monthlyPickerSummary}</span>
+                  <ChevronDown className="size-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="z-[60] w-[min(100vw-2rem,20rem)] p-2">
+                <div className="max-h-60 space-y-0.5 overflow-auto pr-1">
+                  {stackClusterKeys.map((k) => (
+                    <label
+                      key={k}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                    >
+                      <Checkbox
+                        checked={monthlySelectedClusters.includes(k)}
+                        onCheckedChange={() => toggleMonthlyClusterKey(k)}
+                        aria-label={k}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{k}</span>
+                    </label>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 h-8 w-full text-xs"
+                  onClick={() => {
+                    clearMonthlyClusterSelection();
+                    setMonthlyClusterPickerOpen(false);
+                  }}
+                >
+                  Показать все кластеры
+                </Button>
+              </PopoverContent>
+            </Popover>
+          </div>
         ) : null}
       </div>
 
-      <Tabs defaultValue="period" className="min-h-0 min-w-0">
+      <Tabs
+        value={allocationsSummaryTab}
+        onValueChange={(v) => setAllocationsSummaryTab(v as 'period' | 'monthly')}
+        className="min-h-0 min-w-0"
+      >
         <TabsList className="h-auto flex-wrap justify-start gap-1">
           <TabsTrigger value="period" className="text-xs sm:text-sm">
             За период
@@ -993,7 +1131,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
                   {highlightedInitiativeRows.length === 0 ? (
                     <p className="mt-1 text-muted-foreground">Нет сумм по выбранному кластеру.</p>
                   ) : (
-                    <div className="mt-1.5 max-h-28 space-y-1 overflow-auto pr-1">
+                    <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto pr-1 pb-1">
                       {highlightedInitiativeRows.map((row) => (
                         <p
                           key={row.initiative}
@@ -1136,84 +1274,121 @@ export function AdminQuickFlowCountryAllocationsSummary({
           </div>
         </TabsContent>
 
-        <TabsContent value="monthly" className="mt-4 min-w-0">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-              <p className="text-sm font-medium">Распределение по месяцам</p>
-              <div className="flex min-w-0 flex-col gap-1 sm:max-w-xs sm:flex-1 sm:items-end">
-                <span className="text-[11px] text-muted-foreground">Кластер</span>
-                <Select value={monthlyClusterFilter} onValueChange={setMonthlyClusterFilter}>
-                  <SelectTrigger className="h-9 w-full min-w-[12rem] sm:w-[min(100%,280px)]">
-                    <SelectValue placeholder="Кластер" />
-                  </SelectTrigger>
-                  <SelectContent position="popper" className="z-[60]">
-                    <SelectItem value={MONTHLY_FILTER_ALL}>Все кластеры</SelectItem>
-                    {stackClusterKeys.map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {k}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <p className="mb-3 text-[11px] leading-snug text-muted-foreground">
-              Квартальные суммы распределены равномерно по трём месяцам каждого квартала (упрощение до
-              помесячной отчётности).
-            </p>
-            {monthlyClusterFilter !== MONTHLY_FILTER_ALL && monthlyBarKeys.length === 0 ? (
+        <TabsContent value="monthly" className="mt-3 min-w-0">
+          <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
+            <p className="mb-2 text-sm font-medium">Распределение по месяцам</p>
+            {monthlySelectedClusters.length === 1 && monthlyBarKeys.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 По выбранному кластеру нет распределённых сумм за этот период.
               </p>
             ) : monthlyChartRows.length === 0 ? (
               <p className="text-sm text-muted-foreground">Нет данных за выбранные кварталы.</p>
             ) : (
-              <div
-                className="w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
-                style={{ height: monthlyChartHeight }}
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={monthlyChartRows}
-                    margin={{ top: 8, right: 12, left: 8, bottom: 8 }}
-                    barCategoryGap="18%"
-                    maxBarSize={56}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border) / 0.45)"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="monthLabel"
-                      type="category"
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <YAxis
-                      type="number"
-                      domain={[0, Math.max(monthlyMaxRub * 1.08, 1)]}
-                      tickFormatter={(v) => `${formatRubAxis(Number(v))} ₽`}
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      width={56}
-                    />
-                    <Tooltip
-                      content={<MonthlyStackTooltip />}
-                      cursor={{ fill: 'hsl(var(--muted) / 0.2)' }}
-                      shared={false}
-                    />
-                    {monthlyBarKeys.map((key, idx) => (
-                      <Bar
-                        key={key}
-                        dataKey={key}
-                        stackId="monthly"
-                        fill={fillForMonthlyBarKey(key, idx)}
-                        isAnimationActive={chartsAnimating}
-                        animationDuration={480}
-                        animationEasing="ease-out"
-                      />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="w-full min-w-0 overflow-x-auto rounded-xl bg-muted/15 p-2 ring-1 ring-border/40">
+                <div
+                  className="relative min-w-0"
+                  style={
+                    monthlyScrollMinWidth > 0 ? { minWidth: monthlyScrollMinWidth } : undefined
+                  }
+                >
+                  {monthlyHoveredLegendStat ? (
+                    <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-md border border-border bg-popover/95 px-2 py-1.5 text-[11px] text-popover-foreground shadow-sm">
+                      <p className="font-medium leading-snug">{monthlyHoveredLegendStat.key}</p>
+                      <p className="mt-0.5 tabular-nums text-muted-foreground">
+                        {Math.round(monthlyHoveredLegendStat.rub).toLocaleString('ru-RU')} ₽ (
+                        {monthlyHoveredLegendStat.pct.toFixed(1)}%)
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="h-[clamp(200px,34vh,320px)] w-full min-h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={monthlyChartRows}
+                        margin={{ top: 16, right: 10, left: 10, bottom: 22 }}
+                        barCategoryGap="10%"
+                        maxBarSize={34}
+                      >
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="hsl(var(--border) / 0.45)"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="monthLabel"
+                          type="category"
+                          interval={monthlyXAxisInterval}
+                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                          height={36}
+                        />
+                        <YAxis
+                          type="number"
+                          domain={[0, Math.max(monthlyMaxRub * 1.12, 1)]}
+                          tickFormatter={(v) => `${formatRubAxis(Number(v))} ₽`}
+                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                          width={62}
+                          tickMargin={6}
+                        />
+                        <Tooltip
+                          content={<MonthlyStackTooltip />}
+                          cursor={{ fill: 'hsl(var(--muted) / 0.2)' }}
+                          shared={false}
+                        />
+                        {monthlyBarKeys.map((key, idx) => (
+                          <Bar
+                            key={key}
+                            name={key}
+                            dataKey={key}
+                            stackId="monthly"
+                            fill={fillForMonthlyBarKey(key, idx)}
+                            isAnimationActive={chartsAnimating}
+                            animationDuration={480}
+                            animationEasing="ease-out"
+                          >
+                            {monthlyChartRows.map((_, rowIndex) => {
+                              const dim = monthlyLegendHoverKey != null && key !== monthlyLegendHoverKey;
+                              return (
+                                <Cell
+                                  key={`${key}-${rowIndex}`}
+                                  fill={fillForMonthlyBarKey(key, idx)}
+                                  fillOpacity={dim ? 0.28 : 1}
+                                  style={{ transition: 'fill-opacity 120ms ease' }}
+                                />
+                              );
+                            })}
+                          </Bar>
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {monthlyBarKeys.length > 0 ? (
+                    <div className="flex max-h-16 flex-nowrap gap-x-2 gap-y-1 overflow-x-auto overflow-y-hidden border-t border-border/60 py-2 pl-0.5 pr-1 pt-2">
+                      {monthlyBarKeys.map((key, idx) => (
+                        <button
+                          key={key}
+                          type="button"
+                          className={cn(
+                            'inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-background/90 px-2 py-0.5 text-[10px] leading-tight text-foreground shadow-sm transition-colors',
+                            monthlyLegendHoverKey === key
+                              ? 'border-primary ring-1 ring-primary/40'
+                              : 'border-border/70 hover:bg-muted/80'
+                          )}
+                          title={key}
+                          onMouseEnter={() => setMonthlyLegendHoverKey(key)}
+                          onMouseLeave={() => setMonthlyLegendHoverKey(null)}
+                          onFocus={() => setMonthlyLegendHoverKey(key)}
+                          onBlur={() => setMonthlyLegendHoverKey(null)}
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-sm ring-1 ring-black/10"
+                            style={{ backgroundColor: fillForMonthlyBarKey(key, idx) }}
+                            aria-hidden
+                          />
+                          <span className="max-w-[10rem] truncate">{key}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             )}
           </div>

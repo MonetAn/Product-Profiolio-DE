@@ -682,7 +682,6 @@ export default function AdminQuickFlow({
   hasQuickDraft,
   onSaveQuickDraft,
   isSavingQuickDraft,
-  onRequestExitQuick,
   step: stepProp,
   setStep: setStepProp,
   queueProgress,
@@ -975,11 +974,6 @@ export default function AdminQuickFlow({
     previewRows,
     filteredData,
   ]);
-
-  const handleBackToCoefficients = useCallback(() => {
-    if (onRequestExitQuick) onRequestExitQuick('backToStep1', () => setStep(stepCoeff));
-    else setStep(stepCoeff);
-  }, [onRequestExitQuick, setStep, stepCoeff]);
 
   const handleRunPreview = useCallback(async () => {
     if (!runSheetsPreviewCalculation) return;
@@ -1457,49 +1451,21 @@ export default function AdminQuickFlow({
                       </div>
                     )}
 
-                  <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
-                    {queueProgress && onSaveAndContinueQueue && (
-                      <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                        <Button
-                          className="gap-1.5 sm:order-first"
-                          disabled={queueActionLoading || isSavingQuickDraft}
-                          onClick={() => void onSaveAndContinueQueue()}
-                        >
-                          {queueActionLoading || isSavingQuickDraft
-                            ? 'Сохранение…'
-                            : queueProgress.current < queueProgress.total
-                              ? 'Сохранить и перейти к следующей команде'
-                              : 'Сохранить и завершить'}
-                        </Button>
-                        <p className="text-xs text-muted-foreground sm:self-center">
-                          {queueProgress.current < queueProgress.total
-                            ? 'При необходимости сначала сохраните черновик коэффициентов кнопкой ниже.'
-                            : 'После завершения вы вернётесь к выбору сценария.'}
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2">
-                      {hasQuickDraft && onSaveQuickDraft && (
-                        <>
-                          <span className="text-xs text-muted-foreground">Несохранённые изменения</span>
-                          <Button
-                            onClick={() => void onSaveQuickDraft()}
-                            disabled={isSavingQuickDraft}
-                            variant="secondary"
-                            size="sm"
-                          >
-                            {isSavingQuickDraft ? 'Сохранение…' : 'Только сохранить'}
-                          </Button>
-                        </>
-                      )}
-                      <Button type="button" variant="ghost" onClick={() => setStep(stepCountrySummary)}>
-                        Назад к сводке по аллокациям
-                      </Button>
-                      <Button onClick={handleBackToCoefficients} variant="ghost">
-                        Назад к коэффициентам
+                  {queueProgress && onSaveAndContinueQueue ? (
+                    <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+                      <Button
+                        className="gap-1.5 w-full sm:w-auto"
+                        disabled={queueActionLoading || isSavingQuickDraft}
+                        onClick={() => void onSaveAndContinueQueue()}
+                      >
+                        {queueActionLoading || isSavingQuickDraft
+                          ? 'Сохранение…'
+                          : queueProgress.current < queueProgress.total
+                            ? 'Сохранить и перейти к следующей команде'
+                            : 'Сохранить и завершить'}
                       </Button>
                     </div>
-                  </div>
+                  ) : null}
                 </section>
               </div>
             ) : null}

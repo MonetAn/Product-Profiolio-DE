@@ -61,8 +61,7 @@ type Props = {
   onNavigateToTreemap: () => void;
 };
 
-const LEVEL_CELL: Record<QuickFlowReadinessLevel, string> = {
-  na: 'bg-muted/55 text-muted-foreground border-border/60',
+const LEVEL_CELL: Record<Exclude<QuickFlowReadinessLevel, 'na'>, string> = {
   ok: 'bg-emerald-600/90 text-white border-emerald-700/50',
   warn: 'bg-rose-600/90 text-white border-rose-700/50',
   blocker: 'bg-rose-600/90 text-white border-rose-700/50',
@@ -106,19 +105,14 @@ export function AdminQuickFlowValidationStep({
   const counts = useMemo(() => {
     let ready = 0;
     let missing = 0;
-    let inactive = 0;
     for (const { cells } of matrix) {
       for (const { readiness } of cells) {
-        if (readiness.level === 'na') {
-          inactive += 1;
-        } else if (readiness.level === 'ok') {
-          ready += 1;
-        } else {
-          missing += 1;
-        }
+        if (readiness.level === 'na') continue;
+        if (readiness.level === 'ok') ready += 1;
+        else missing += 1;
       }
     }
-    return { ready, missing, inactive, active: ready + missing, total: ready + missing + inactive };
+    return { ready, missing };
   }, [matrix]);
 
   const [selection, setSelection] = useState<CellSelection | null>(null);
@@ -132,30 +126,17 @@ export function AdminQuickFlowValidationStep({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Проверка перед завершением</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Сверху — общий статус, ниже — матрица по инициативам и кварталам. Красный означает, что не заполнено хотя бы одно
-          обязательное поле. Зелёный — всё обязательное заполнено. Серые кварталы без усилий и стоимости не требуют действий.
-        </p>
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Проблемные ячейки</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-rose-700 dark:text-rose-300">{counts.missing}</p>
-        </div>
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Закрыто</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{counts.ready}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-muted/10 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Активные ячейки</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{counts.active}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-muted/10 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Неактивные ячейки</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-muted-foreground">{counts.inactive}</p>
+        <div className="flex flex-wrap items-stretch gap-2 text-sm">
+          <div className="flex items-baseline gap-2 rounded-md border border-rose-500/30 bg-rose-500/5 px-2.5 py-1">
+            <span className="text-muted-foreground">Проблемные</span>
+            <span className="font-semibold tabular-nums text-rose-700 dark:text-rose-300">{counts.missing}</span>
+          </div>
+          <div className="flex items-baseline gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1">
+            <span className="text-muted-foreground">Закрыто</span>
+            <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{counts.ready}</span>
+          </div>
         </div>
       </div>
 
@@ -200,15 +181,9 @@ export function AdminQuickFlowValidationStep({
                       ) : (
                         readiness.level === 'na' ? (
                           <div
-                            className={cn(
-                              'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums',
-                              LEVEL_CELL.na
-                            )}
-                            title={`${quarter}: нет усилий и стоимости`}
-                            aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, неактивно`}
-                          >
-                            —
-                          </div>
+                            className="mx-auto h-8 w-8 min-w-[2rem]"
+                            aria-hidden
+                          />
                         ) : readiness.level === 'ok' ? (
                           <div
                             className={cn(
@@ -247,7 +222,13 @@ export function AdminQuickFlowValidationStep({
       <Sheet open={selection != null} onOpenChange={(o) => !o && closeSheet()}>
         <SheetContent
           side="right"
-          className="flex h-full w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl md:max-w-2xl"
+          className={cn(
+            'flex flex-col gap-0 overflow-hidden p-0 shadow-xl',
+            // Почти на весь экран, с небольшими полями — видно затемнённый фон сзади
+            'rounded-xl',
+            '!inset-2 !h-[calc(100vh-1rem)] !max-h-[calc(100vh-1rem)] !w-auto !max-w-none sm:!max-w-none',
+            'md:!left-auto md:!right-2 md:!w-[min(96rem,calc(100vw-1rem))]'
+          )}
         >
           {selectedRow && selection ? (
             <ValidationCellPanel
@@ -305,7 +286,6 @@ function ValidationCellPanel({
   onClose: () => void;
 }) {
   const qd = useMemo(() => mergeQuarterData(row, quarter), [row, quarter]);
-  const readiness = useMemo(() => getQuickFlowCellReadiness(row, quarter), [row, quarter]);
   const effortTotal = useMemo(
     () => validateTeamQuarterEffort(teamRows, unit, team, quarter),
     [teamRows, unit, team, quarter]
@@ -330,19 +310,8 @@ function ValidationCellPanel({
     <>
       <SheetHeader className="shrink-0 space-y-1 border-b border-border px-6 py-4 pr-14 text-left">
         <SheetTitle className="text-base leading-snug pr-2">{row.initiative?.trim() || 'Инициатива'}</SheetTitle>
-        <SheetDescription asChild>
-          <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground tabular-nums">{quarter}</span>
-            {readiness.reasons.length > 0 ? (
-              <ul className="mt-2 list-disc space-y-0.5 pl-4">
-                {readiness.reasons.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            ) : readiness.level === 'ok' ? (
-              <p className="mt-1 text-emerald-600 dark:text-emerald-500">По правилам проверки всё заполнено.</p>
-            ) : null}
-          </div>
+        <SheetDescription className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground tabular-nums">{quarter}</span>
         </SheetDescription>
       </SheetHeader>
 
@@ -372,7 +341,7 @@ function ValidationCellPanel({
               }}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
-              Открыть коэффициенты
+              Вернуться к шагу
             </Button>
           </div>
           <div className="space-y-1.5">
@@ -413,7 +382,7 @@ function ValidationCellPanel({
                   onNavigateToTreemap();
                 }}
               >
-                Перейти к шагу
+                Вернуться к шагу
               </Button>
             </div>
             <div className="space-y-1.5">
@@ -502,7 +471,7 @@ function ValidationCellPanel({
                   onNavigateToTimeline();
                 }}
               >
-                Перейти к шагу
+                Вернуться к шагу
               </Button>
             </div>
             {qd.support ? (
@@ -556,7 +525,7 @@ function ValidationCellPanel({
                 }}
               >
                 <MapPin className="h-3.5 w-3.5" />
-                Перейти к шагу
+                Вернуться к шагу
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">

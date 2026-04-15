@@ -250,6 +250,7 @@
   position: absolute;
   height: 28px;
   border-radius: 4px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -274,37 +275,32 @@
   background: hsl(var(--support-color));
 }
 
-/* Off-track overlay - hatching */
+/* Off-track marker — soft corner in top-right */
 .gantt-segment.off-track {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 3px,
-    rgba(139, 0, 0, 0.4) 3px,
-    rgba(139, 0, 0, 0.4) 6px
-  );
+  background-image: none;
 }
 
 .gantt-segment.development.off-track {
   background-color: hsl(var(--development));
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 3px,
-    rgba(139, 0, 0, 0.4) 3px,
-    rgba(139, 0, 0, 0.4) 6px
-  );
+  background-image: none;
 }
 
 .gantt-segment.support.off-track {
   background-color: hsl(var(--support-color));
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 3px,
-    rgba(139, 0, 0, 0.4) 3px,
-    rgba(139, 0, 0, 0.4) 6px
-  );
+  background-image: none;
+}
+
+.gantt-segment.off-track::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  background: hsl(var(--destructive));
+  transform: translate(50%, -50%) rotate(45deg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /*
@@ -331,6 +327,9 @@ html.admin-engineering .gantt-segment.gantt-segment-admin-issue.support.off-trac
     rgba(0, 0, 0, 0.22) 3px,
     rgba(0, 0, 0, 0.22) 6px
   );
+}
+html.admin-engineering .gantt-segment.gantt-segment-admin-issue.off-track::after {
+  content: none;
 }
 
 html.admin-engineering .gantt-row-is-stub .gantt-segment.gantt-segment-admin-issue.development,
@@ -393,6 +392,10 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
     rgba(255, 255, 255, 0.22) 3px,
     rgba(255, 255, 255, 0.22) 6px
   );
+}
+.gantt-row-is-stub .gantt-segment.off-track::after {
+  width: 10px;
+  height: 10px;
 }
 
 /* Quarter details below segment */
