@@ -22,7 +22,6 @@ import {
 import {
   getUniqueUnits,
   getTeamsForUnits,
-  filterData,
   getUnitSummary,
   createEmptyQuarterData,
   AdminDataRow,
@@ -84,8 +83,20 @@ const Admin = () => {
   const { memberUnit, memberTeam, isAdmin } = useAccess();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Filter state from URL
+  const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    selectedUnits,
+    selectedTeams
+  } = useFilterParams();
+  const adminTableAll = searchParams.get('table') === 'all';
+
   // Data from Supabase (без default на data — иначе нельзя отличить «ещё не загружали» от «пустой список»)
-  const { data: initiativesData, isPending, error, refetch } = useInitiatives();
+  const { data: initiativesData, isPending, error, refetch } = useInitiatives({
+    units: selectedUnits,
+    teams: selectedTeams,
+    tableAll: adminTableAll,
+  });
   const rawData = initiativesData ?? [];
   const quarters = useQuarters(rawData);
   const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
@@ -117,23 +128,13 @@ const Admin = () => {
     marketCountries,
   });
 
-  // Filter state from URL
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { 
-    selectedUnits, 
-    selectedTeams, 
-    buildFilteredUrl 
-  } = useFilterParams();
   const [quickTeamQueue, setQuickTeamQueue] = useState<QuickTeamQueueState | null>(null);
 
   // Derived state (must be before canShowQuick / isQuickMode)
   const hasData = rawData.length > 0;
-  const adminTableAll = searchParams.get('table') === 'all';
   const units = getUniqueUnits(rawData);
   const teams = getTeamsForUnits(rawData, selectedUnits);
-  const filteredData = adminTableAll
-    ? rawData
-    : filterData(rawData, selectedUnits, selectedTeams);
+  const filteredData = rawData;
   const needsSelection = hasData && selectedUnits.length === 0 && !adminTableAll;
   const onlyUnitSelected = hasData && selectedUnits.length > 0 && selectedTeams.length === 0;
   const unitSummary = onlyUnitSelected ? getUnitSummary(rawData, selectedUnits) : [];

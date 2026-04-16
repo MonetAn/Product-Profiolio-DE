@@ -10,7 +10,34 @@ import {
 } from '@/lib/adminDataManager';
 import { Tables, Json } from '@/integrations/supabase/types';
 
-type DBInitiative = Tables<'initiatives'>;
+type DBInitiative = Pick<
+  Tables<'initiatives'>,
+  | 'id'
+  | 'unit'
+  | 'team'
+  | 'initiative'
+  | 'initiative_type'
+  | 'stakeholders_list'
+  | 'description'
+  | 'documentation_link'
+  | 'stakeholders'
+  | 'is_timeline_stub'
+  | 'quarterly_data'
+>;
+
+const INITIATIVE_SELECT_COLUMNS = [
+  'id',
+  'unit',
+  'team',
+  'initiative',
+  'initiative_type',
+  'stakeholders_list',
+  'description',
+  'documentation_link',
+  'stakeholders',
+  'is_timeline_stub',
+  'quarterly_data',
+].join(', ');
 
 export function parseAdminQuarterFromJson(
   quarterKey: string,
@@ -134,10 +161,31 @@ export function extractQuartersFromData(data: AdminDataRow[]): string[] {
 
 export const INITIATIVES_QUERY_KEY = ['initiatives'] as const;
 
-export async function fetchInitiatives(): Promise<AdminDataRow[]> {
-  const { data, error } = await supabase
-    .from('initiatives')
-    .select('*')
+export type InitiativesScope = {
+  units?: string[];
+  teams?: string[];
+  tableAll?: boolean;
+};
+
+function normalizeFilterValues(values: string[] | undefined): string[] {
+  if (!values?.length) return [];
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+export async function fetchInitiatives(scope?: InitiativesScope): Promise<AdminDataRow[]> {
+  const units = normalizeFilterValues(scope?.units);
+  const teams = normalizeFilterValues(scope?.teams);
+  const tableAll = scope?.tableAll === true;
+
+  let query = supabase.from('initiatives').select(INITIATIVE_SELECT_COLUMNS);
+  if (!tableAll && units.length > 0) {
+    query = query.in('unit', units);
+  }
+  if (!tableAll && teams.length > 0) {
+    query = query.in('team', teams);
+  }
+
+  const { data, error } = await query
     .order('unit')
     .order('team')
     .order('initiative');
@@ -148,10 +196,13 @@ export async function fetchInitiatives(): Promise<AdminDataRow[]> {
   return rows.map(row => normalizeSupportCascade(row, quarters));
 }
 
-export function useInitiatives() {
+export function useInitiatives(scope?: InitiativesScope) {
+  const units = normalizeFilterValues(scope?.units);
+  const teams = normalizeFilterValues(scope?.teams);
+  const tableAll = scope?.tableAll === true;
   return useQuery({
-    queryKey: INITIATIVES_QUERY_KEY,
-    queryFn: fetchInitiatives,
+    queryKey: [...INITIATIVES_QUERY_KEY, { units, teams, tableAll }],
+    queryFn: () => fetchInitiatives({ units, teams, tableAll }),
     staleTime: 1000 * 60 * 3, // 3 minutes — меньше повторных запросов при переходах
     gcTime: 1000 * 60 * 10, // 10 minutes in cache
     /** При refetch после сохранений не отдаём пустой снимок — избегаем «мигания» UI в Quick Flow */

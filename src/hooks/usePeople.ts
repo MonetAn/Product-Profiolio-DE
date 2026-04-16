@@ -4,6 +4,29 @@ import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
 import { normalizePersonRow, Person, ParsedPerson } from '@/lib/peopleDataManager';
 import { useToast } from '@/hooks/use-toast';
 
+const PEOPLE_SELECT_COLUMNS = [
+  'id',
+  'external_id',
+  'full_name',
+  'email',
+  'hr_structure',
+  'unit',
+  'team',
+  'position',
+  'leader',
+  'hired_at',
+  'terminated_at',
+  'created_at',
+  'updated_at',
+  'directory_source',
+  'manual_added_by',
+  'manual_added_by_name',
+  'manual_review_status',
+  'manual_resolved_at',
+  'manual_resolved_by',
+  'manual_resolved_by_name',
+].join(', ');
+
 function stripUndefinedInsert(row: Record<string, unknown>) {
   return Object.fromEntries(
     Object.entries(row).filter(([, v]) => v !== undefined)
@@ -32,7 +55,7 @@ export function usePeople() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('people')
-        .select('*')
+        .select(PEOPLE_SELECT_COLUMNS)
         .order('full_name');
       
       if (error) throw error;

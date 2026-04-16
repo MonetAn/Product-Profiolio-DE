@@ -5,6 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Json } from '@/integrations/supabase/types';
 import { AdminDataRow } from '@/lib/adminDataManager';
 
+const ASSIGNMENTS_SELECT_COLUMNS = ['id', 'person_id', 'initiative_id', 'quarterly_effort', 'is_auto', 'created_at', 'updated_at'].join(', ');
+
 // Fetch all assignments
 export function usePersonAssignments() {
   return useQuery({
@@ -12,7 +14,7 @@ export function usePersonAssignments() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('person_initiative_assignments')
-        .select('*');
+        .select(ASSIGNMENTS_SELECT_COLUMNS);
       
       if (error) throw error;
       
@@ -37,7 +39,7 @@ export function usePersonAssignmentsByPerson(personId: string | undefined) {
       
       const { data, error } = await supabase
         .from('person_initiative_assignments')
-        .select('*')
+        .select(ASSIGNMENTS_SELECT_COLUMNS)
         .eq('person_id', personId);
       
       if (error) throw error;
@@ -160,7 +162,7 @@ export function useAssignmentMutations() {
       // Get existing assignments for this initiative
       const { data: existingAssignments, error: fetchError } = await supabase
         .from('person_initiative_assignments')
-        .select('*')
+        .select('id, person_id, quarterly_effort, is_auto')
         .eq('initiative_id', initiative.id);
       
       if (fetchError) throw fetchError;

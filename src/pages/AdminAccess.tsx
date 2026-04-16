@@ -34,6 +34,19 @@ type AllowedUserRow = Database['public']['Tables']['allowed_users']['Row'];
 
 type TeamPair = { unit: string; team: string };
 
+const ALLOWED_USERS_SELECT_COLUMNS = [
+  'id',
+  'email',
+  'role',
+  'created_at',
+  'display_name',
+  'member_unit',
+  'member_team',
+  'allowed_units',
+  'allowed_team_pairs',
+  'can_view_money',
+].join(', ');
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NONE = '__none__';
 const ALL = '__all__';
@@ -143,7 +156,10 @@ export default function AdminAccess() {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('allowed_users').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('allowed_users')
+      .select(ALLOWED_USERS_SELECT_COLUMNS)
+      .order('created_at', { ascending: false });
     if (error) {
       toast({ title: 'Ошибка загрузки', description: error.message, variant: 'destructive' });
       setList([]);
@@ -288,7 +304,11 @@ export default function AdminAccess() {
     }
     toast({ title: 'Роль обновлена', description: `${row.email} — ${newRole === 'admin' ? 'админ' : 'пользователь'}` });
     if (scopeDialogUserId === id) {
-      const { data: fresh } = await supabase.from('allowed_users').select('*').eq('id', id).maybeSingle();
+      const { data: fresh } = await supabase
+        .from('allowed_users')
+        .select(ALLOWED_USERS_SELECT_COLUMNS)
+        .eq('id', id)
+        .maybeSingle();
       if (fresh) {
         if (fresh.role === 'admin') {
           setScopeFullAccess(true);

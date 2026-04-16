@@ -3,6 +3,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { Person } from '@/lib/peopleDataManager';
 
+const TEAM_SNAPSHOT_SELECT_COLUMNS = [
+  'id',
+  'unit',
+  'team',
+  'quarter',
+  'person_ids',
+  'source',
+  'imported_at',
+  'created_by',
+  'roster_confirmed_at',
+  'roster_confirmed_by',
+  'roster_confirmed_by_name',
+].join(', ');
+
 // ===== TYPES =====
 export interface TeamSnapshot {
   id: string;
@@ -233,7 +247,7 @@ export function useTeamSnapshots(units: string[], teams: string[]) {
       
       let query = supabase
         .from('team_quarter_snapshots')
-        .select('*');
+        .select(TEAM_SNAPSHOT_SELECT_COLUMNS);
       
       if (units.length > 0) {
         query = query.in('unit', units);

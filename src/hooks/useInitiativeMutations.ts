@@ -26,8 +26,22 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   quarterlyData: 'quarterly_data',
 };
 
+const SYNC_ASSIGNMENTS_PEOPLE_SELECT_COLUMNS = ['id'].join(', ');
+const SYNC_ASSIGNMENTS_EXISTING_SELECT_COLUMNS = ['id', 'person_id', 'quarterly_effort', 'is_auto'].join(', ');
+const SYNC_ASSIGNMENTS_WRITE_CHUNK = 20;
+
+function valuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== 'object' && typeof right !== 'object') return false;
+  try {
+    return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  } catch {
+    return false;
+  }
+}
+
 function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>): AdminDataRow {
-  let next = { ...row };
+  const next = { ...row };
   const p = patch;
   if (p.unit !== undefined) next.unit = p.unit as string;
   if (p.team !== undefined) next.team = p.team as string;
@@ -50,6 +64,7 @@ export function useInitiativeMutations() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const debounceTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const invalidateTimerRef = useRef<NodeJS.Timeout | null>(null);
   /** Сколько ближайших onSettled пропустить с отдельным invalidate — одна инвалидация в конце пакета (Quick Flow). */
   const bulkInitiativeInvalidateSkipsRef = useRef(0);
   const [pendingCount, setPendingCount] = useState(0);
@@ -59,6 +74,20 @@ export function useInitiativeMutations() {
   useEffect(() => {
     setPendingCount(debounceTimers.current.size);
   }, [debounceTimers.current.size]);
+
+  useEffect(() => {
+    return () => {
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    };
+  }, []);
+
+  const scheduleInitiativesInvalidate = useCallback((delayMs = 350) => {
+    if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    invalidateTimerRef.current = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      invalidateTimerRef.current = null;
+    }, delayMs);
+  }, [queryClient]);
 
   const updateMutation = useMutation({
     mutationFn: async (vars: { id: string; patch: Record<string, unknown> }) => {
@@ -106,11 +135,11 @@ export function useInitiativeMutations() {
       if (bulkInitiativeInvalidateSkipsRef.current > 0) {
         bulkInitiativeInvalidateSkipsRef.current -= 1;
         if (bulkInitiativeInvalidateSkipsRef.current === 0) {
-          queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+          scheduleInitiativesInvalidate(0);
         }
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      scheduleInitiativesInvalidate();
     },
   });
 
@@ -151,7 +180,7 @@ export function useInitiativeMutations() {
     },
     onSuccess: () => {
       setSyncStatus('synced');
-      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      scheduleInitiativesInvalidate();
     },
   });
 
@@ -184,7 +213,7 @@ export function useInitiativeMutations() {
     },
     onSuccess: () => {
       setSyncStatus('synced');
-      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      scheduleInitiativesInvalidate();
     },
   });
 
@@ -193,6 +222,10 @@ export function useInitiativeMutations() {
       const key = `${id}-${field}`;
       const existing = debounceTimers.current.get(key);
       if (existing) clearTimeout(existing);
+      const latest = queryClient.getQueryData<AdminDataRow[]>(['initiatives'])?.find((r) => r.id === id);
+      if (!latest) return;
+      const originalValue = (latest as unknown as Record<string, unknown>)[field];
+      if (valuesEqual(originalValue, value)) return;
 
       const dbColumn = FIELD_TO_COLUMN[field] || field;
 
@@ -211,9 +244,16 @@ export function useInitiativeMutations() {
           setPendingCount(debounceTimers.current.size);
           return;
         }
+        const latestValue = (latest as unknown as Record<string, unknown>)[field];
+        if (valuesEqual(latestValue, originalValue)) {
+          debounceTimers.current.delete(key);
+          if (debounceTimers.current.size === 0) setSyncStatus('synced');
+          setPendingCount(debounceTimers.current.size);
+          return;
+        }
         updateMutation.mutate({
           id,
-          patch: { [dbColumn]: value },
+          patch: { [dbColumn]: latestValue },
         });
         debounceTimers.current.delete(key);
         setPendingCount(debounceTimers.current.size);
@@ -230,7 +270,7 @@ export function useInitiativeMutations() {
       try {
         const { data: people, error: peopleError } = await supabase
           .from('people')
-          .select('*')
+          .select(SYNC_ASSIGNMENTS_PEOPLE_SELECT_COLUMNS)
           .eq('unit', initiative.unit)
           .eq('team', initiative.team)
           .is('terminated_at', null);
@@ -240,40 +280,56 @@ export function useInitiativeMutations() {
 
         const { data: existingAssignments, error: assignError } = await supabase
           .from('person_initiative_assignments')
-          .select('*')
+          .select(SYNC_ASSIGNMENTS_EXISTING_SELECT_COLUMNS)
           .eq('initiative_id', initiative.id);
 
         if (assignError) throw assignError;
 
         const existingByPerson = new Map((existingAssignments || []).map((a) => [a.person_id, a]));
 
-        let created = 0;
-        let updated = 0;
-
+        const inserts: Array<{ person_id: string; initiative_id: string; quarterly_effort: Json; is_auto: true }> = [];
+        const updates: Array<{ id: string; quarterly_effort: Json }> = [];
         for (const person of people as Person[]) {
           const existing = existingByPerson.get(person.id);
 
           if (!existing) {
-            await supabase.from('person_initiative_assignments').insert({
+            inserts.push({
               person_id: person.id,
               initiative_id: initiative.id,
               quarterly_effort: { [quarter]: effortValue } as unknown as Json,
               is_auto: true,
             });
-            created++;
           } else if (existing.is_auto) {
             const newEffort = {
               ...(existing.quarterly_effort as Record<string, number>),
               [quarter]: effortValue,
             };
-            await supabase
-              .from('person_initiative_assignments')
-              .update({ quarterly_effort: newEffort as unknown as Json })
-              .eq('id', existing.id);
-            updated++;
+            updates.push({ id: existing.id, quarterly_effort: newEffort as unknown as Json });
           }
         }
 
+        for (let i = 0; i < inserts.length; i += SYNC_ASSIGNMENTS_WRITE_CHUNK) {
+          const chunk = inserts.slice(i, i + SYNC_ASSIGNMENTS_WRITE_CHUNK);
+          const { error } = await supabase.from('person_initiative_assignments').insert(chunk);
+          if (error) throw error;
+        }
+        for (let i = 0; i < updates.length; i += SYNC_ASSIGNMENTS_WRITE_CHUNK) {
+          const chunk = updates.slice(i, i + SYNC_ASSIGNMENTS_WRITE_CHUNK);
+          const settled = await Promise.all(
+            chunk.map((u) =>
+              supabase
+                .from('person_initiative_assignments')
+                .update({ quarterly_effort: u.quarterly_effort })
+                .eq('id', u.id)
+            )
+          );
+          for (const res of settled) {
+            if (res.error) throw res.error;
+          }
+        }
+
+        const created = inserts.length;
+        const updated = updates.length;
         if (created > 0 || updated > 0) {
           queryClient.invalidateQueries({ queryKey: ['person_assignments'] });
           toast({
@@ -299,6 +355,7 @@ export function useInitiativeMutations() {
       if (!currentRow) return;
 
       const prevQ = currentRow.quarterlyData[quarter] || createEmptyQuarterData();
+      if (valuesEqual(prevQ[field], value)) return;
       const nextQuarter =
         field === 'costFinanceConfirmed'
           ? { ...prevQ, [field]: value as boolean }
@@ -428,10 +485,10 @@ export function useInitiativeMutations() {
   }, []);
 
   const retry = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+    scheduleInitiativesInvalidate(0);
     setSyncStatus('synced');
     setLastError(null);
-  }, [queryClient]);
+  }, [scheduleInitiativesInvalidate]);
 
   return {
     updateInitiative: debouncedUpdate,
