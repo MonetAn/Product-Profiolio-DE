@@ -1,8 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { TreemapContainer } from '@/components/treemap';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,8 +24,6 @@ import {
 } from '@/lib/adminDataManager';
 import { buildEffortTreemapPreviewModel } from '@/lib/adminEffortTreemapPreviewModel';
 import type { TreeNode } from '@/lib/dataManager';
-import { compareQuarters } from '@/lib/quarterUtils';
-
 const PREVIEW_ROOT = 'quick-review-root';
 
 export type DraftField =
@@ -101,13 +110,51 @@ export function AdminQuickFlowReviewTreemapStep({
   const [localName, setLocalName] = useState('');
   const [localDescription, setLocalDescription] = useState('');
   const [localDocLink, setLocalDocLink] = useState('');
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
   useEffect(() => {
-    if (!dialogRow) return;
-    setLocalName(dialogRow.initiative || '');
-    setLocalDescription(dialogRow.description || '');
-    setLocalDocLink(dialogRow.documentationLink || '');
-  }, [dialogRow?.id]);
+    if (!dialogRowId) return;
+    const row = rows.find((r) => r.id === dialogRowId);
+    if (!row) {
+      setDialogRowId(null);
+      return;
+    }
+    setLocalName(row.initiative || '');
+    setLocalDescription(row.description || '');
+    setLocalDocLink(row.documentationLink || '');
+    // Только при открытии по id — не привязываемся к rows, иначе сбросим ввод при каждом ререндере родителя
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogRowId]);
+
+  const isDirty = useMemo(() => {
+    if (!dialogRow) return false;
+    return (
+      localName !== (dialogRow.initiative || '') ||
+      localDescription !== (dialogRow.description || '') ||
+      localDocLink !== (dialogRow.documentationLink || '')
+    );
+  }, [dialogRow, localName, localDescription, localDocLink]);
+
+  const closeDialog = useCallback(() => {
+    setDialogRowId(null);
+    setDiscardConfirmOpen(false);
+  }, []);
+
+  const requestCloseDialog = useCallback(() => {
+    if (isDirty) {
+      setDiscardConfirmOpen(true);
+    } else {
+      closeDialog();
+    }
+  }, [closeDialog, isDirty]);
+
+  const saveAndClose = useCallback(() => {
+    if (!dialogRow || !draft) return;
+    draft(dialogRow.id, 'initiative', localName);
+    draft(dialogRow.id, 'description', localDescription);
+    draft(dialogRow.id, 'documentationLink', localDocLink);
+    closeDialog();
+  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName]);
 
   const treemapViewKey = `quick-flow-review-${previewPeriodQuarters.join(',')}-${model.contentKey.slice(0, 80)}`;
 
@@ -172,7 +219,13 @@ export function AdminQuickFlowReviewTreemapStep({
         )}
       </div>
 
-      <Dialog open={dialogRowId != null} onOpenChange={(o) => !o && setDialogRowId(null)}>
+      <Dialog
+        open={dialogRowId != null}
+        onOpenChange={(open) => {
+          if (open) return;
+          requestCloseDialog();
+        }}
+      >
         <DialogContent className="max-w-lg gap-0 border-border p-0 sm:max-w-lg">
           {dialogRow && draft ? (
             <>
@@ -188,7 +241,6 @@ export function AdminQuickFlowReviewTreemapStep({
                     id={`review-name-${dialogRow.id}`}
                     value={localName}
                     onChange={(e) => setLocalName(e.target.value)}
-                    onBlur={() => draft(dialogRow.id, 'initiative', localName)}
                     className="text-base font-medium"
                   />
                 </div>
@@ -200,7 +252,6 @@ export function AdminQuickFlowReviewTreemapStep({
                     id={`review-desc-${dialogRow.id}`}
                     value={localDescription}
                     onChange={(e) => setLocalDescription(e.target.value)}
-                    onBlur={() => draft(dialogRow.id, 'description', localDescription)}
                     className="min-h-[120px] resize-y"
                   />
                 </div>
@@ -218,7 +269,6 @@ export function AdminQuickFlowReviewTreemapStep({
                       id={`review-doc-${dialogRow.id}`}
                       value={localDocLink}
                       onChange={(e) => setLocalDocLink(e.target.value)}
-                      onBlur={() => draft(dialogRow.id, 'documentationLink', localDocLink)}
                       placeholder="https://…"
                       className="min-w-0 flex-1"
                     />
@@ -236,10 +286,39 @@ export function AdminQuickFlowReviewTreemapStep({
                   </div>
                 </div>
               </div>
+              <DialogFooter className="border-t border-border bg-muted/20 px-6 py-4 sm:justify-end">
+                <Button type="button" variant="outline" onClick={requestCloseDialog}>
+                  Отмена
+                </Button>
+                <Button type="button" onClick={saveAndClose}>
+                  Сохранить
+                </Button>
+              </DialogFooter>
             </>
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
+        <AlertDialogContent className="z-[60]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Закрыть без сохранения?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Изменения в названии, описании и ссылке не будут применены к черновику.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Остаться</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={closeDialog}
+            >
+              Закрыть без сохранения
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
