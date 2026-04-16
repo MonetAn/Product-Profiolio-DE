@@ -3,22 +3,23 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 /** Картинки: `public/mascots/portfolio-celebration/` — без двойного `.png.png`. */
-const DISCO_SRC = '/mascots/portfolio-celebration/disco.png';
+const CELEBRATION_ASSET_BASE = `${import.meta.env.BASE_URL}mascots/portfolio-celebration/`;
+const DISCO_SRC = `${CELEBRATION_ASSET_BASE}disco.png`;
 
 const FALL_SRCS = [
-  '/mascots/portfolio-celebration/ball-a.png',
-  '/mascots/portfolio-celebration/ball-b.png',
-  '/mascots/portfolio-celebration/ball-c.png',
-  '/mascots/portfolio-celebration/ball-d.png',
-  '/mascots/portfolio-celebration/ball-e.png',
-  '/mascots/portfolio-celebration/ball-f.png',
-  '/mascots/portfolio-celebration/ball-g.png',
-  '/mascots/portfolio-celebration/ball-h.png',
-  '/mascots/portfolio-celebration/ball-i.png',
-  '/mascots/portfolio-celebration/ball-j.png',
+  `${CELEBRATION_ASSET_BASE}ball-a.png`,
+  `${CELEBRATION_ASSET_BASE}ball-b.png`,
+  `${CELEBRATION_ASSET_BASE}ball-c.png`,
+  `${CELEBRATION_ASSET_BASE}ball-d.png`,
+  `${CELEBRATION_ASSET_BASE}ball-e.png`,
+  `${CELEBRATION_ASSET_BASE}ball-f.png`,
+  `${CELEBRATION_ASSET_BASE}ball-g.png`,
+  `${CELEBRATION_ASSET_BASE}ball-h.png`,
+  `${CELEBRATION_ASSET_BASE}ball-i.png`,
+  `${CELEBRATION_ASSET_BASE}ball-j.png`,
 ] as const;
 
-const DODO_SRC = '/mascots/portfolio-celebration/dodo-maskot.png';
+const DODO_SRC = `${CELEBRATION_ASSET_BASE}dodo-maskot.png`;
 
 /** Как у отрицательных коэффициентов: частичный выезд снизу. */
 const DODO_Y_HIDDEN_PCT = 78;
