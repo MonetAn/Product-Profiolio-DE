@@ -668,6 +668,100 @@ html.admin-engineering {
 }
 
 /* Сводка по аллокациям: без синей рамки фокуса на Recharts (клик / drag по SVG). */
+/* Quick flow: абсурдный экран «портфель заполнен» (маскоты + диско). */
+@keyframes admin-pf-celebrate-fall {
+  from {
+    transform: translate3d(0, -48vh, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, 120vh, 0) rotate(960deg);
+  }
+}
+@keyframes admin-pf-celebrate-fall-rev {
+  from {
+    transform: translate3d(0, -48vh, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(0, 120vh, 0) rotate(-960deg);
+  }
+}
+@keyframes admin-pf-celebrate-disco-swing {
+  0%,
+  100% {
+    transform: rotate(-11deg);
+  }
+  50% {
+    transform: rotate(11deg);
+  }
+}
+@keyframes admin-pf-celebrate-disco-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.admin-pf-celebrate-fall {
+  animation-name: admin-pf-celebrate-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-fill-mode: backwards;
+  will-change: transform;
+}
+.admin-pf-celebrate-fall-rev {
+  animation-name: admin-pf-celebrate-fall-rev;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-fill-mode: backwards;
+  will-change: transform;
+}
+.admin-pf-celebrate-disco-pendulum {
+  transform-origin: 50% 0;
+  animation: admin-pf-celebrate-disco-swing 2.9s ease-in-out infinite;
+}
+.admin-pf-celebrate-disco-arm {
+  transform-origin: center center;
+}
+.admin-pf-celebrate-disco-img {
+  animation: admin-pf-celebrate-disco-spin 3.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-pf-celebrate-fall,
+  .admin-pf-celebrate-fall-rev {
+    animation: none !important;
+    transform: translate3d(0, 35vh, 0) rotate(0deg);
+    animation-fill-mode: none !important;
+    opacity: 0.25;
+    will-change: auto;
+  }
+  .admin-pf-celebrate-disco-pendulum {
+    animation: none !important;
+  }
+  .admin-pf-celebrate-disco-img {
+    animation: none !important;
+  }
+}
+
+/* Портфель-праздник: Додо крутится в плоскости экрана, как диско-шар (ось Z). */
+@keyframes admin-pf-celebrate-dodo-flip-z {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.admin-pf-celebrate-dodo-flip {
+  animation: admin-pf-celebrate-dodo-flip-z 1.15s ease-in-out forwards;
+  transform-origin: center center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-pf-celebrate-dodo-flip {
+    animation: none !important;
+    transform: none;
+  }
+}
+
 .alloc-summary-charts svg,
 .alloc-summary-charts svg * {
   outline: none !important;

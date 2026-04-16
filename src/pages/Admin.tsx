@@ -52,6 +52,7 @@ import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
 import { AdminQuickFlowSetupScreen } from '@/components/admin/AdminQuickFlowSetupScreen';
 import { AdminQuickFlowRosterStep } from '@/components/admin/AdminQuickFlowRosterStep';
 import { AdminQuickFlowStepTrack } from '@/components/admin/AdminQuickFlowStepTrack';
+import { AdminQuickFlowPortfolioFilledCelebration } from '@/components/admin/AdminQuickFlowPortfolioFilledCelebration';
 import {
   ScenarioFootstepsIllustration,
   ScenarioTableIllustrationSlot,
@@ -200,6 +201,9 @@ const Admin = () => {
   const [exitConfirmState, setExitConfirmState] = useState<{ onProceed: () => void } | null>(null);
   const [quickStep, setQuickStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(1);
   const prevIsQuickModeRef = useRef(false);
+  /** Оверлей после успешного «Сохранить и завершить» в конце quick flow; «Продолжить» выполняет выход из режима. */
+  const [quickCompletionCelebrationOpen, setQuickCompletionCelebrationOpen] = useState(false);
+  const quickExitAfterCelebrationRef = useRef<(() => void) | null>(null);
 
   // Сбрасываем шаг только при **входе** в quick mode, а не при каждом canShowQuick === true.
   // Иначе кратковременный canShowQuick === false (рефетч без данных, мигание onlyUnitSelected и т.п.)
@@ -1002,6 +1006,13 @@ const Admin = () => {
     }, { replace: true });
   }, [setSearchParams]);
 
+  const handleQuickCompletionCelebrationDismiss = useCallback(() => {
+    setQuickCompletionCelebrationOpen(false);
+    const fn = quickExitAfterCelebrationRef.current;
+    quickExitAfterCelebrationRef.current = null;
+    fn?.();
+  }, []);
+
   const handleSaveAndContinueOrFinish = useCallback(async () => {
     const q = quickTeamQueue ?? readQuickTeamQueue();
     setQueueActionLoading(true);
@@ -1010,30 +1021,36 @@ const Admin = () => {
         await handleSaveQuickDraft({ silent: true });
       }
       if (!q || q.teams.length === 0) {
-        handleGoToFullTable();
-        toast({ title: 'Готово', description: 'Сценарий завершён.' });
+        quickExitAfterCelebrationRef.current = () => {
+          handleGoToFullTable();
+          toast({ title: 'Готово', description: 'Сценарий завершён.' });
+        };
+        setQuickCompletionCelebrationOpen(true);
         return;
       }
       const nextIdx = q.currentIndex + 1;
       if (nextIdx >= q.teams.length) {
-        clearQuickTeamQueue();
-        setQuickTeamQueue(null);
-        setCreatedInQuickSession([]);
-        setQuickStep(1);
-        setQuickFillInitiativeId(null);
-        setSearchParams((prev) => {
-          const p = new URLSearchParams(prev);
-          p.delete('mode');
-          p.delete('units');
-          p.delete('teams');
-          p.delete('table');
-          p.delete('quickQuarterFrom');
-          p.delete('quickQuarterTo');
-          p.delete('quickQuarter');
-          p.delete('quickQs');
-          return p;
-        });
-        toast({ title: 'Готово', description: 'Все выбранные команды пройдены.' });
+        quickExitAfterCelebrationRef.current = () => {
+          clearQuickTeamQueue();
+          setQuickTeamQueue(null);
+          setCreatedInQuickSession([]);
+          setQuickStep(1);
+          setQuickFillInitiativeId(null);
+          setSearchParams((prev) => {
+            const p = new URLSearchParams(prev);
+            p.delete('mode');
+            p.delete('units');
+            p.delete('teams');
+            p.delete('table');
+            p.delete('quickQuarterFrom');
+            p.delete('quickQuarterTo');
+            p.delete('quickQuarter');
+            p.delete('quickQs');
+            return p;
+          });
+          toast({ title: 'Готово', description: 'Все выбранные команды пройдены.' });
+        };
+        setQuickCompletionCelebrationOpen(true);
         return;
       }
       const updated = { ...q, currentIndex: nextIdx };
@@ -1239,6 +1256,10 @@ const Admin = () => {
       ) : null}
 
       <main className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
+        <AdminQuickFlowPortfolioFilledCelebration
+          open={quickCompletionCelebrationOpen}
+          onDismiss={handleQuickCompletionCelebrationDismiss}
+        />
         {!hasData ? (
           /* Empty state */
           <div className="flex-1 flex flex-col items-center justify-center p-8">

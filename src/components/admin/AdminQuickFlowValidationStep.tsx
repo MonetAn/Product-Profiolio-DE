@@ -185,16 +185,18 @@ export function AdminQuickFlowValidationStep({
                             aria-hidden
                           />
                         ) : readiness.level === 'ok' ? (
-                          <div
+                          <button
+                            type="button"
                             className={cn(
-                              'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums shadow-sm',
+                              'mx-auto flex h-8 w-8 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums shadow-sm transition-colors hover:brightness-95',
                               LEVEL_CELL.ok
                             )}
                             title={`${quarter}: всё обязательное заполнено`}
                             aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, заполнено`}
+                            onClick={() => setSelection({ rowId: row.id, quarter })}
                           >
                             ✓
-                          </div>
+                          </button>
                         ) : (
                           <button
                             type="button"

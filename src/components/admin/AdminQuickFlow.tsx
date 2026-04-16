@@ -747,7 +747,6 @@ export default function AdminQuickFlow({
   const [countrySplitIncompleteDialogOpen, setCountrySplitIncompleteDialogOpen] = useState(false);
   /** Шаг, на который перешли с «Проверки…» через «Вернуться к шагу» — вместо «Далее» показываем возврат к проверке. */
   const [validationRepairStep, setValidationRepairStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null>(null);
-
   const rosterStep = suppressRosterStep ? null : 1;
   const stepCoeff = suppressRosterStep ? 1 : 2;
   const stepTreemap = suppressRosterStep ? 2 : 3;
@@ -1544,16 +1543,16 @@ export default function AdminQuickFlow({
                       </div>
                     )}
 
-                  {queueProgress && onSaveAndContinueQueue ? (
+                  {onSaveAndContinueQueue ? (
                     <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
                       <Button
                         className="gap-1.5 w-full sm:w-auto"
-                        disabled={queueActionLoading || isSavingQuickDraft}
+                        disabled={queueActionLoading}
                         onClick={() => void onSaveAndContinueQueue()}
                       >
                         {queueActionLoading || isSavingQuickDraft
                           ? 'Сохранение…'
-                          : queueProgress.current < queueProgress.total
+                          : queueProgress && queueProgress.current < queueProgress.total
                             ? 'Сохранить и перейти к следующей команде'
                             : 'Сохранить и завершить'}
                       </Button>
