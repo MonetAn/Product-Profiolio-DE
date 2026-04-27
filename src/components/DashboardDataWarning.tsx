@@ -12,7 +12,7 @@ export function DashboardDataWarning() {
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-950" />
         <div className="text-sm font-semibold text-amber-950">
-          Данные на дашборде сейчас могут быть некорректными. Обновим их в ближайшее время.
+          Данные в дашборде сейчас не корректные. Обновим их как можно скорее
         </div>
       </div>
     </div>
