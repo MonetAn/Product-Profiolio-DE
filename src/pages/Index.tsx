@@ -10,6 +10,7 @@ import StakeholdersTreemap from '@/components/StakeholdersTreemap';
 import GanttView from '@/components/GanttView';
 import { InitiativePeekModal } from '@/components/InitiativePeekModal';
 import { LogoLoader } from '@/components/LogoLoader';
+import { DashboardDataWarning, SHOW_DASHBOARD_DATA_WARNING } from '@/components/DashboardDataWarning';
 import { useAuth } from '@/hooks/useAuth';
 import { useRecordDailyPresence } from '@/hooks/useRecordDailyPresence';
 import {
@@ -508,6 +509,9 @@ const Index = () => {
     return budget > 0 && isInitiativeOffTrack(row, selectedQuarters);
   });
 
+  const showDataWarningBanner =
+    SHOW_DASHBOARD_DATA_WARNING && (currentView === 'budget' || currentView === 'stakeholders');
+
   // Show loading state — не полноэкранный лоадер: shell уже ниже, в main покажем «Загрузка…»
   // (блок ниже удалён: return <MascotsLoadingScreen />)
 
@@ -673,6 +677,12 @@ const Index = () => {
                   }}
                   aria-hidden={!showContent}
                 >
+        {showDataWarningBanner && (
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-30">
+            <DashboardDataWarning />
+          </div>
+        )}
+
         {currentView === 'budget' && (
           <BudgetTreemap
             viewKey="budget"
