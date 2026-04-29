@@ -17,8 +17,10 @@ import {
   parseCSV,
   convertFromDB,
   buildBudgetTree,
+  buildBudgetDepartmentTree,
   buildStakeholdersTree,
   RawDataRow,
+  BudgetDepartmentAllocation,
   TreeNode,
   formatBudget,
   calculateBudget,
@@ -27,6 +29,7 @@ import {
 } from '@/lib/dataManager';
 import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import { useInitiatives } from '@/hooks/useInitiatives';
+import { useBudgetDepartmentAllocations } from '@/hooks/useBudgetDepartmentAllocations';
 import { useAccess } from '@/hooks/useAccess';
 import { toast } from 'sonner';
 
@@ -38,6 +41,7 @@ const Index = () => {
   const { isAdmin, canAccess, canViewMoney, scope } = useAccess();
   // Fetch data from database
   const { data: dbData, isLoading, error, refetch } = useInitiatives();
+  const { data: budgetDepartmentAllocations = [] } = useBudgetDepartmentAllocations();
   
   // Data state (derived from DB or CSV fallback)
   const [rawData, setRawData] = useState<RawDataRow[]>([]);
@@ -63,6 +67,8 @@ const Index = () => {
   const [selectedStakeholders, setSelectedStakeholders] = useState<string[]>([]);
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
+  const [showBudgetDepartments, setShowBudgetDepartments] = useState(false);
+  const [showOnlyPnlIt, setShowOnlyPnlIt] = useState(true);
   const [showMoney, setShowMoney] = useState(true);
   const effectiveShowMoney = canViewMoney && showMoney;
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
@@ -97,10 +103,23 @@ const Index = () => {
   const units = [...new Set(rawData.map(r => r.unit))].sort();
   const teams = [...new Set(rawData.filter(r => r.team).map(r => r.team))].sort();
 
+  const budgetAllocationsByInitiativeId = useMemo(() => {
+    const grouped: Record<string, BudgetDepartmentAllocation[]> = {};
+    budgetDepartmentAllocations.forEach((allocation) => {
+      if (!grouped[allocation.initiativeId]) grouped[allocation.initiativeId] = [];
+      grouped[allocation.initiativeId]!.push({
+        budgetDepartment: allocation.budgetDepartment,
+        isInPnlIt: allocation.isInPnlIt,
+        quarterlyBudget: allocation.quarterlyBudget,
+      });
+    });
+    return grouped;
+  }, [budgetDepartmentAllocations]);
+
   // Load data from database when available
   useEffect(() => {
     if (dbData && dbData.length > 0 && !isUsingCSV) {
-      const result = convertFromDB(dbData);
+      const result = convertFromDB(dbData, budgetAllocationsByInitiativeId);
       setRawData(result.rawData);
       setAvailableYears(result.availableYears);
       setAvailableQuarters(result.availableQuarters);
@@ -114,7 +133,7 @@ const Index = () => {
       
       console.log('Данные загружены из базы:', result.rawData.length, 'инициатив');
     }
-  }, [dbData, isUsingCSV]);
+  }, [dbData, isUsingCSV, budgetAllocationsByInitiativeId]);
 
   // По клику на логотип: полный сброс к начальному состоянию стартовой страницы
   useEffect(() => {
@@ -129,6 +148,8 @@ const Index = () => {
     setSelectedStakeholders([]);
     setShowTeams(false);
     setShowInitiatives(false);
+    setShowBudgetDepartments(false);
+    setShowOnlyPnlIt(true);
     setShowMoney(true);
     setHighlightedInitiative(null);
     setClickedNodeName(null);
@@ -166,17 +187,26 @@ const Index = () => {
       selectedUnits,
       selectedTeams,
       showTeams,
-      showInitiatives
+      showInitiatives,
+      showBudgetDepartments,
+      includeNonPnlBudgets: !showOnlyPnlIt,
     };
 
-    const tree = buildBudgetTree(rawData, options);
+    const tree =
+      currentView === 'budgetDepartments'
+        ? buildBudgetDepartmentTree(rawData, {
+            ...options,
+            // In budget-department view initiatives are the primary leaves.
+            showInitiatives: true,
+          })
+        : buildBudgetTree(rawData, options);
     const stakeholdersTree = buildStakeholdersTree(rawData, options);
 
     setPortfolioData(tree);
     setStakeholdersData(stakeholdersTree);
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showBudgetDepartments, showOnlyPnlIt]);
 
   useEffect(() => {
     if (rawData.length === 0) {
@@ -398,10 +428,9 @@ const Index = () => {
 
   // View switching
   const handleViewChange = (view: ViewType) => {
-    const from = currentView;
     setCurrentView(view);
     setNavigationStack([]);
-    setCurrentRoot(portfolioData);
+    setCurrentRoot(view === 'stakeholders' ? stakeholdersData : portfolioData);
     setHighlightedInitiative(null);
     // Treemap zoom path is tab-specific (budget: unit-first; clusters: stakeholder-first).
     // Reuse would mislabel the stakeholder filter with the budget unit segment.
@@ -417,13 +446,23 @@ const Index = () => {
     let team = '';
     let initiative = '';
     if (parts.length === 2) {
-      // Budget: Unit/Initiative (no teams)
-      unit = parts[0];
-      initiative = parts[1];
+      if (currentView === 'budgetDepartments') {
+        // Budget departments: Department/Initiative
+        initiative = parts[1];
+      } else {
+        // Budget: Unit/Initiative (no teams)
+        unit = parts[0];
+        initiative = parts[1];
+      }
     } else if (parts.length === 3 && currentView === 'budget') {
       // Budget: Unit/Team/Initiative
       const teamRaw = parts[1];
       unit = parts[0];
+      team = teamRaw === 'Без команды' ? '' : teamRaw;
+      initiative = parts[2];
+    } else if (parts.length === 3 && currentView === 'budgetDepartments') {
+      // Budget departments: Department/Team/Initiative
+      const teamRaw = parts[1];
       team = teamRaw === 'Без команды' ? '' : teamRaw;
       initiative = parts[2];
     } else if (parts.length === 3 && currentView === 'stakeholders') {
@@ -441,7 +480,7 @@ const Index = () => {
     return (
       rawData.find(
         (r) =>
-          r.unit === unit &&
+          (unit ? r.unit === unit : true) &&
           r.initiative === initiative &&
           (team !== '' ? (r.team || 'Без команды') === (team || 'Без команды') : true)
       ) ?? null
@@ -461,8 +500,9 @@ const Index = () => {
 
       switch (e.key) {
         case '1': handleViewChange('budget'); break;
-        case '2': handleViewChange('stakeholders'); break;
-        case '3': handleViewChange('timeline'); break;
+        case '2': handleViewChange('budgetDepartments'); break;
+        case '3': handleViewChange('stakeholders'); break;
+        case '4': handleViewChange('timeline'); break;
         case '/': e.preventDefault(); setShowSearch(true); break;
         case '?': setShowShortcuts(true); break;
         case 'r':
@@ -510,7 +550,8 @@ const Index = () => {
   });
 
   const showDataWarningBanner =
-    SHOW_DASHBOARD_DATA_WARNING && (currentView === 'budget' || currentView === 'stakeholders');
+    SHOW_DASHBOARD_DATA_WARNING &&
+    (currentView === 'budget' || currentView === 'budgetDepartments' || currentView === 'stakeholders');
 
   // Show loading state — не полноэкранный лоадер: shell уже ниже, в main покажем «Загрузка…»
   // (блок ниже удалён: return <MascotsLoadingScreen />)
@@ -617,8 +658,12 @@ const Index = () => {
         rawData={rawData}
         showTeams={showTeams}
         showInitiatives={showInitiatives}
+        showBudgetDepartments={showBudgetDepartments}
         onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
         onShowInitiativesChange={(v) => { setShowInitiatives(v); if (!v) autoEnabledRef.current.initiatives = false; else autoEnabledRef.current.initiatives = false; }}
+        onShowBudgetDepartmentsChange={setShowBudgetDepartments}
+        showOnlyPnlIt={showOnlyPnlIt}
+        onShowOnlyPnlItChange={setShowOnlyPnlIt}
         canViewMoney={canViewMoney}
         showMoney={effectiveShowMoney}
         onShowMoneyChange={canViewMoney ? setShowMoney : () => {}}
@@ -683,16 +728,16 @@ const Index = () => {
           </div>
         )}
 
-        {currentView === 'budget' && (
+        {(currentView === 'budget' || currentView === 'budgetDepartments') && (
           <BudgetTreemap
-            viewKey="budget"
-            contentKey={`${supportFilter}-${showOnlyOfftrack}-${hideStubs}`}
+            viewKey={currentView}
+            contentKey={`${currentView}-${supportFilter}-${showOnlyOfftrack}-${hideStubs}-${showOnlyPnlIt}-${showBudgetDepartments}`}
             data={currentRoot}
             onDrillDown={drillDown}
             onNavigateUp={navigateUp}
             showBackButton={navigationStack.length > 0}
             showTeams={showTeams}
-            showInitiatives={showInitiatives}
+            showInitiatives={currentView === 'budgetDepartments' ? true : showInitiatives}
             onUploadClick={() => fileInputRef.current?.click()}
             selectedQuarters={selectedQuarters}
             onNavigateBack={handleNavigateBack}
@@ -855,9 +900,10 @@ const Index = () => {
             </div>
             <div className="p-4 space-y-2">
               {[
-                ['Вкладка Бюджет', '1'],
-                ['Вкладка Кластеры', '2'],
-                ['Вкладка Таймлайн', '3'],
+                ['Вкладка По HR структуре', '1'],
+                ['Вкладка По бюджетному подразделению', '2'],
+                ['Вкладка Кластеры', '3'],
+                ['Вкладка Таймлайн', '4'],
                 ['Поиск', '/'],
                 ['Сбросить фильтры', 'Shift+R'],
                 ['Наверх / Закрыть', 'Esc']

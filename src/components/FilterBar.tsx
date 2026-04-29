@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { RawDataRow, calculateBudget, calculateTotalBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -40,8 +40,12 @@ interface FilterBarProps {
   // Nesting toggles
   showTeams: boolean;
   showInitiatives: boolean;
+  showBudgetDepartments?: boolean;
   onShowTeamsChange: (val: boolean) => void;
   onShowInitiativesChange: (val: boolean) => void;
+  onShowBudgetDepartmentsChange?: (val: boolean) => void;
+  showOnlyPnlIt?: boolean;
+  onShowOnlyPnlItChange?: (val: boolean) => void;
   showMoney: boolean;
   onShowMoneyChange: (val: boolean) => void;
   /** If false, money checkbox and cost filter are hidden; user cannot see money */
@@ -57,7 +61,7 @@ interface FilterBarProps {
   hideNestingToggles?: boolean;
 
   /** Влияет на зум тримапы и на применение фильтра стоимости (только таймлайн) */
-  currentView?: 'budget' | 'stakeholders' | 'timeline';
+  currentView?: 'budget' | 'budgetDepartments' | 'stakeholders' | 'timeline';
   
   // Reset filters
   onResetFilters?: () => void;
@@ -116,8 +120,12 @@ const FilterBar = ({
   rawData,
   showTeams,
   showInitiatives,
+  showBudgetDepartments = false,
   onShowTeamsChange,
   onShowInitiativesChange,
+  onShowBudgetDepartmentsChange,
+  showOnlyPnlIt = true,
+  onShowOnlyPnlItChange,
   showMoney,
   onShowMoneyChange,
   canViewMoney = true,
@@ -230,7 +238,9 @@ const FilterBar = ({
   const totals = useMemo(() => {
     return rawData.reduce(
       (acc, row) => {
-        const periodBudget = calculateBudget(row, selectedQuarters);
+        const periodBudget = calculateBudget(row, selectedQuarters, {
+          includeNonPnlBudgets: !showOnlyPnlIt,
+        });
         if (periodBudget === 0) return acc;
 
         const isSupport = isInitiativeSupport(row, selectedQuarters);
@@ -263,7 +273,17 @@ const FilterBar = ({
         }
 
         if (currentView === 'timeline') {
-          const costValue = costType === 'period' ? periodBudget : calculateTotalBudget(row);
+          const costValue =
+            costType === 'period'
+              ? periodBudget
+              : Object.keys(row.quarterlyData || {}).reduce((sum, quarter) => {
+                  return (
+                    sum +
+                    calculateBudget(row, [quarter], {
+                      includeNonPnlBudgets: !showOnlyPnlIt,
+                    })
+                  );
+                }, 0);
           if (costFilterMin !== null && costValue < costFilterMin) return acc;
           if (costFilterMax !== null && costValue > costFilterMax) return acc;
         }
@@ -307,6 +327,7 @@ const FilterBar = ({
     costFilterMin,
     costFilterMax,
     costType,
+    showOnlyPnlIt,
   ]);
 
   const splitGrand =
@@ -909,6 +930,20 @@ const FilterBar = ({
                   </Tooltip>
                 </TooltipProvider>
               )}
+              {onShowOnlyPnlItChange && (
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyPnlIt}
+                    onChange={(e) => onShowOnlyPnlItChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showOnlyPnlIt ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {showOnlyPnlIt && <Check size={10} />}
+                  </span>
+                  <span>Только PnL IT</span>
+                </label>
+              )}
               <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                 <input
                   type="checkbox"
@@ -921,18 +956,34 @@ const FilterBar = ({
                 </span>
                 <span>Команды</span>
               </label>
-              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                <input
-                  type="checkbox"
-                  checked={showInitiatives}
-                  onChange={(e) => onShowInitiativesChange(e.target.checked)}
-                  className="hidden"
-                />
-                <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                  {showInitiatives && <Check size={10} />}
-                </span>
-                <span>Инициативы</span>
-              </label>
+              {currentView !== 'budgetDepartments' && (
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showInitiatives}
+                    onChange={(e) => onShowInitiativesChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {showInitiatives && <Check size={10} />}
+                  </span>
+                  <span>Инициативы</span>
+                </label>
+              )}
+              {currentView === 'budget' && showInitiatives && onShowBudgetDepartmentsChange && (
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showBudgetDepartments}
+                    onChange={(e) => onShowBudgetDepartmentsChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showBudgetDepartments ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {showBudgetDepartments && <Check size={10} />}
+                  </span>
+                  <span>Бюдж. подразделения</span>
+                </label>
+              )}
             </>
           )}
 
