@@ -21,6 +21,7 @@ interface AdminHeaderProps {
   initiativeCount?: number;
   totalInitiativeCount?: number;
   peopleCount?: number;
+  hasData?: boolean;
   hasFilters?: boolean;
   onImportClick?: () => void;
   onDownloadAll?: () => void;
@@ -35,6 +36,7 @@ const AdminHeader = ({
   currentView,
   initiativeCount = 0,
   totalInitiativeCount = 0,
+  hasData = false,
   hasFilters = false,
   onImportClick,
   onDownloadAll,
