@@ -12,6 +12,7 @@ import {
   formatBudget,
   parseStakeholderParts,
   periodEffortSum,
+  type PreliminaryQuarterBudgetMap,
   type SupportFilter
 } from '@/lib/dataManager';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
@@ -47,6 +48,9 @@ interface GanttViewProps {
   onResetFilters?: () => void;
   /** If false, hide all budget/cost amounts (popups, row costs, cells, legend) */
   showMoney?: boolean;
+  /** Super admin preview mode: учитывать предварительные стоимости */
+  includePreliminaryData?: boolean;
+  preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
   // Cost filter props
   costSortOrder?: 'none' | 'asc' | 'desc';
   costFilterMin?: number | null;
@@ -73,6 +77,8 @@ const GanttView = ({
   highlightedInitiative,
   onResetFilters,
   showMoney = true,
+  includePreliminaryData = false,
+  preliminaryQuarterBudgetMap,
   costSortOrder = 'none',
   costFilterMin = null,
   costFilterMax = null,
@@ -121,7 +127,10 @@ const GanttView = ({
   // Filter data based on current filters
   const filteredData = useMemo(() => {
     let result = rawData.filter(row => {
-      const periodBudget = calculateBudget(row, selectedQuarters);
+      const periodBudget = calculateBudget(row, selectedQuarters, {
+        includePreliminaryData,
+        preliminaryQuarterBudgetMap,
+      });
       const periodEffort = periodEffortSum(row, selectedQuarters);
       if (periodBudget === 0 && periodEffort <= 0) return false;
 
@@ -152,10 +161,16 @@ const GanttView = ({
     if (costSortOrder !== 'none') {
       result = [...result].sort((a, b) => {
         const costA = costType === 'period'
-          ? calculateBudget(a, selectedQuarters)
+          ? calculateBudget(a, selectedQuarters, {
+              includePreliminaryData,
+              preliminaryQuarterBudgetMap,
+            })
           : calculateTotalBudget(a);
         const costB = costType === 'period'
-          ? calculateBudget(b, selectedQuarters)
+          ? calculateBudget(b, selectedQuarters, {
+              includePreliminaryData,
+              preliminaryQuarterBudgetMap,
+            })
           : calculateTotalBudget(b);
 
         return costSortOrder === 'asc' ? costA - costB : costB - costA;
@@ -168,7 +183,7 @@ const GanttView = ({
     result = [...nonStubs, ...stubs];
 
     return result;
-  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
+  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType, includePreliminaryData, preliminaryQuarterBudgetMap]);
 
   // Scroll to highlighted initiative
   useEffect(() => {
@@ -537,7 +552,10 @@ const GanttView = ({
 
     const { row, x, y, pinned } = namePopup;
     const totalCost = calculateTotalBudget(row);
-    const periodCost = calculateBudget(row, selectedQuarters);
+    const periodCost = calculateBudget(row, selectedQuarters, {
+      includePreliminaryData,
+      preliminaryQuarterBudgetMap,
+    });
     const allQuarters = getInitiativeQuarters(row);
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const descriptionLong = row.description && row.description.length > 450;
@@ -687,7 +705,10 @@ const GanttView = ({
           <div className="gantt-rows-block">
         {filteredData.map((row, idx) => {
           const totalCost = calculateTotalBudget(row);
-          const periodCost = calculateBudget(row, selectedQuarters);
+          const periodCost = calculateBudget(row, selectedQuarters, {
+            includePreliminaryData,
+            preliminaryQuarterBudgetMap,
+          });
           const allQuarters = getInitiativeQuarters(row);
           const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
           const isHighlighted = highlightedInitiative === row.initiative;

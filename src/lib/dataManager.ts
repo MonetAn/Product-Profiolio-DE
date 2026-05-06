@@ -29,10 +29,21 @@ export interface RawDataRow {
   budgetDepartmentAllocations?: BudgetDepartmentAllocation[];
 }
 
+export type PreliminaryQuarterBudgetMap = Map<string, Record<string, number>>;
+
 export interface BudgetDepartmentAllocation {
   budgetDepartment: string;
   isInPnlIt: boolean;
   quarterlyBudget: Record<string, number>;
+}
+
+export function rawRowBudgetMapKey(
+  row: Pick<RawDataRow, 'adminInitiativeRowId' | 'unit' | 'team' | 'initiative'>
+): string {
+  if (row.adminInitiativeRowId && row.adminInitiativeRowId.trim().length > 0) {
+    return row.adminInitiativeRowId;
+  }
+  return `${row.unit}\u001f${row.team}\u001f${row.initiative}`;
 }
 
 export interface TreeNode {
@@ -395,21 +406,136 @@ export function parseCSV(text: string): {
 }
 
 // ===== BUDGET CALCULATION =====
+function calculateQuarterBudgetBase(
+  row: RawDataRow,
+  quarter: string,
+  includeNonPnlBudgets: boolean
+): number {
+  const allAllocations = row.budgetDepartmentAllocations || [];
+  const allocations = includeNonPnlBudgets
+    ? allAllocations
+    : allAllocations.filter((allocation) => allocation.isInPnlIt);
+
+  if (allocations.length > 0) {
+    return allocations.reduce((sum, allocation) => sum + (allocation.quarterlyBudget[quarter] || 0), 0);
+  }
+
+  if (/^2026-Q[1-4]$/i.test(quarter)) return 0;
+  return row.quarterlyData[quarter]?.budget || 0;
+}
+
+export function buildPreliminaryQuarterBudgetMap(
+  rawData: RawDataRow[],
+  quarters: string[],
+  options?: { includeNonPnlBudgets?: boolean }
+): PreliminaryQuarterBudgetMap {
+  const includeNonPnlBudgets = options?.includeNonPnlBudgets ?? false;
+  const result: PreliminaryQuarterBudgetMap = new Map();
+  if (rawData.length === 0 || quarters.length === 0) return result;
+
+  for (const quarter of quarters) {
+    const groupBuckets = new Map<
+      string,
+      Array<{ rowKey: string; baseline: number; candidate: number; preliminary: boolean }>
+    >();
+
+    for (const row of rawData) {
+      const rowKey = rawRowBudgetMapKey(row);
+      const baseline = calculateQuarterBudgetBase(row, quarter, includeNonPnlBudgets);
+      const candidate = Math.max(0, Number(row.quarterlyData[quarter]?.budget || 0));
+      const preliminary = row.quarterlyData[quarter]?.costFinanceConfirmed === false;
+      const groupKey = `${row.unit}\u001f${row.team}`;
+      const list = groupBuckets.get(groupKey) ?? [];
+      list.push({ rowKey, baseline, candidate, preliminary });
+      groupBuckets.set(groupKey, list);
+    }
+
+    for (const entries of groupBuckets.values()) {
+      const hasPreliminary = entries.some((x) => x.preliminary);
+      const baselineTotal = entries.reduce((s, x) => s + x.baseline, 0);
+      if (!hasPreliminary || baselineTotal <= 0) {
+        for (const e of entries) {
+          const byQ = result.get(e.rowKey) ?? {};
+          byQ[quarter] = e.baseline;
+          result.set(e.rowKey, byQ);
+        }
+        continue;
+      }
+
+      const candidateTotal = entries.reduce((s, x) => s + x.candidate, 0);
+      if (candidateTotal <= 0) {
+        for (const e of entries) {
+          const byQ = result.get(e.rowKey) ?? {};
+          byQ[quarter] = e.baseline;
+          result.set(e.rowKey, byQ);
+        }
+        continue;
+      }
+
+      for (const e of entries) {
+        const byQ = result.get(e.rowKey) ?? {};
+        byQ[quarter] = (e.candidate / candidateTotal) * baselineTotal;
+        result.set(e.rowKey, byQ);
+      }
+    }
+  }
+
+  return result;
+}
+
 export function calculateBudget(
   row: RawDataRow,
   selectedQuarters: string[],
-  options?: { includeNonPnlBudgets?: boolean }
+  options?: {
+    includeNonPnlBudgets?: boolean;
+    includePreliminaryData?: boolean;
+    preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  }
 ): number {
   const includeNonPnlBudgets = options?.includeNonPnlBudgets ?? false;
+  const includePreliminaryData = options?.includePreliminaryData ?? false;
+  const preliminaryQuarterBudgetMap = options?.preliminaryQuarterBudgetMap;
+  if (includePreliminaryData && preliminaryQuarterBudgetMap) {
+    const rowKey = rawRowBudgetMapKey(row);
+    const byQuarter = preliminaryQuarterBudgetMap.get(rowKey);
+    if (byQuarter) {
+      return selectedQuarters.reduce((sum, quarter) => {
+        if (Object.prototype.hasOwnProperty.call(byQuarter, quarter)) {
+          return sum + (byQuarter[quarter] || 0);
+        }
+        return sum + calculateQuarterBudgetBase(row, quarter, includeNonPnlBudgets);
+      }, 0);
+    }
+  }
   const allAllocations = row.budgetDepartmentAllocations || [];
+
+  const allocations = includeNonPnlBudgets
+    ? allAllocations
+    : allAllocations.filter((allocation) => allocation.isInPnlIt);
+
+  if (includePreliminaryData) {
+    return selectedQuarters.reduce((sum, quarter) => {
+      const qData = row.quarterlyData[quarter];
+      if (qData?.costFinanceConfirmed === false) {
+        return sum + (qData.budget || 0);
+      }
+
+      if (allocations.length > 0) {
+        const fromAllocations = allocations.reduce(
+          (quarterSum, allocation) => quarterSum + (allocation.quarterlyBudget[quarter] || 0),
+          0
+        );
+        return sum + fromAllocations;
+      }
+
+      if (/^2026-Q[1-4]$/i.test(quarter)) return sum;
+      return sum + (qData?.budget || 0);
+    }, 0);
+  }
 
   // If split allocations exist for this initiative, always use them.
   // Otherwise PnL filter would silently fall back to quarterly_data and not hide false rows.
-  if (allAllocations.length > 0) {
-    const allocations = includeNonPnlBudgets
-      ? allAllocations
-      : allAllocations.filter((allocation) => allocation.isInPnlIt);
-
+  if (allocations.length > 0) {
     return allocations.reduce((sum, allocation) => {
       return (
         sum +
@@ -446,7 +572,11 @@ export function periodEffortSum(row: RawDataRow, selectedQuarters: string[]): nu
 export function treemapLeafValue(
   row: RawDataRow,
   selectedQuarters: string[],
-  options?: { includeNonPnlBudgets?: boolean }
+  options?: {
+    includeNonPnlBudgets?: boolean;
+    includePreliminaryData?: boolean;
+    preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  }
 ): number {
   const rub = calculateBudget(row, selectedQuarters, options);
   if (rub > 0) return rub;
@@ -527,6 +657,8 @@ export interface BuildTreeOptions {
   showTeams?: boolean;
   showInitiatives?: boolean;
   includeNonPnlBudgets?: boolean;
+  includePreliminaryData?: boolean;
+  preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
 }
 
 export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
@@ -556,7 +688,11 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions): boolean {
   const qs = options.selectedQuarters;
   const includeNonPnlBudgets = options.includeNonPnlBudgets ?? false;
   if (
-    calculateBudget(row, qs, { includeNonPnlBudgets }) <= 0 &&
+    calculateBudget(row, qs, {
+      includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
+    }) <= 0 &&
     periodEffortSum(row, qs) <= 0
   )
     return false;
@@ -588,6 +724,8 @@ function buildUnitsOnlyTree(rawData: RawDataRow[], options: BuildTreeOptions): T
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
     if (!shouldIncludeRow(row, options)) return;
 
@@ -630,6 +768,8 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
     if (!shouldIncludeRow(row, options)) return;
 
@@ -682,6 +822,8 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
 
     if (!unitMap[row.unit]) {
@@ -734,6 +876,8 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
 
     if (!unitMap[row.unit]) {
@@ -985,6 +1129,8 @@ function buildStakeholdersUnitsOnlyTree(rawData: RawDataRow[], options: BuildTre
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
     if (!shouldIncludeRow(row, options)) return;
 
@@ -1035,6 +1181,8 @@ function buildStakeholdersUnitsTeamsTree(rawData: RawDataRow[], options: BuildTr
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
     if (!shouldIncludeRow(row, options)) return;
 
@@ -1107,6 +1255,8 @@ function buildStakeholdersFullTree(rawData: RawDataRow[], options: BuildTreeOpti
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
 
     if (!stakeholderMap[stakeholderKey]) {
@@ -1195,6 +1345,8 @@ function buildStakeholdersUnitsInitiativesTree(rawData: RawDataRow[], options: B
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
+      includePreliminaryData: options.includePreliminaryData,
+      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
     });
 
     if (!stakeholderMap[stakeholderKey]) {

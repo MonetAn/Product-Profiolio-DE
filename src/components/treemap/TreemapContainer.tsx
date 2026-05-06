@@ -56,6 +56,8 @@ interface TreemapContainerProps {
   treemapQuarterCatalog?: string[];
   /** Курсор над ячейками (например `default`, если тремап только для просмотра). */
   nodeCursor?: CSSProperties['cursor'];
+  /** Показывать предупреждение о предварительных данных в тултипе инициативы */
+  showPreliminaryWarnings?: boolean;
 }
 
 const TreemapContainer = ({
@@ -92,6 +94,7 @@ const TreemapContainer = ({
   tooltipInitiativeVariant = 'default',
   treemapQuarterCatalog,
   nodeCursor = 'pointer',
+  showPreliminaryWarnings = false,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -575,6 +578,7 @@ const TreemapContainer = ({
         showMoney={showMoney}
         tooltipInitiativeVariant={tooltipInitiativeVariant}
         docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
+        showPreliminaryWarnings={showPreliminaryWarnings}
       />
       
       {/* Framer Motion treemap rendering */}

@@ -11,6 +11,9 @@ import {
   RawDataRow,
   calculateBudget,
   formatBudget,
+  hasPreliminaryQuarterInPeriod,
+  PRELIMINARY_COST_USER_MESSAGE,
+  type PreliminaryQuarterBudgetMap,
 } from '@/lib/dataManager';
 import { AlertCircle, CheckCircle2, ExternalLink, Pencil } from 'lucide-react';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
@@ -22,6 +25,9 @@ interface InitiativePeekModalProps {
   selectedQuarters: string[];
   /** If false, hide the cost section */
   showMoney?: boolean;
+  /** Super admin preview mode: учитывать предварительные стоимости */
+  includePreliminaryData?: boolean;
+  preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
   /** С дашборда: перейти на вкладку таймлайна */
   onGoToTimeline?: (initiativeName: string) => void;
   /** Quick flow: после просмотра как у пользователя — открыть редактирование карточки */
@@ -39,6 +45,8 @@ export function InitiativePeekModal({
   row,
   selectedQuarters,
   showMoney = true,
+  includePreliminaryData = false,
+  preliminaryQuarterBudgetMap,
   onGoToTimeline,
   onEditCard,
   missingCardFields,
@@ -129,9 +137,17 @@ export function InitiativePeekModal({
                   </h3>
                   <p className="text-sm font-medium">
                     {selectedQuarters.length > 0
-                      ? formatBudget(calculateBudget(row, selectedQuarters))
+                      ? formatBudget(
+                          calculateBudget(row, selectedQuarters, {
+                            includePreliminaryData,
+                            preliminaryQuarterBudgetMap,
+                          })
+                        )
                       : '—'}
                   </p>
+                  {includePreliminaryData && hasPreliminaryQuarterInPeriod(row, selectedQuarters) ? (
+                    <p className="mt-1 text-xs text-muted-foreground">{PRELIMINARY_COST_USER_MESSAGE}</p>
+                  ) : null}
                 </section>
               )}
 

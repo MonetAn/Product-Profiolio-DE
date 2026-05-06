@@ -7,6 +7,7 @@ import {
   formatBudget,
   escapeHtml,
   formatQuarterRange,
+  PRELIMINARY_COST_USER_MESSAGE,
 } from '@/lib/dataManager';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,8 @@ interface TreemapTooltipProps {
   tooltipInitiativeVariant?: 'default' | 'descriptionDocReview';
   /** Для descriptionDocReview: показывать «за выбранный период» у суммы (false — выбран весь каталог кварталов). */
   docReviewShowCostPeriodNote?: boolean;
+  /** Показывать маркер предварительных значений (super_admin preview mode) */
+  showPreliminaryWarnings?: boolean;
 }
 
 export type { TreemapTooltipProps };
@@ -59,6 +62,7 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
     showMoney = true,
     tooltipInitiativeVariant = 'default',
     docReviewShowCostPeriodNote = true,
+    showPreliminaryWarnings = false,
   }) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -185,6 +189,9 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
         html += `<div class="tooltip-type-line">Заглушка — нераспределённая стоимость команды</div>`;
       } else if (node.support) {
         html += `<div class="tooltip-type-line">Инициатива в поддержке в выбранном периоде</div>`;
+      }
+      if (showPreliminaryWarnings && node.hasPreliminaryQuarterInPeriod) {
+        html += `<div class="tooltip-type-line tooltip-type-line-subtle">${escapeHtml(PRELIMINARY_COST_USER_MESSAGE)}</div>`;
       }
 
       if (showMoney && !node.isTimelineStub && node.value > 0) {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { RawDataRow, calculateBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type PreliminaryQuarterBudgetMap, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -36,6 +36,7 @@ interface FilterBarProps {
   
   // Totals
   rawData: RawDataRow[];
+  preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
   
   // Nesting toggles
   showTeams: boolean;
@@ -66,6 +67,10 @@ interface FilterBarProps {
   onShowSensitiveTreemapChange?: (val: boolean) => void;
   /** Показывать блок с галочкой Sensitive */
   sensitiveTreemapToggleVisible?: boolean;
+  /** Только super_admin: переключение на проверенный финансовый слой */
+  showFinancialDataToggleVisible?: boolean;
+  showFinancialData?: boolean;
+  onShowFinancialDataChange?: (val: boolean) => void;
   
   // Reset filters
   onResetFilters?: () => void;
@@ -122,6 +127,7 @@ const FilterBar = ({
   selectedQuarters,
   onQuartersChange,
   rawData,
+  preliminaryQuarterBudgetMap,
   showTeams,
   showInitiatives,
   onShowTeamsChange,
@@ -149,6 +155,9 @@ const FilterBar = ({
   showSensitiveTreemap = false,
   onShowSensitiveTreemapChange,
   sensitiveTreemapToggleVisible = false,
+  showFinancialDataToggleVisible = false,
+  showFinancialData = false,
+  onShowFinancialDataChange,
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -245,6 +254,8 @@ const FilterBar = ({
       (acc, row) => {
         const periodBudget = calculateBudget(row, selectedQuarters, {
           includeNonPnlBudgets: !showOnlyPnlIt,
+          includePreliminaryData: !showFinancialData,
+          preliminaryQuarterBudgetMap,
         });
         if (periodBudget === 0) return acc;
 
@@ -286,6 +297,8 @@ const FilterBar = ({
                     sum +
                     calculateBudget(row, [quarter], {
                       includeNonPnlBudgets: !showOnlyPnlIt,
+                      includePreliminaryData: !showFinancialData,
+                      preliminaryQuarterBudgetMap,
                     })
                   );
                 }, 0);
@@ -300,6 +313,8 @@ const FilterBar = ({
         selectedQuarters.forEach((q) => {
           const quarterBudget = calculateBudget(row, [q], {
             includeNonPnlBudgets: !showOnlyPnlIt,
+            includePreliminaryData: !showFinancialData,
+            preliminaryQuarterBudgetMap,
           });
           if (quarterBudget <= 0) return;
 
@@ -336,6 +351,8 @@ const FilterBar = ({
     costFilterMax,
     costType,
     showOnlyPnlIt,
+    showFinancialData,
+    preliminaryQuarterBudgetMap,
   ]);
 
   const splitGrand =
@@ -985,6 +1002,20 @@ const FilterBar = ({
                     {showSensitiveTreemap && <Check size={10} />}
                   </span>
                   <span>Sensitive</span>
+                </label>
+              )}
+              {showFinancialDataToggleVisible && currentView === 'budget' && onShowFinancialDataChange && (
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showFinancialData}
+                    onChange={(e) => onShowFinancialDataChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showFinancialData ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {showFinancialData && <Check size={10} />}
+                  </span>
+                  <span>Проверенные финансы</span>
                 </label>
               )}
             </>

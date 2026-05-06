@@ -61,6 +61,7 @@ interface StakeholdersTreemapProps {
   viewKey?: string;
   showMoney?: boolean;
   contentKey?: string;
+  showPreliminaryWarnings?: boolean;
 }
 
 const StakeholdersTreemap = ({
@@ -85,6 +86,7 @@ const StakeholdersTreemap = ({
   viewKey,
   showMoney = true,
   contentKey,
+  showPreliminaryWarnings = false,
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -115,6 +117,7 @@ const StakeholdersTreemap = ({
       viewKey={viewKey}
       contentKey={contentKey}
       showDistributionInTooltip={false}
+      showPreliminaryWarnings={showPreliminaryWarnings}
     />
   );
 };

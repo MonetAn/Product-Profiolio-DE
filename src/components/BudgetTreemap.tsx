@@ -34,6 +34,7 @@ interface BudgetTreemapProps {
   contentKey?: string;
   /** По умолчанию true (главная страница); для встроенных мини-превью — false */
   showUploadButton?: boolean;
+  showPreliminaryWarnings?: boolean;
 }
 
 const BudgetTreemap = ({
@@ -61,6 +62,7 @@ const BudgetTreemap = ({
   showMoney = true,
   contentKey,
   showUploadButton = true,
+  showPreliminaryWarnings = false,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
@@ -91,6 +93,7 @@ const BudgetTreemap = ({
       resetZoomTrigger={resetZoomTrigger}
       initialFocusedPath={initialFocusedPath}
       viewKey={viewKey}
+      showPreliminaryWarnings={showPreliminaryWarnings}
     />
   );
 };

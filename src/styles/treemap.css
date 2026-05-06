@@ -165,6 +165,12 @@ html.admin-engineering .treemap-node.admin-effort-changed {
   font-weight: 600;
 }
 
+.tooltip-type-line.tooltip-type-line-subtle {
+  margin-top: -4px;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
 /* Tooltip */
 .treemap-tooltip {
   position: fixed;
