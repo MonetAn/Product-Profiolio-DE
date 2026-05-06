@@ -356,7 +356,10 @@ export function applyGeoDriverToSplitEntries(
   const sumRaw = raws.reduce((a, b) => a + b, 0);
   if (sumRaw <= 0) return null;
 
-  const percents = rubleAmountsFromGeoPercents(100, raws);
+  // Важно: weightsByLabelRu — абсолютные доли на полном наборе рынков.
+  // Для выбранного подмножества нормализуем их в новые 100%.
+  const normalizedPercents = raws.map((w) => (w > 0 ? (w / sumRaw) * 100 : 0));
+  const percents = rubleAmountsFromGeoPercents(100, normalizedPercents);
   return entries.map((e, i) => ({ ...e, percent: percents[i] ?? 0 }));
 }
 

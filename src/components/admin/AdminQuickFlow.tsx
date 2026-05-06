@@ -1773,11 +1773,6 @@ export default function AdminQuickFlow({
                 <Calculator size={20} className="text-muted-foreground" />
                 <h2 className="text-lg font-semibold">Предварительный расчёт (лист OUT)</h2>
               </div>
-              {(unit || team) && (
-                <span className="text-sm text-muted-foreground">
-                  {[unit, team].filter(Boolean).join(' · ')}
-                </span>
-              )}
             </div>
             <p className="text-sm text-muted-foreground">
               Коэффициенты из этого шага (включая несохранённые в базе) отправляются на лист IN как оверрайды; после пересчёта формул читаются итоги с OUT: 2025 — O–R; 2026 — Y–AB.

@@ -19,16 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   type GeoCostSplit,
@@ -369,7 +359,6 @@ export function GeoCostSplitEditor({
   );
 
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [confirmEvenOpen, setConfirmEvenOpen] = useState(false);
   const { toast } = useToast();
 
   const usedIds = useMemo(() => usedCountryIds(split.entries, drinkitRowId), [split.entries, drinkitRowId]);
@@ -378,14 +367,9 @@ export function GeoCostSplitEditor({
 
   const activeDriverDef = useMemo(() => getDriverDefByStorageKey(value?.driverKey), [value?.driverKey]);
 
-  const [showDriverQuantityColumn, setShowDriverQuantityColumn] = useState(false);
   const [driverCatalogOpen, setDriverCatalogOpen] = useState(false);
-
   useEffect(() => {
-    if (!value?.driverKey) {
-      setShowDriverQuantityColumn(false);
-      setDriverCatalogOpen(false);
-    }
+    if (!value?.driverKey) setDriverCatalogOpen(false);
   }, [value?.driverKey]);
 
   const driverReferenceRows = useMemo(
@@ -393,7 +377,11 @@ export function GeoCostSplitEditor({
     [activeDriverDef, countries]
   );
 
-  const driverQuantityColumnVisible = Boolean(showDriverQuantityColumn && activeDriverDef);
+  const driverQuantityColumnVisible = Boolean(activeDriverDef);
+  const revenueDriverDef = useMemo(
+    () => GEO_ALLOCATION_DRIVERS.find((d) => d.key === 'geo_driver_revenue'),
+    []
+  );
 
   const driverQuantityColClass = useMemo(() => {
     if (!activeDriverDef) return 'w-[3.75rem] shrink-0';
@@ -466,15 +454,6 @@ export function GeoCostSplitEditor({
     commitSplit(lockMarketSelection ? [...newEntries, ...split.entries] : [...split.entries, ...newEntries]);
   };
 
-  const applyEven100 = () => {
-    const n = split.entries.length;
-    if (n === 0) return;
-    const parts = splitTotalIntoIntegerParts(100, n);
-    const next = split.entries.map((e, i) => ({ ...e, percent: parts[i] ?? 0 }));
-    commitSplit(next, { clearDriver: true });
-    setConfirmEvenOpen(false);
-  };
-
   const applyRemainderEven = () => {
     const entries = split.entries;
     const n = entries.length;
@@ -532,6 +511,45 @@ export function GeoCostSplitEditor({
     });
   };
 
+  const applyGlobalRevenuePreset = (includeDrinkit: boolean) => {
+    if (!revenueDriverDef) return;
+    const available = countries
+      .filter((c) => c.is_active)
+      .filter((c) => (includeDrinkit ? true : c.cluster_key !== 'Drinkit'))
+      .sort((a, b) => (a.sort_order ?? 100000) - (b.sort_order ?? 100000) || a.label_ru.localeCompare(b.label_ru, 'ru'));
+    if (available.length === 0) {
+      toast({
+        title: 'Нет рынков для пресета',
+        description: includeDrinkit
+          ? 'В справочнике нет активных рынков для выбора.'
+          : 'Нет активных рынков вне Drinkit.',
+      });
+      return;
+    }
+
+    const entries: GeoCostSplitEntry[] = available.map((c) => ({
+      kind: 'country',
+      countryId: c.id,
+      percent: 0,
+    }));
+    const next = applyGeoDriverToSplitEntries(entries, countriesById, revenueDriverDef);
+    if (!next) {
+      toast({
+        title: 'Не удалось применить выручку',
+        description: 'Для выбранного набора рынков не найдены веса по выручке.',
+      });
+      return;
+    }
+
+    const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
+    onChange({
+      entries: next,
+      driverKey: revenueDriverDef.key,
+      driverLabel: revenueDriverDef.fullLabel,
+      ...(keepNote ? { note: keepNote } : {}),
+    });
+  };
+
   const removeAt = (index: number) => {
     const next = split.entries.filter((_, i) => i !== index);
     commitSplit(next);
@@ -578,40 +596,25 @@ export function GeoCostSplitEditor({
           <Plus className="h-3.5 w-3.5" />
           Добавить рынки
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={disabled || !revenueDriverDef}
+          onClick={() => applyGlobalRevenuePreset(true)}
+        >
+          Global: Pizza + Drinkit
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={disabled || !revenueDriverDef}
+          onClick={() => applyGlobalRevenuePreset(false)}
+        >
+          Global: Pizza only
+        </Button>
       </div>
-
-      {split.entries.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="h-auto min-h-9 whitespace-normal text-left leading-snug"
-            disabled={disabled || split.entries.length === 0}
-            onClick={() => setConfirmEvenOpen(true)}
-          >
-            100% поровну между всеми странами
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-auto min-h-9 whitespace-normal text-left leading-snug"
-            disabled={disabled || !canRemainder}
-            title={
-              remainder <= 0
-                ? 'Нет положительного остатка до 100%'
-                : 'Сначала поровну между странами с 0%, если таких нет — добавить остаток ко всем строкам'
-            }
-            onClick={applyRemainderEven}
-          >
-            Остаток поровну между незаполненными странами
-            {canRemainder ? (
-              <span className="ml-1 tabular-nums text-muted-foreground">(+{remainder}%)</span>
-            ) : null}
-          </Button>
-        </div>
-      ) : null}
 
       {split.entries.length > 0 ? (
         <div className="space-y-2">
@@ -645,17 +648,6 @@ export function GeoCostSplitEditor({
           </div>
           {activeDriverDef ? (
             <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 w-fit justify-start px-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setShowDriverQuantityColumn((v) => !v)}
-              >
-                {showDriverQuantityColumn
-                  ? 'Скрыть количество драйвера'
-                  : 'Показать количество драйвера'}
-              </Button>
               <Collapsible open={driverCatalogOpen} onOpenChange={setDriverCatalogOpen}>
                 <CollapsibleTrigger asChild>
                   <Button
@@ -667,7 +659,7 @@ export function GeoCostSplitEditor({
                     <ChevronDown
                       className={cn('h-3.5 w-3.5 shrink-0 transition-transform', driverCatalogOpen && 'rotate-180')}
                     />
-                    Откуда берутся проценты в сплите
+                    Логика распределения драйвера
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-2 rounded-md border border-violet-500/25 bg-violet-500/[0.06] p-3 dark:bg-violet-500/10">
@@ -714,6 +706,24 @@ export function GeoCostSplitEditor({
               </Collapsible>
             </div>
           ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-auto min-h-9 w-fit whitespace-normal text-left leading-snug"
+            disabled={disabled || !canRemainder}
+            title={
+              remainder <= 0
+                ? 'Нет положительного остатка до 100%'
+                : 'Сначала поровну между странами с 0%, если таких нет — добавить остаток ко всем строкам'
+            }
+            onClick={applyRemainderEven}
+          >
+            Остаток поровну между незаполненными странами
+            {canRemainder ? (
+              <span className="ml-1 tabular-nums text-muted-foreground">(+{remainder}%)</span>
+            ) : null}
+          </Button>
         </div>
       ) : null}
 
@@ -724,22 +734,6 @@ export function GeoCostSplitEditor({
         usedIds={usedIds}
         onConfirm={appendCountries}
       />
-
-      <AlertDialog open={confirmEvenOpen} onOpenChange={setConfirmEvenOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Разделить 100% поровну между всеми странами?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Все текущие проценты будут заменены на равные целые доли между всеми строками (сумма 100%). Ручные значения
-              исчезнут.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={applyEven100}>Заменить</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {catalogBlocked ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">

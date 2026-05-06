@@ -7,8 +7,6 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
-  Check,
-  FileSpreadsheet,
   LayoutDashboard,
   RefreshCw,
   ArrowLeft,
@@ -2159,38 +2157,6 @@ const Admin = () => {
                     lockTeam={fillLocks.lockTeam}
                   />
                 </div>
-                {!isSuperAdmin && !needsSelection ? (
-                  <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      <span className="tabular-nums">
-                        {filteredData.length === rawData.length
-                          ? `${filteredData.length} инициатив`
-                          : `${filteredData.length} из ${rawData.length}`}
-                      </span>
-                    </span>
-                    {syncStatus === 'saving' ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-primary">
-                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                        Сохранение…
-                      </span>
-                    ) : syncStatus === 'synced' ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-primary">
-                        <Check className="h-3 w-3" aria-hidden />
-                        Сохранено
-                      </span>
-                    ) : syncStatus === 'error' ? (
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2 py-0.5 text-destructive hover:bg-destructive/20"
-                        onClick={retry}
-                      >
-                        <AlertCircle className="h-3 w-3" aria-hidden />
-                        Ошибка
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
                 {hubPanelOpen ? (
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-center">
                     <div className="flex items-center gap-1.5">

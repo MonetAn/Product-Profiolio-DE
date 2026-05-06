@@ -24,8 +24,7 @@ const GEO_WIZARD_SESSION_PREFIX = 'portfolio-hub-geo-wizard:';
 
 const navArrowClass = cn(
   'h-14 w-14 shrink-0 rounded-full shadow-md transition-transform',
-  'bg-violet-600 text-white hover:bg-violet-700 hover:scale-[1.02] active:scale-[0.98]',
-  'dark:bg-violet-600 dark:hover:bg-violet-500',
+  'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]',
   'disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none disabled:hover:scale-100'
 );
 

@@ -1,9 +1,4 @@
 import {
-  FileSpreadsheet,
-  Check,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
   Users,
   ClipboardList,
   Shield,
@@ -16,14 +11,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useAccess } from '@/hooks/useAccess';
 import { Button } from '@/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { SyncStatus } from '@/hooks/useInitiativeMutations';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
 export type ViewMode = 'initiatives' | 'people' | 'markets' | 'access' | 'activity' | 'sensitive';
@@ -33,16 +21,12 @@ interface AdminHeaderProps {
   initiativeCount?: number;
   totalInitiativeCount?: number;
   peopleCount?: number;
-  hasData?: boolean;
   hasFilters?: boolean;
-  syncStatus?: SyncStatus;
-  pendingChanges?: number;
   onImportClick?: () => void;
   onDownloadAll?: () => void;
   onDownloadFiltered?: () => void;
   onDownloadGeoSplitAll?: () => void;
   onDownloadGeoSplitFiltered?: () => void;
-  onRetry?: () => void;
   onImportPeople?: () => void;
   onAddPerson?: () => void;
 }
@@ -51,17 +35,12 @@ const AdminHeader = ({
   currentView,
   initiativeCount = 0,
   totalInitiativeCount = 0,
-  peopleCount = 0,
-  hasData = false,
   hasFilters = false,
-  syncStatus = 'synced',
-  pendingChanges = 0,
   onImportClick,
   onDownloadAll,
   onDownloadFiltered,
   onDownloadGeoSplitAll,
   onDownloadGeoSplitFiltered,
-  onRetry,
   onImportPeople,
   onAddPerson,
 }: AdminHeaderProps) => {
@@ -89,69 +68,6 @@ const AdminHeader = ({
   const accessUrl = '/admin/access';
   const activityUrl = '/admin/activity';
   const sensitiveUrl = '/admin/sensitive';
-
-  // Sync status indicator
-  const renderSyncStatus = () => {
-    switch (syncStatus) {
-      case 'saving':
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 text-primary text-xs font-medium">
-                  <Loader2 size={12} className="animate-spin" />
-                  <span>Сохранение...</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                {pendingChanges > 0 ? `${pendingChanges} изменений в очереди` : 'Сохранение изменений'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      case 'synced':
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 text-primary text-xs font-medium">
-                  <Check size={12} />
-                  <span>Сохранено</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>Все изменения сохранены</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      case 'error':
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={onRetry}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 transition-colors"
-                >
-                  <AlertCircle size={12} />
-                  <span>Ошибка</span>
-                  <RefreshCw size={10} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Нажмите для повторной попытки</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      case 'offline':
-        return (
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted text-muted-foreground text-xs font-medium">
-            <AlertCircle size={12} />
-            <span>Офлайн</span>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
 
   return (
     <header className="h-14 w-full min-w-0 bg-header border-b border-border flex items-center px-4 sm:px-6 shrink-0">
@@ -227,34 +143,6 @@ const AdminHeader = ({
           )}
         </ToggleGroup>
       </div>
-
-      {/* Stats */}
-      {hasData && (
-        <div className="ml-4 flex items-center gap-3 text-sm text-muted-foreground">
-          {currentView === 'initiatives' && (
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet size={16} />
-              <span>
-                {initiativeCount === totalInitiativeCount 
-                  ? `${initiativeCount} инициатив` 
-                  : `${initiativeCount} из ${totalInitiativeCount}`
-                }
-              </span>
-            </div>
-          )}
-          {currentView === 'people' && (
-            <div className="flex items-center gap-2">
-              <Users size={16} />
-              <span>{peopleCount} чел.</span>
-            </div>
-          )}
-          {currentView === 'markets' && null}
-          {currentView === 'access' && null}
-          {currentView === 'activity' && null}
-          {currentView === 'sensitive' && null}
-          {currentView !== 'access' && currentView !== 'activity' && currentView !== 'markets' && currentView !== 'sensitive' && renderSyncStatus()}
-        </div>
-      )}
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">

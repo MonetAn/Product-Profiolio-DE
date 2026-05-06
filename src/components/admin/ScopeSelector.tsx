@@ -400,27 +400,6 @@ const ScopeSelector = ({
         )}
       </div>
 
-      {selectedUnits.length > 0 ? (
-        <div className="hidden text-xs text-muted-foreground sm:block">
-          {selectionMode === 'single' ? (
-            <>
-              <span className="truncate">{selectedUnits[0]}</span>
-              {selectedTeams.length === 1 ? (
-                <span>{` · ${selectedTeams[0]}`}</span>
-              ) : (
-                <span> · выберите команду</span>
-              )}
-            </>
-          ) : (
-            <>
-              {selectedUnits.length} {selectedUnits.length === 1 ? 'юнит' : 'юнитов'}
-              {selectedTeams.length > 0
-                ? ` · ${selectedTeams.length} ${selectedTeams.length === 1 ? 'команда' : 'команд'}`
-                : ' · все команды'}
-            </>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 };
