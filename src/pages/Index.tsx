@@ -554,6 +554,69 @@ const Index = () => {
     return budget > 0 && isInitiativeOffTrack(row, selectedQuarters);
   });
 
+  const sortedJoin = (items: string[]) => [...items].sort().join(',');
+
+  // Include all data-affecting filters so treemap animation state cannot reuse stale layers.
+  const budgetTreemapContentKey = useMemo(
+    () =>
+      [
+        'budget',
+        supportFilter,
+        showOnlyOfftrack ? 'offtrack:1' : 'offtrack:0',
+        hideStubs ? 'stubs:0' : 'stubs:1',
+        showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
+        showSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
+        showTeams ? 'teams:1' : 'teams:0',
+        showInitiatives ? 'initiatives:1' : 'initiatives:0',
+        `units:${sortedJoin(selectedUnits)}`,
+        `teamsSel:${sortedJoin(selectedTeams)}`,
+        `stakeholders:${sortedJoin(selectedStakeholders)}`,
+        `quarters:${sortedJoin(selectedQuarters)}`,
+      ].join('|'),
+    [
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      showOnlyPnlIt,
+      showSensitiveTreemap,
+      showTeams,
+      showInitiatives,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      selectedQuarters,
+    ]
+  );
+
+  const stakeholdersTreemapContentKey = useMemo(
+    () =>
+      [
+        'stakeholders',
+        supportFilter,
+        showOnlyOfftrack ? 'offtrack:1' : 'offtrack:0',
+        hideStubs ? 'stubs:0' : 'stubs:1',
+        showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
+        showTeams ? 'teams:1' : 'teams:0',
+        showInitiatives ? 'initiatives:1' : 'initiatives:0',
+        `units:${sortedJoin(selectedUnits)}`,
+        `teamsSel:${sortedJoin(selectedTeams)}`,
+        `stakeholders:${sortedJoin(selectedStakeholders)}`,
+        `quarters:${sortedJoin(selectedQuarters)}`,
+      ].join('|'),
+    [
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      showOnlyPnlIt,
+      showTeams,
+      showInitiatives,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      selectedQuarters,
+    ]
+  );
+
   // Show loading state — не полноэкранный лоадер: shell уже ниже, в main покажем «Загрузка…»
   // (блок ниже удалён: return <MascotsLoadingScreen />)
 
@@ -733,7 +796,7 @@ const Index = () => {
         {currentView === 'budget' && (
           <BudgetTreemap
             viewKey={currentView}
-            contentKey={`${currentView}-${supportFilter}-${showOnlyOfftrack}-${hideStubs}-${showOnlyPnlIt}-${showSensitiveTreemap}`}
+            contentKey={budgetTreemapContentKey}
             data={currentRoot}
             onDrillDown={drillDown}
             onNavigateUp={navigateUp}
@@ -766,6 +829,7 @@ const Index = () => {
         {currentView === 'stakeholders' && (
           <StakeholdersTreemap
             viewKey="stakeholders"
+            contentKey={stakeholdersTreemapContentKey}
             data={stakeholdersData}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
