@@ -626,8 +626,12 @@ const Index = () => {
         teams={teams}
         selectedUnits={selectedUnits}
         selectedTeams={selectedTeams}
-        onUnitsChange={(units) => {
-          setSelectedUnits(units);
+        onUnitsChange={(units, teams) => {
+          if (teams) {
+            setFilters(units, teams);
+          } else {
+            setSelectedUnits(units);
+          }
           setZoomPath([]);
           setResetZoomTrigger(prev => prev + 1);
         }}

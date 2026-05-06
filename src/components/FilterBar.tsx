@@ -14,7 +14,7 @@ interface FilterBarProps {
   teams: string[];
   selectedUnits: string[];
   selectedTeams: string[];
-  onUnitsChange: (units: string[]) => void;
+  onUnitsChange: (units: string[], teams?: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
   
   // Support filter: all | exclude support | only support
@@ -455,20 +455,17 @@ const FilterBar = ({
   const toggleUnit = (u: string) => {
     if (selectedUnits.includes(u)) {
       const newUnits = selectedUnits.filter(x => x !== u);
-      onUnitsChange(newUnits);
-      // Clear teams that don't belong to remaining units
+      // Batch unit+team URL updates to avoid race between consecutive setSearchParams calls.
       if (newUnits.length > 0) {
         const validTeams = rawData
           .filter(r => newUnits.includes(r.unit))
           .map(r => r.team);
-        onTeamsChange(selectedTeams.filter(t => validTeams.includes(t)));
+        onUnitsChange(newUnits, selectedTeams.filter(t => validTeams.includes(t)));
       } else {
-        // If no units selected, clear teams too
-        onTeamsChange([]);
+        onUnitsChange([], []);
       }
     } else {
       const newUnits = [...selectedUnits, u];
-      onUnitsChange(newUnits);
       // When adding a unit, auto-select all teams from that unit
       const teamsFromNewUnit = [...new Set(rawData
         .filter(r => r.unit === u)
@@ -476,7 +473,7 @@ const FilterBar = ({
         .filter(Boolean))];
       // Add new unit's teams to existing selection
       const newTeams = [...new Set([...selectedTeams, ...teamsFromNewUnit])];
-      onTeamsChange(newTeams);
+      onUnitsChange(newUnits, newTeams);
     }
   };
 
@@ -545,7 +542,7 @@ const FilterBar = ({
               <div className="absolute top-full mt-1 left-0 min-w-[200px] max-h-[280px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
                 <div className="flex justify-between p-2 border-b border-border">
                   <button className="text-xs text-primary underline" onClick={() => onUnitsChange([...units])}>Все</button>
-                  <button className="text-xs text-primary underline" onClick={() => { onUnitsChange([]); onTeamsChange([]); }}>Сброс</button>
+                  <button className="text-xs text-primary underline" onClick={() => onUnitsChange([], [])}>Сброс</button>
                 </div>
                 <div className="max-h-[220px] overflow-y-auto p-1">
                   {units.map(u => (
