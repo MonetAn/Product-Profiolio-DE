@@ -16,13 +16,13 @@ type DBInitiative = Pick<
   | 'unit'
   | 'team'
   | 'initiative'
-  | 'initiative_type'
   | 'stakeholders_list'
   | 'description'
   | 'documentation_link'
   | 'stakeholders'
   | 'is_timeline_stub'
   | 'quarterly_data'
+  | 'geo_cost_split'
 >;
 
 const INITIATIVE_SELECT_COLUMNS = [
@@ -30,13 +30,13 @@ const INITIATIVE_SELECT_COLUMNS = [
   'unit',
   'team',
   'initiative',
-  'initiative_type',
   'stakeholders_list',
   'description',
   'documentation_link',
   'stakeholders',
   'is_timeline_stub',
   'quarterly_data',
+  'geo_cost_split',
 ].join(', ');
 
 export function parseAdminQuarterFromJson(
@@ -44,7 +44,6 @@ export function parseAdminQuarterFromJson(
   qData: Record<string, unknown>
 ): AdminQuarterData | null {
   if (!isQuarterPeriodKey(quarterKey)) return null;
-  const geoCostSplit = parseGeoCostSplit(qData.geoCostSplit);
   const cfc = qData.costFinanceConfirmed;
   return {
     cost: typeof qData.cost === 'number' ? qData.cost : 0,
@@ -56,7 +55,6 @@ export function parseAdminQuarterFromJson(
     comment: typeof qData.comment === 'string' ? qData.comment : '',
     effortCoefficient: typeof qData.effortCoefficient === 'number' ? qData.effortCoefficient : 0,
     costFinanceConfirmed: cfc === false ? false : true,
-    ...(geoCostSplit ? { geoCostSplit } : {}),
   };
 }
 
@@ -85,18 +83,19 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
     });
   }
 
+  const initiativeGeoCostSplit = parseGeoCostSplit(db.geo_cost_split);
   return {
     id: db.id,
     unit: db.unit,
     team: db.team,
     initiative: db.initiative,
-    initiativeType: (db.initiative_type || '') as AdminDataRow['initiativeType'],
     stakeholdersList: db.stakeholders_list || [],
     description: db.description || '',
     documentationLink: db.documentation_link || '',
     stakeholders: db.stakeholders || '',
     isTimelineStub: db.is_timeline_stub ?? false,
     quarterlyData,
+    ...(initiativeGeoCostSplit ? { initiativeGeoCostSplit } : {}),
   };
 }
 
@@ -114,9 +113,6 @@ function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
       comment: value.comment,
       effortCoefficient: value.effortCoefficient,
     };
-    if (value.geoCostSplit?.entries?.length) {
-      row.geoCostSplit = geoCostSplitToJson(value.geoCostSplit);
-    }
     if (value.costFinanceConfirmed === false) {
       row.costFinanceConfirmed = false;
     }
@@ -132,14 +128,19 @@ export function adminRowToDb(row: Partial<AdminDataRow>): Record<string, unknown
   if (row.unit !== undefined) result.unit = row.unit;
   if (row.team !== undefined) result.team = row.team;
   if (row.initiative !== undefined) result.initiative = row.initiative;
-  if (row.initiativeType !== undefined) result.initiative_type = row.initiativeType || null;
   if (row.stakeholdersList !== undefined) result.stakeholders_list = row.stakeholdersList;
   if (row.description !== undefined) result.description = row.description;
   if (row.documentationLink !== undefined) result.documentation_link = row.documentationLink;
   if (row.stakeholders !== undefined) result.stakeholders = row.stakeholders;
   if (row.isTimelineStub !== undefined) result.is_timeline_stub = row.isTimelineStub;
   if (row.quarterlyData !== undefined) result.quarterly_data = quarterlyDataToJson(row.quarterlyData);
-  
+  if (row.initiativeGeoCostSplit !== undefined) {
+    result.geo_cost_split =
+      row.initiativeGeoCostSplit?.entries?.length
+        ? geoCostSplitToJson(row.initiativeGeoCostSplit)
+        : null;
+  }
+
   return result;
 }
 

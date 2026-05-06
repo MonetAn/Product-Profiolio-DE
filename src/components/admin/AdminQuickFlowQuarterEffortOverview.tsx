@@ -9,11 +9,16 @@ import type { AdminDataRow } from '@/lib/adminDataManager';
 import {
   getInitiativeQuarterFillTone,
   getMissingInitiativeFields,
+  getStubResidualLabel,
   isGeoCostSplitCompleteForCost,
   quarterRequiresPlanFact,
   type InitiativeQuarterFillTone,
 } from '@/lib/adminDataManager';
-import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
+import {
+  compareQuarters,
+  isCalendarPastQuarter,
+  isPortfolioMandatoryMetricFactQuarter,
+} from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 
 const MIN_PCT_SHOW_EFFORT_LABEL = 12;
@@ -41,7 +46,7 @@ function buildSegmentsForQuarter(rows: AdminDataRow[], quarter: string): { segme
     sum += eff;
     parts.push({
       id: row.id,
-      label: row.initiative || '—',
+      label: row.isTimelineStub ? getStubResidualLabel(row.team) : row.initiative || '—',
       effort: eff,
       tone: getInitiativeQuarterFillTone(row, quarter),
     });
@@ -74,10 +79,11 @@ function SegmentHoverCardBody({ row, quarter, effort }: { row: AdminDataRow; qua
   const missing = new Set(getMissingInitiativeFields(row));
   const qd = row.quarterlyData[quarter];
 
+  const headerLabel = row.isTimelineStub ? getStubResidualLabel(row.team) : row.initiative || '—';
   return (
     <div className="space-y-3">
       <div>
-        <p className="font-semibold text-foreground leading-snug pr-1">{row.initiative || '—'}</p>
+        <p className="font-semibold text-foreground leading-snug pr-1">{headerLabel}</p>
         <p className="text-xs text-muted-foreground mt-1">
           Квартал <span className="font-medium text-foreground tabular-nums">{quarter}</span>
           <span className="text-muted-foreground"> · </span>
@@ -130,7 +136,7 @@ function SegmentHoverCardBody({ row, quarter, effort }: { row: AdminDataRow; qua
           </>
         ) : (
           <>
-            {!isMetricFactRequiredForQuarter(quarter) ? (
+            {!isCalendarPastQuarter(quarter) ? (
               <p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-2 py-1.5 leading-relaxed">
                 Квартал <span className="font-medium text-foreground">{quarter}</span> — текущий календарный или позже: факт метрики по правилам портфеля пока{' '}
                 <span className="font-medium text-foreground">не обязателен</span>.
@@ -144,18 +150,20 @@ function SegmentHoverCardBody({ row, quarter, effort }: { row: AdminDataRow; qua
             <StatusRow
               label="Факт метрики"
               kind={
-                !isMetricFactRequiredForQuarter(quarter)
+                !isCalendarPastQuarter(quarter)
                   ? 'na'
                   : qd.metricFact?.trim()
                     ? 'ok'
                     : 'warn'
               }
               detail={
-                !isMetricFactRequiredForQuarter(quarter)
+                !isCalendarPastQuarter(quarter)
                   ? 'не требуется — текущий или будущий квартал'
                   : qd.metricFact?.trim()
                     ? undefined
-                    : 'не заполнен'
+                    : isPortfolioMandatoryMetricFactQuarter(quarter)
+                      ? 'не заполнен — обязателен за последний закрытый квартал'
+                      : 'не заполнен — архив (не блокирует сценарий)'
               }
             />
           </>
@@ -167,9 +175,11 @@ function SegmentHoverCardBody({ row, quarter, effort }: { row: AdminDataRow; qua
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Гео по рынкам</p>
           <StatusRow
             label="Распределение 100%"
-            kind={isGeoCostSplitCompleteForCost(qd.cost ?? 0, qd.geoCostSplit) ? 'ok' : 'warn'}
+            kind={isGeoCostSplitCompleteForCost(qd.cost ?? 0, row.initiativeGeoCostSplit) ? 'ok' : 'warn'}
             detail={
-              isGeoCostSplitCompleteForCost(qd.cost ?? 0, qd.geoCostSplit) ? undefined : 'не закрыто на 100%'
+              isGeoCostSplitCompleteForCost(qd.cost ?? 0, row.initiativeGeoCostSplit)
+                ? undefined
+                : 'не закрыто на 100%'
             }
           />
         </div>

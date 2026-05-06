@@ -3,7 +3,14 @@ import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-r
 import { Person, VirtualAssignment } from '@/lib/peopleDataManager';
 import { AdminDataRow } from '@/lib/adminDataManager';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import EffortInput from './EffortInput';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +21,10 @@ interface PersonGroupRowProps {
   quarters: string[];
   gridCols: string;
   onEffortChange: (assignment: VirtualAssignment, quarter: string, value: number) => void;
+  /** Другие люди в scope — для «Как у…» на экране усилий по людям */
+  copyPeers?: Person[];
+  onCopyFromPeer?: (targetPersonId: string, sourcePersonId: string) => void | Promise<void>;
+  copyBusy?: boolean;
 }
 
 export default function PersonGroupRow({
@@ -22,7 +33,10 @@ export default function PersonGroupRow({
   initiatives,
   quarters,
   gridCols,
-  onEffortChange
+  onEffortChange,
+  copyPeers,
+  onCopyFromPeer,
+  copyBusy,
 }: PersonGroupRowProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -48,36 +62,74 @@ export default function PersonGroupRow({
 
   if (assignmentDetails.length === 0) return null;
 
+  const showCopy = Boolean(copyPeers?.length && onCopyFromPeer);
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b">
-      <CollapsibleTrigger asChild>
-        <div 
-          className={cn(
-            "grid items-center px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors",
-            hasOverallocation && "bg-destructive/5"
-          )}
-          style={{ gridTemplateColumns: gridCols }}
-        >
-          {/* Person info */}
-          <div className="flex items-center gap-3 min-w-0">
-            {isOpen ? (
-              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-            )}
-            
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-medium truncate">{person.full_name}</span>
-                {person.terminated_at && (
-                  <Badge variant="secondary" className="text-xs shrink-0">Уволен</Badge>
-                )}
+      <div
+        className={cn(
+          'grid items-center px-3 py-2.5 transition-colors sm:px-4 sm:py-3',
+          hasOverallocation && 'bg-destructive/5',
+          'hover:bg-muted/50'
+        )}
+        style={{ gridTemplateColumns: gridCols }}
+      >
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left outline-none',
+                'hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring'
+              )}
+            >
+              {isOpen ? (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium">{person.full_name}</span>
+                  {person.terminated_at && (
+                    <Badge variant="secondary" className="shrink-0 text-xs">
+                      Уволен
+                    </Badge>
+                  )}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">{person.team || person.unit || '—'}</div>
               </div>
-              <div className="text-xs text-muted-foreground truncate">
-                {person.team || person.unit || '—'}
-              </div>
-            </div>
-          </div>
+            </button>
+          </CollapsibleTrigger>
+          {showCopy ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 shrink-0 px-2 text-xs"
+                  disabled={copyBusy}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Как у…
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                {copyPeers!.map((p) => (
+                  <DropdownMenuItem
+                    key={p.id}
+                    disabled={copyBusy}
+                    onSelect={() => void onCopyFromPeer?.(person.id, p.id)}
+                  >
+                    {p.full_name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
 
           {/* Quarter totals - each in its own grid cell */}
           {quarters.map(q => {
@@ -104,11 +156,10 @@ export default function PersonGroupRow({
             );
           })}
 
-          <Badge variant="outline" className="justify-self-end">
-            {assignmentDetails.length} инициатив
-          </Badge>
-        </div>
-      </CollapsibleTrigger>
+        <Badge variant="outline" className="justify-self-end">
+          {assignmentDetails.length} инициатив
+        </Badge>
+      </div>
 
       <CollapsibleContent>
         <div className="bg-muted/20 border-t">
@@ -124,7 +175,7 @@ export default function PersonGroupRow({
                   {initiative!.initiative}
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {[initiative!.team, initiative!.initiativeType].filter(Boolean).join(' • ')}
+                  {initiative!.team}
                 </div>
               </div>
 

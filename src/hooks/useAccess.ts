@@ -10,9 +10,13 @@ export interface AccessScope {
 
 export type AccessErrorType = 'timeout' | 'network';
 
+export type MemberAffiliation = { unit: string; team: string | null };
+
 export interface AccessState {
   canAccess: boolean;
   isAdmin: boolean;
+  /** Роль super_admin: полные данные в БД, настройка sensitive, галочка на дашборде */
+  isSuperAdmin: boolean;
   /** If false, user must not see money anywhere and has no money toggle */
   canViewMoney: boolean;
   scope: AccessScope;
@@ -20,6 +24,8 @@ export interface AccessState {
   displayName: string | null;
   memberUnit: string | null;
   memberTeam: string | null;
+  /** Справочные привязки (не область данных); первая пара дублируется в memberUnit/memberTeam */
+  memberAffiliations: MemberAffiliation[];
   accessLoading: boolean;
   /** Set when access check failed due to timeout/network (Supabase cold), so UI can show "Повторить" */
   accessError: AccessErrorType | null;
@@ -33,11 +39,13 @@ const ACCESS_CACHE_KEY = 'app_access';
 function getCachedAccess(userId: string): {
   canAccess: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   canViewMoney: boolean;
   scope: AccessScope;
   displayName: string | null;
   memberUnit: string | null;
   memberTeam: string | null;
+  memberAffiliations: MemberAffiliation[];
 } | null {
   if (typeof sessionStorage === 'undefined') return null;
   try {
@@ -47,16 +55,25 @@ function getCachedAccess(userId: string): {
       userId: string;
       canAccess: boolean;
       isAdmin: boolean;
+      isSuperAdmin?: boolean;
       canViewMoney?: boolean;
       scope: AccessScope;
       displayName?: string | null;
       memberUnit?: string | null;
       memberTeam?: string | null;
+      memberAffiliations?: MemberAffiliation[];
     };
     if (parsed.userId !== userId) return null;
+    const aff =
+      Array.isArray(parsed.memberAffiliations) && parsed.memberAffiliations.length > 0
+        ? parsed.memberAffiliations
+        : parsed.memberUnit?.trim()
+          ? [{ unit: parsed.memberUnit.trim(), team: parsed.memberTeam?.trim() ?? null }]
+          : [];
     return {
       canAccess: Boolean(parsed.canAccess),
       isAdmin: Boolean(parsed.isAdmin),
+      isSuperAdmin: Boolean(parsed.isSuperAdmin),
       canViewMoney: parsed.canViewMoney !== false,
       scope: {
         seeAll: Boolean(parsed.scope?.seeAll),
@@ -66,6 +83,7 @@ function getCachedAccess(userId: string): {
       displayName: parsed.displayName ?? null,
       memberUnit: parsed.memberUnit ?? null,
       memberTeam: parsed.memberTeam ?? null,
+      memberAffiliations: aff,
     };
   } catch {
     return null;
@@ -77,11 +95,13 @@ function setCachedAccess(
   access: {
     canAccess: boolean;
     isAdmin: boolean;
+    isSuperAdmin: boolean;
     canViewMoney: boolean;
     scope: AccessScope;
     displayName: string | null;
     memberUnit: string | null;
     memberTeam: string | null;
+    memberAffiliations: MemberAffiliation[];
   }
 ) {
   if (typeof sessionStorage === 'undefined') return;
@@ -97,16 +117,33 @@ function devLogNoAccess(reason: string, extra?: unknown) {
   }
 }
 
+function parseMemberAffiliationsRpc(value: unknown): MemberAffiliation[] {
+  if (!Array.isArray(value)) return [];
+  const out: MemberAffiliation[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const o = item as { unit?: unknown; team?: unknown };
+    const unit = typeof o.unit === 'string' ? o.unit.trim() : '';
+    if (!unit) continue;
+    const team =
+      typeof o.team === 'string' && o.team.trim() ? o.team.trim() : null;
+    out.push({ unit, team });
+  }
+  return out;
+}
+
 /** RPC returns { can_access, is_admin, can_view_money?, scope?: { see_all, allowed_units?, allowed_team_pairs? } }.
  *  Supabase/PostgREST may wrap single-row RPC result in an array [row]. */
-function parseAccessResponse(data: unknown): {
+export function parseAccessResponse(data: unknown): {
   canAccess: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   canViewMoney: boolean;
   scope: AccessScope;
   displayName: string | null;
   memberUnit: string | null;
   memberTeam: string | null;
+  memberAffiliations: MemberAffiliation[];
 } {
   const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
   if (!raw || typeof raw !== 'object' || !('can_access' in raw) || !('is_admin' in raw)) {
@@ -114,20 +151,24 @@ function parseAccessResponse(data: unknown): {
     return {
       canAccess: false,
       isAdmin: false,
+      isSuperAdmin: false,
       canViewMoney: true,
       scope: DEFAULT_SCOPE,
       displayName: null,
       memberUnit: null,
       memberTeam: null,
+      memberAffiliations: [],
     };
   }
   const obj = raw as {
     can_access: boolean;
     is_admin: boolean;
+    is_super_admin?: boolean;
     can_view_money?: boolean;
     display_name?: string | null;
     member_unit?: string | null;
     member_team?: string | null;
+    member_affiliations?: unknown;
     scope?: unknown;
   };
   let scope: AccessScope = DEFAULT_SCOPE;
@@ -146,14 +187,25 @@ function parseAccessResponse(data: unknown): {
   const dn = obj.display_name;
   const mu = obj.member_unit;
   const mt = obj.member_team;
+  let memberAffiliations = parseMemberAffiliationsRpc(obj.member_affiliations);
+  if (memberAffiliations.length === 0 && typeof mu === 'string' && mu.trim()) {
+    memberAffiliations = [
+      {
+        unit: mu.trim(),
+        team: typeof mt === 'string' && mt.trim() ? mt.trim() : null,
+      },
+    ];
+  }
   return {
     canAccess,
     isAdmin: Boolean(obj.is_admin),
+    isSuperAdmin: Boolean(obj.is_super_admin),
     canViewMoney: obj.can_view_money !== false,
     scope,
     displayName: typeof dn === 'string' && dn.trim() ? dn.trim() : null,
     memberUnit: typeof mu === 'string' && mu.trim() ? mu.trim() : null,
     memberTeam: typeof mt === 'string' && mt.trim() ? mt.trim() : null,
+    memberAffiliations,
   };
 }
 
@@ -169,11 +221,13 @@ function isNetworkOrTimeoutError(reason: string, extra?: unknown): AccessErrorTy
 const noAccessState: AccessState = {
   canAccess: false,
   isAdmin: false,
+  isSuperAdmin: false,
   canViewMoney: true,
   scope: DEFAULT_SCOPE,
   displayName: null,
   memberUnit: null,
   memberTeam: null,
+  memberAffiliations: [],
   accessLoading: false,
   accessError: null,
   retryAccess: () => {},
@@ -184,11 +238,13 @@ export function useAccess(): AccessState {
   const [access, setAccess] = useState<{
     canAccess: boolean;
     isAdmin: boolean;
+    isSuperAdmin: boolean;
     canViewMoney: boolean;
     scope: AccessScope;
     displayName: string | null;
     memberUnit: string | null;
     memberTeam: string | null;
+    memberAffiliations: MemberAffiliation[];
   } | null>(null);
   const [accessError, setAccessError] = useState<AccessErrorType | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -225,11 +281,13 @@ export function useAccess(): AccessState {
         setAccess({
           canAccess: false,
           isAdmin: false,
+          isSuperAdmin: false,
           canViewMoney: true,
           scope: DEFAULT_SCOPE,
           displayName: null,
           memberUnit: null,
           memberTeam: null,
+          memberAffiliations: [],
         });
         setAccessError(errType);
       }
@@ -279,7 +337,10 @@ export function useAccess(): AccessState {
 
     const cached = user ? getCachedAccess(user.id) : null;
     if (cached?.canAccess) {
-      setAccess(cached);
+      setAccess({
+        ...cached,
+        memberAffiliations: cached.memberAffiliations ?? [],
+      });
       setAccessError(null);
     }
     run();
@@ -305,11 +366,13 @@ export function useAccess(): AccessState {
   return {
     canAccess: access.canAccess,
     isAdmin: access.isAdmin,
+    isSuperAdmin: access.isSuperAdmin,
     canViewMoney: access.canViewMoney,
     scope: access.scope,
     displayName: access.displayName,
     memberUnit: access.memberUnit,
     memberTeam: access.memberTeam,
+    memberAffiliations: access.memberAffiliations,
     accessLoading: false,
     accessError,
     retryAccess,

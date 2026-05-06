@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ежедневная чистка db_audit_log: удаляет записи старше 14 дней.
+  Запускается раз в сутки в 04:30 локального времени.
+
+  Установка:
+    cp scripts/launchd/com.product-portfolio.db-prune-audit.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.product-portfolio.db-prune-audit.plist
+    launchctl enable gui/$(id -u)/com.product-portfolio.db-prune-audit
+    launchctl kickstart -k gui/$(id -u)/com.product-portfolio.db-prune-audit  # тест запуска
+
+  Снять:
+    launchctl bootout gui/$(id -u)/com.product-portfolio.db-prune-audit
+
+  Логи: /tmp/db-prune-audit.{stdout,stderr}.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.product-portfolio.db-prune-audit</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>scripts/db-prune-audit.sh</string>
+    <string>14</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Applications/Продуктовый портфель проект/product-porfolio-de-bb9a42f8-main</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/opt/libpq/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/db-prune-audit.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/db-prune-audit.stderr.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

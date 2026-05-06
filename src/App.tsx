@@ -12,8 +12,11 @@ import AdminPeople from "./pages/AdminPeople";
 import AdminMarkets from "./pages/AdminMarkets";
 import AdminAccess from "./pages/AdminAccess";
 import AdminActivity from "./pages/AdminActivity";
+import AdminSensitive from "./pages/AdminSensitive";
+import AdminPeopleEffortFill from "./pages/AdminPeopleEffortFill";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import PeoplePlatformAllocationsMock from "./pages/PeoplePlatformAllocationsMock";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +28,7 @@ const App = () => (
       <BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
             <Routes>
+            <Route path="/mock/people-platform-allocations" element={<PeoplePlatformAllocationsMock />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/" element={
               <ProtectedRoute>
@@ -35,6 +39,13 @@ const App = () => (
               <ProtectedRoute>
                 <AdminRoute>
                   <Admin />
+                </AdminRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/people-effort" element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <AdminPeopleEffortFill />
                 </AdminRoute>
               </ProtectedRoute>
             } />
@@ -63,6 +74,13 @@ const App = () => (
               <ProtectedRoute>
                 <AdminRoute>
                   <AdminActivity />
+                </AdminRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/sensitive" element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <AdminSensitive />
                 </AdminRoute>
               </ProtectedRoute>
             } />

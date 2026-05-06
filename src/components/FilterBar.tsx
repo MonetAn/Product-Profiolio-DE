@@ -40,10 +40,8 @@ interface FilterBarProps {
   // Nesting toggles
   showTeams: boolean;
   showInitiatives: boolean;
-  showBudgetDepartments?: boolean;
   onShowTeamsChange: (val: boolean) => void;
   onShowInitiativesChange: (val: boolean) => void;
-  onShowBudgetDepartmentsChange?: (val: boolean) => void;
   showOnlyPnlIt?: boolean;
   onShowOnlyPnlItChange?: (val: boolean) => void;
   showMoney: boolean;
@@ -61,7 +59,13 @@ interface FilterBarProps {
   hideNestingToggles?: boolean;
 
   /** Влияет на зум тримапы и на применение фильтра стоимости (только таймлайн) */
-  currentView?: 'budget' | 'budgetDepartments' | 'stakeholders' | 'timeline';
+  currentView?: 'budget' | 'stakeholders' | 'timeline';
+
+  /** Только super_admin на вкладке «Бюджет»: показать sensitive в тримапе (по умолчанию скрыты на клиенте) */
+  showSensitiveTreemap?: boolean;
+  onShowSensitiveTreemapChange?: (val: boolean) => void;
+  /** Показывать блок с галочкой Sensitive */
+  sensitiveTreemapToggleVisible?: boolean;
   
   // Reset filters
   onResetFilters?: () => void;
@@ -120,10 +124,8 @@ const FilterBar = ({
   rawData,
   showTeams,
   showInitiatives,
-  showBudgetDepartments = false,
   onShowTeamsChange,
   onShowInitiativesChange,
-  onShowBudgetDepartmentsChange,
   showOnlyPnlIt = true,
   onShowOnlyPnlItChange,
   showMoney,
@@ -143,7 +145,10 @@ const FilterBar = ({
   costType = 'period',
   onCostTypeChange,
   zoomPath = [],
-  zoomActiveTab = 'budget'
+  zoomActiveTab = 'budget',
+  showSensitiveTreemap = false,
+  onShowSensitiveTreemapChange,
+  sensitiveTreemapToggleVisible = false,
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -293,12 +298,15 @@ const FilterBar = ({
         if (isOffTrack) acc.offtrack++;
         if (row.isTimelineStub) acc.stubs++;
         selectedQuarters.forEach((q) => {
-          const qData = row.quarterlyData[q];
-          if (qData && qData.budget > 0) {
-            if (row.isTimelineStub) acc.stubsQuarterly += qData.budget;
-            else if (qData.support) acc.supportQuarterly += qData.budget;
-            else acc.developmentQuarterly += qData.budget;
-          }
+          const quarterBudget = calculateBudget(row, [q], {
+            includeNonPnlBudgets: !showOnlyPnlIt,
+          });
+          if (quarterBudget <= 0) return;
+
+          const quarterSupport = row.quarterlyData[q]?.support ?? false;
+          if (row.isTimelineStub) acc.stubsQuarterly += quarterBudget;
+          else if (quarterSupport) acc.supportQuarterly += quarterBudget;
+          else acc.developmentQuarterly += quarterBudget;
         });
         return acc;
       },
@@ -956,32 +964,30 @@ const FilterBar = ({
                 </span>
                 <span>Команды</span>
               </label>
-              {currentView !== 'budgetDepartments' && (
+              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                <input
+                  type="checkbox"
+                  checked={showInitiatives}
+                  onChange={(e) => onShowInitiativesChange(e.target.checked)}
+                  className="hidden"
+                />
+                <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                  {showInitiatives && <Check size={10} />}
+                </span>
+                <span>Инициативы</span>
+              </label>
+              {sensitiveTreemapToggleVisible && currentView === 'budget' && onShowSensitiveTreemapChange && (
                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                   <input
                     type="checkbox"
-                    checked={showInitiatives}
-                    onChange={(e) => onShowInitiativesChange(e.target.checked)}
+                    checked={showSensitiveTreemap}
+                    onChange={(e) => onShowSensitiveTreemapChange(e.target.checked)}
                     className="hidden"
                   />
-                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                    {showInitiatives && <Check size={10} />}
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showSensitiveTreemap ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {showSensitiveTreemap && <Check size={10} />}
                   </span>
-                  <span>Инициативы</span>
-                </label>
-              )}
-              {currentView === 'budget' && showInitiatives && onShowBudgetDepartmentsChange && (
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                  <input
-                    type="checkbox"
-                    checked={showBudgetDepartments}
-                    onChange={(e) => onShowBudgetDepartmentsChange(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showBudgetDepartments ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                    {showBudgetDepartments && <Check size={10} />}
-                  </span>
-                  <span>Бюдж. подразделения</span>
+                  <span>Sensitive</span>
                 </label>
               )}
             </>

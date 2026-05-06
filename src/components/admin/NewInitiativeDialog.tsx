@@ -25,13 +25,12 @@ import {
 } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
+import { STAKEHOLDERS_LIST } from '@/lib/adminDataManager';
 
 export type NewInitiativeSubmitData = {
   unit: string;
   team: string;
   initiative: string;
-  initiativeType: InitiativeType | '';
   stakeholdersList: string[];
   description: string;
   documentationLink: string;
@@ -60,7 +59,6 @@ const NewInitiativeDialog = ({
   const [unit, setUnit] = useState(defaultUnit);
   const [team, setTeam] = useState(defaultTeam);
   const [initiative, setInitiative] = useState('');
-  const [initiativeType, setInitiativeType] = useState<InitiativeType | ''>('');
   const [stakeholdersList, setStakeholdersList] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
@@ -80,7 +78,6 @@ const NewInitiativeDialog = ({
       unit,
       team,
       initiative,
-      initiativeType,
       stakeholdersList,
       description,
       documentationLink,
@@ -89,7 +86,6 @@ const NewInitiativeDialog = ({
     onSubmit(payload);
     // Reset form
     setInitiative('');
-    setInitiativeType('');
     setStakeholdersList([]);
     setDescription('');
     setDocumentationLink('');
@@ -172,8 +168,6 @@ const NewInitiativeDialog = ({
           </div>
 
           <OptionalInitiativeFields
-            initiativeType={initiativeType}
-            setInitiativeType={setInitiativeType}
             stakeholdersList={stakeholdersList}
             handleStakeholderToggle={handleStakeholderToggle}
             description={description}
@@ -200,8 +194,6 @@ const NewInitiativeDialog = ({
 };
 
 type OptionalFieldsProps = {
-  initiativeType: InitiativeType | '';
-  setInitiativeType: (v: InitiativeType | '') => void;
   stakeholdersList: string[];
   handleStakeholderToggle: (stakeholder: string, checked: boolean) => void;
   description: string;
@@ -213,8 +205,6 @@ type OptionalFieldsProps = {
 };
 
 function OptionalInitiativeFields({
-  initiativeType,
-  setInitiativeType,
   stakeholdersList,
   handleStakeholderToggle,
   description,
@@ -226,34 +216,6 @@ function OptionalInitiativeFields({
 }: OptionalFieldsProps) {
   return (
     <>
-      <div className="grid gap-2">
-        <Label>Тип инициативы</Label>
-        <TooltipProvider>
-          <Select value={initiativeType} onValueChange={(v) => setInitiativeType(v as InitiativeType | '')}>
-            <SelectTrigger>
-              <SelectValue placeholder="Выберите тип" />
-            </SelectTrigger>
-            <SelectContent>
-              {INITIATIVE_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  <div className="flex items-center gap-2">
-                    {type.label}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info size={12} className="text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-[200px]">
-                        <p className="text-xs">{type.description}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </TooltipProvider>
-      </div>
-
       <div className="grid gap-2">
         <Label>Stakeholders</Label>
         <div className="max-h-[min(9rem,28dvh)] overflow-y-auto overscroll-contain rounded-md border border-border/60 bg-muted/10 p-2">

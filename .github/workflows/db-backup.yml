@@ -1,0 +1,54 @@
+name: db-backup
+
+# Ежедневный бэкап Supabase Postgres + хранение как artifact (90 дней по умолчанию).
+# Это страховка на случай, если мак выключен и launchd не отрабатывает.
+#
+# Требуемые secrets в репозитории (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL          — connection string без пароля (можно session pooler)
+#   SUPABASE_DB_PASSWORD     — пароль БД из Supabase Dashboard
+#
+# Опционально:
+#   SUPABASE_DB_DIRECT_URL   — direct connection для pg_dumpall --roles-only
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # каждый день в 03:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Postgres client tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client-common postgresql-client
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run backup script
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_DB_DIRECT_URL: ${{ secrets.SUPABASE_DB_DIRECT_URL }}
+          PG_DUMP: pg_dump
+          PG_DUMPALL: pg_dumpall
+          BACKUPS_DIR: backups
+          BACKUPS_KEEP_LAST: "1"
+        run: node scripts/db-backup.mjs
+
+      - name: Upload backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ github.run_id }}
+          path: backups/
+          retention-days: 90
+          if-no-files-found: error

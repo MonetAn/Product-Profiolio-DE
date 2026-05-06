@@ -7,7 +7,6 @@ import {
   formatBudget,
   escapeHtml,
   formatQuarterRange,
-  PRELIMINARY_COST_USER_MESSAGE,
 } from '@/lib/dataManager';
 import { cn } from '@/lib/utils';
 
@@ -195,10 +194,6 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
           html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${pct}%</span></div>`;
         }
       }
-      if (showMoney && node.hasPreliminaryQuarterInPeriod) {
-        html += `<div class="tooltip-preliminary">${escapeHtml(PRELIMINARY_COST_USER_MESSAGE)}</div>`;
-      }
-      
       const quarterRange = formatQuarterRange(node.data.quarterlyData);
       if (quarterRange) {
         html += `<div class="tooltip-quarters">${escapeHtml(quarterRange)}</div>`;

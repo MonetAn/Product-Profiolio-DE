@@ -75,7 +75,7 @@ export default function InitiativeGroupRow({
                 {initiative.initiative}
               </div>
               <div className="text-xs text-muted-foreground truncate">
-                {[initiative.team, initiative.initiativeType].filter(Boolean).join(' • ')}
+                {initiative.team}
               </div>
             </div>
           </div>

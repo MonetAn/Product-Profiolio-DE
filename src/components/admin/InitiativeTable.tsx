@@ -35,7 +35,6 @@ import {
   AdminDataRow,
   AdminQuarterData,
   createEmptyQuarterData,
-  INITIATIVE_TYPES,
   validateTeamQuarterEffort,
   getTeamQuarterEffortSums,
   getInheritedSupportInfo,
@@ -53,8 +52,9 @@ interface InitiativeTableProps {
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
+    value: string | number | boolean | undefined
   ) => void;
+  onInitiativeGeoCostSplitChange?: (id: string, split: GeoCostSplit | undefined) => void;
   onQuarterlyDataBulkChange?: (id: string, quarterlyData: Record<string, AdminQuarterData>) => void;
   onAddInitiative: () => void;
   onDeleteInitiative: (id: string) => Promise<void>;
@@ -70,6 +70,7 @@ const InitiativeTable = ({
   selectedTeams,
   onDataChange,
   onQuarterDataChange,
+  onInitiativeGeoCostSplitChange,
   onQuarterlyDataBulkChange,
   onAddInitiative,
   onDeleteInitiative,
@@ -174,7 +175,6 @@ const InitiativeTable = ({
                   <TableHead className="sticky left-[150px] bg-card z-10 min-w-[100px]">Team</TableHead>
                 )}
                 <TableHead className={`sticky ${hideUnitTeamColumns ? 'left-[60px]' : 'left-[250px]'} bg-card z-10 min-w-[160px]`}>Initiative</TableHead>
-                <TableHead className="min-w-[100px]">Type</TableHead>
                 <TableHead className="min-w-[140px]">Stakeholders</TableHead>
                 <TableHead className={`${expandedView ? 'min-w-[200px]' : 'min-w-[120px]'}`}>Description</TableHead>
                 <TableHead className="min-w-[100px]">Doc</TableHead>
@@ -256,27 +256,6 @@ const InitiativeTable = ({
                         </span>
                       )}
                     </span>
-                  </TableCell>
-
-                  {/* Type - clickable with tooltip */}
-                  <TableCell 
-                    className="p-2 cursor-pointer"
-                    onClick={() => handleRowClick(row)}
-                  >
-                    <TooltipProvider delayDuration={100}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-xs text-foreground/90 hover:underline decoration-muted-foreground/40">
-                            {row.initiativeType ? INITIATIVE_TYPES.find(t => t.value === row.initiativeType)?.label : '—'}
-                          </span>
-                        </TooltipTrigger>
-                        {row.initiativeType && (
-                          <TooltipContent side="bottom" className="max-w-[200px]">
-                            <p className="text-xs">{INITIATIVE_TYPES.find(t => t.value === row.initiativeType)?.description}</p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
                   </TableCell>
 
                   {/* Stakeholders - clickable badges */}
@@ -402,6 +381,7 @@ const InitiativeTable = ({
         onOpenChange={(open) => !open && setSelectedId(null)}
         onDataChange={onDataChange}
         onQuarterDataChange={onQuarterDataChange}
+        onInitiativeGeoCostSplitChange={onInitiativeGeoCostSplitChange}
       />
 
       {/* Delete Confirmation Dialog */}

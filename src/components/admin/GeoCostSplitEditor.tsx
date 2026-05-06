@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, Minus, Plus, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   type GeoCostSplit,
   type GeoCostSplitEntry,
@@ -37,6 +39,15 @@ import {
   MARKET_COUNTRY_CLUSTER_KEYS,
   splitTotalIntoIntegerParts,
 } from '@/lib/adminDataManager';
+import {
+  applyGeoDriverToSplitEntries,
+  buildDriverReferenceTable,
+  formatDriverQuantityDisplay,
+  formatDriverReferencePercent,
+  GEO_ALLOCATION_DRIVERS,
+  getDriverDefByStorageKey,
+  getDriverQuantityForLabel,
+} from '@/lib/geoAllocationDrivers';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { cn } from '@/lib/utils';
 
@@ -98,6 +109,20 @@ function groupCountriesByCluster(rows: MarketCountryRow[]): Map<string, MarketCo
     arr.sort((a, b) => a.label_ru.localeCompare(b.label_ru, 'ru'));
   }
   return m;
+}
+
+function labelRuForGeoEntry(
+  e: GeoCostSplitEntry,
+  countries: MarketCountryRow[],
+  drinkitRowId: string | null
+): string | null {
+  if (e.kind === 'country') {
+    return countries.find((x) => x.id === e.countryId)?.label_ru ?? null;
+  }
+  if (e.kind === 'cluster' && e.clusterKey === 'Drinkit' && drinkitRowId) {
+    return countries.find((x) => x.id === drinkitRowId)?.label_ru ?? null;
+  }
+  return null;
 }
 
 function entryRowLabel(
@@ -231,17 +256,20 @@ function GeoCostSplitBulkAddDialog({
               const list = (byCluster.get(ck) ?? []).filter((c) => !usedIds.has(c.id));
               if (list.length === 0) return null;
               const clusterIds = clusterAddableIds(ck);
+              const clusterSelectedCount = clusterIds.filter((id) => selected.has(id)).length;
               const clusterAllOn =
                 clusterIds.length > 0 && clusterIds.every((id) => selected.has(id));
+              const clusterSomeOn = clusterSelectedCount > 0 && !clusterAllOn;
               return (
                 <li key={ck}>
                   <button
                     type="button"
                     className={cn(
-                      'mb-1.5 w-full rounded-md px-1 py-1 text-left text-xs font-medium transition-colors',
+                      'mb-1.5 flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs font-medium transition-colors',
                       clusterIds.length === 0
                         ? 'cursor-default text-muted-foreground'
-                        : 'text-foreground hover:bg-muted/60'
+                        : 'text-foreground hover:bg-muted/60',
+                      (clusterAllOn || clusterSomeOn) && 'border-primary/35 bg-primary/5'
                     )}
                     disabled={clusterIds.length === 0}
                     title={
@@ -253,7 +281,22 @@ function GeoCostSplitBulkAddDialog({
                     }
                     onClick={() => toggleCluster(ck)}
                   >
-                    {marketClusterKeyLabel(ck)}
+                    <span
+                      className={cn(
+                        'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border',
+                        clusterAllOn || clusterSomeOn
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-muted-foreground/50 bg-background text-transparent'
+                      )}
+                      aria-hidden
+                    >
+                      {clusterAllOn ? <Check className="h-3 w-3" /> : null}
+                      {clusterSomeOn ? <Minus className="h-3 w-3" /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{marketClusterKeyLabel(ck)}</span>
+                    <span className="shrink-0 tabular-nums text-[11px] font-normal text-muted-foreground">
+                      {clusterSelectedCount}/{clusterIds.length}
+                    </span>
                   </button>
                   <ul className="space-y-1.5">
                     {list.map((c) => {
@@ -327,22 +370,70 @@ export function GeoCostSplitEditor({
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [confirmEvenOpen, setConfirmEvenOpen] = useState(false);
+  const { toast } = useToast();
 
   const usedIds = useMemo(() => usedCountryIds(split.entries, drinkitRowId), [split.entries, drinkitRowId]);
 
-  const setEntries = useCallback(
-    (entries: GeoCostSplitEntry[]) => {
+  const countriesById = useMemo(() => new Map(countries.map((c) => [c.id, c])), [countries]);
+
+  const activeDriverDef = useMemo(() => getDriverDefByStorageKey(value?.driverKey), [value?.driverKey]);
+
+  const [showDriverQuantityColumn, setShowDriverQuantityColumn] = useState(false);
+  const [driverCatalogOpen, setDriverCatalogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!value?.driverKey) {
+      setShowDriverQuantityColumn(false);
+      setDriverCatalogOpen(false);
+    }
+  }, [value?.driverKey]);
+
+  const driverReferenceRows = useMemo(
+    () => (activeDriverDef ? buildDriverReferenceTable(activeDriverDef, countries) : []),
+    [activeDriverDef, countries]
+  );
+
+  const driverQuantityColumnVisible = Boolean(showDriverQuantityColumn && activeDriverDef);
+
+  const driverQuantityColClass = useMemo(() => {
+    if (!activeDriverDef) return 'w-[3.75rem] shrink-0';
+    return activeDriverDef.quantityKind === 'money'
+      ? 'min-w-[6rem] w-[7rem] max-w-[9rem] shrink-0'
+      : 'w-[3.75rem] shrink-0 sm:w-16';
+  }, [activeDriverDef]);
+
+  const driverColumnExplainer = useMemo(() => {
+    if (!activeDriverDef) return '';
+    return activeDriverDef.quantityKind === 'money'
+      ? 'Справочная база в пресете, ₽; проценты в сплите считаются по долям пресета в %, не по этой сумме. Справа — ₽ квартала.'
+      : 'Справочное количество в пресете; проценты в сплите — по долям пресета в % (не из этих штук). Справа — ₽ квартала.';
+  }, [activeDriverDef]);
+
+  const commitSplit = useCallback(
+    (entries: GeoCostSplitEntry[], options?: { clearDriver?: boolean }) => {
       const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
       if (entries.length === 0) {
         onChange(undefined);
         return;
       }
+      const driverFields =
+        options?.clearDriver || !value?.driverKey
+          ? {}
+          : {
+              ...(typeof value.driverKey === 'string' && value.driverKey.trim()
+                ? { driverKey: value.driverKey.trim() }
+                : {}),
+              ...(typeof value.driverLabel === 'string' && value.driverLabel.trim()
+                ? { driverLabel: value.driverLabel.trim() }
+                : {}),
+            };
       onChange({
         entries,
+        ...driverFields,
         ...(keepNote ? { note: keepNote } : {}),
       });
     },
-    [onChange, value?.note]
+    [onChange, value?.note, value?.driverKey, value?.driverLabel]
   );
 
   const updateSplitNote = useCallback(
@@ -351,10 +442,16 @@ export function GeoCostSplitEditor({
       if (!entries?.length) return;
       onChange({
         entries,
+        ...(typeof value?.driverKey === 'string' && value.driverKey.trim()
+          ? { driverKey: value.driverKey.trim() }
+          : {}),
+        ...(typeof value?.driverLabel === 'string' && value.driverLabel.trim()
+          ? { driverLabel: value.driverLabel.trim() }
+          : {}),
         ...(text.length > 0 ? { note: text } : {}),
       });
     },
-    [onChange, value?.entries]
+    [onChange, value?.entries, value?.driverKey, value?.driverLabel]
   );
 
   const appendCountries = (ids: string[]) => {
@@ -366,7 +463,7 @@ export function GeoCostSplitEditor({
       countryId,
       percent: 0,
     }));
-    setEntries(lockMarketSelection ? [...newEntries, ...split.entries] : [...split.entries, ...newEntries]);
+    commitSplit(lockMarketSelection ? [...newEntries, ...split.entries] : [...split.entries, ...newEntries]);
   };
 
   const applyEven100 = () => {
@@ -374,7 +471,7 @@ export function GeoCostSplitEditor({
     if (n === 0) return;
     const parts = splitTotalIntoIntegerParts(100, n);
     const next = split.entries.map((e, i) => ({ ...e, percent: parts[i] ?? 0 }));
-    setEntries(next);
+    commitSplit(next, { clearDriver: true });
     setConfirmEvenOpen(false);
   };
 
@@ -395,7 +492,7 @@ export function GeoCostSplitEditor({
         if (zi < 0) return e;
         return { ...e, percent: parts[zi] ?? 0 };
       });
-      setEntries(next);
+      commitSplit(next, { clearDriver: true });
       return;
     }
 
@@ -404,12 +501,40 @@ export function GeoCostSplitEditor({
       ...e,
       percent: e.percent + (adds[i] ?? 0),
     }));
-    setEntries(next);
+    commitSplit(next, { clearDriver: true });
+  };
+
+  const applyDriverPreset = (d: (typeof GEO_ALLOCATION_DRIVERS)[number]) => {
+    if (split.entries.length === 0) return;
+    if (split.entries.some((e) => e.kind === 'cluster')) {
+      toast({
+        title: 'Нужны строки-страны',
+        description:
+          'Уберите legacy-строку кластера — оставьте только страны из справочника рынков, затем снова нажмите драйвер.',
+      });
+      return;
+    }
+    const next = applyGeoDriverToSplitEntries(split.entries, countriesById, d);
+    if (!next) {
+      toast({
+        title: 'Нет весов для этих рынков',
+        description:
+          'Для выбранных строк нет коэффициентов в этом драйвере (или все нули). Добавьте страны из справочника или задайте доли вручную.',
+      });
+      return;
+    }
+    const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
+    onChange({
+      entries: next,
+      driverKey: d.key,
+      driverLabel: d.fullLabel,
+      ...(keepNote ? { note: keepNote } : {}),
+    });
   };
 
   const removeAt = (index: number) => {
     const next = split.entries.filter((_, i) => i !== index);
-    setEntries(next);
+    commitSplit(next);
   };
 
   const updateEntry = (index: number, patch: Partial<GeoCostSplitEntry>) => {
@@ -417,11 +542,14 @@ export function GeoCostSplitEditor({
       if (i !== index) return e;
       return { ...e, ...patch } as GeoCostSplitEntry;
     });
-    setEntries(next);
+    commitSplit(next);
   };
 
   const remainder = 100 - totalPct;
   const canRemainder = split.entries.length > 0 && remainder > 0;
+  const hasClusterRow = split.entries.some((e) => e.kind === 'cluster');
+  const canApplyDrivers =
+    split.entries.length > 0 && !hasClusterRow && !disabled;
 
   if (cost <= 0) {
     return (
@@ -485,6 +613,110 @@ export function GeoCostSplitEditor({
         </div>
       ) : null}
 
+      {split.entries.length > 0 ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-xs text-muted-foreground">По драйверам:</span>
+            {GEO_ALLOCATION_DRIVERS.map((d) => {
+              const selected = value?.driverKey === d.key;
+              return (
+                <Button
+                  key={d.key}
+                  type="button"
+                  size="sm"
+                  variant={selected ? 'secondary' : 'outline'}
+                  className={cn(
+                    'h-7 text-xs',
+                    selected && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
+                  )}
+                  disabled={!canApplyDrivers}
+                  aria-pressed={selected}
+                  title={
+                    hasClusterRow
+                      ? 'Сначала замените строку кластера на страну из справочника'
+                      : d.fullLabel
+                  }
+                  onClick={() => applyDriverPreset(d)}
+                >
+                  {d.shortLabel}
+                </Button>
+              );
+            })}
+          </div>
+          {activeDriverDef ? (
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 w-fit justify-start px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setShowDriverQuantityColumn((v) => !v)}
+              >
+                {showDriverQuantityColumn
+                  ? 'Скрыть количество драйвера'
+                  : 'Показать количество драйвера'}
+              </Button>
+              <Collapsible open={driverCatalogOpen} onOpenChange={setDriverCatalogOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-fit justify-start gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown
+                      className={cn('h-3.5 w-3.5 shrink-0 transition-transform', driverCatalogOpen && 'rotate-180')}
+                    />
+                    Откуда берутся проценты в сплите
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2 rounded-md border border-violet-500/25 bg-violet-500/[0.06] p-3 dark:bg-violet-500/10">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    <span className="font-medium text-foreground">Целые проценты в колонке «%»</span> считаются по{' '}
+                    <span className="font-medium text-foreground">долям пресета в процентах</span> (столбец «Доля пресета»
+                    ниже) и только для вашего списка рынков перенормируются на 100%. В колонке «Драйвер» — отдельно{' '}
+                    <span className="font-medium text-foreground">справочные числа</span> (объекты сети или ₽ по выручке); они
+                    для контекста и{' '}
+                    <span className="font-medium text-foreground">не подставляются вместо долей %</span>. Колонка «₽»
+                    справа — распределение стоимости квартала.
+                  </p>
+                  <div className="max-h-56 overflow-auto rounded border border-border/60 bg-background/90">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="sticky top-0 border-b border-border/60 bg-muted/40 text-left text-[10px] uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
+                          <th className="px-2 py-1.5 font-medium">Рынок</th>
+                          <th className="px-2 py-1.5 font-medium">Кластер</th>
+                          <th className="px-2 py-1.5 text-right font-medium">
+                            {activeDriverDef.quantityKind === 'money' ? 'База, ₽' : 'База, шт.'}
+                          </th>
+                          <th className="w-[4.5rem] px-2 py-1.5 text-right font-medium">Доля пресета, %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {driverReferenceRows.map((r) => (
+                          <tr key={r.labelRu} className="border-b border-border/40 last:border-0">
+                            <td className="px-2 py-1 text-foreground">{r.labelRu}</td>
+                            <td className="px-2 py-1 text-muted-foreground">
+                              {r.clusterKey === '—' ? '—' : marketClusterKeyLabel(r.clusterKey)}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums text-violet-800 dark:text-violet-200">
+                              {formatDriverQuantityDisplay(activeDriverDef, r.quantity)}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
+                              {formatDriverReferencePercent(r.presetPercent)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <GeoCostSplitBulkAddDialog
         open={bulkOpen}
         onOpenChange={setBulkOpen}
@@ -519,8 +751,26 @@ export function GeoCostSplitEditor({
         <div className="rounded-lg border border-border/70 bg-muted/15">
           <div className="flex items-center gap-2 border-b border-border/60 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             <span className="min-w-0 flex-1">Страна / рынок</span>
-            <span className="flex w-[4.25rem] shrink-0 items-center justify-end pr-0.5 sm:w-[4.5rem]">%</span>
-            <span className="flex w-[5.5rem] shrink-0 items-center justify-end">₽</span>
+            {driverQuantityColumnVisible && activeDriverDef ? (
+              <span
+                className={cn(
+                  'flex items-center justify-end pr-0.5 text-violet-600 dark:text-violet-400',
+                  driverQuantityColClass
+                )}
+                title={driverColumnExplainer}
+              >
+                {activeDriverDef.quantityColumnTitle}
+              </span>
+            ) : null}
+            <span
+              className="flex w-[4.25rem] shrink-0 items-center justify-end pr-0.5 sm:w-[4.5rem]"
+              title="Доля в этом сплите: целые проценты, в сумме 100%"
+            >
+              %
+            </span>
+            <span className="flex w-[5.5rem] shrink-0 items-center justify-end" title="Рубли по стоимости квартала">
+              ₽
+            </span>
             <span className="inline-flex w-7 shrink-0 justify-center" aria-hidden>
               {/* колонка удаления */}
             </span>
@@ -530,6 +780,11 @@ export function GeoCostSplitEditor({
               const sid = selectCountryId(e, drinkitRowId);
               const legacyClusterNoCatalog =
                 e.kind === 'cluster' && e.clusterKey === 'Drinkit' && !drinkitRowId;
+              const rowLabelRu = labelRuForGeoEntry(e, countries, drinkitRowId);
+              const driverQty =
+                driverQuantityColumnVisible && activeDriverDef
+                  ? getDriverQuantityForLabel(activeDriverDef, rowLabelRu)
+                  : undefined;
               return (
                 <li
                   key={`${e.kind}-${index}-${e.kind === 'country' ? e.countryId : e.clusterKey}`}
@@ -580,13 +835,31 @@ export function GeoCostSplitEditor({
                         </>
                       )}
                     </div>
+                    {driverQuantityColumnVisible && activeDriverDef ? (
+                      <div
+                        className={cn(
+                          'flex h-9 shrink-0 items-center justify-end rounded-md border border-violet-500/30 bg-violet-500/[0.08] px-1.5 py-0 dark:bg-violet-500/15',
+                          driverQuantityColClass
+                        )}
+                        title={driverColumnExplainer}
+                      >
+                        <span
+                          className={cn(
+                            'w-full text-right tabular-nums text-violet-900 dark:text-violet-100',
+                            activeDriverDef.quantityKind === 'money' ? 'text-[10px] leading-tight' : 'text-xs'
+                          )}
+                        >
+                          {formatDriverQuantityDisplay(activeDriverDef, driverQty)}
+                        </span>
+                      </div>
+                    ) : null}
                     <div
                       className={cn(
                         'flex h-9 w-[4.25rem] shrink-0 items-center gap-0.5 rounded-md border border-input bg-background px-1.5 py-0 shadow-sm sm:w-[4.5rem]',
                         'transition-[box-shadow,border-color] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35',
                         disabled && 'pointer-events-none opacity-50'
                       )}
-                      title="Введите долю в процентах (0–100)"
+                      title="Доля в сплите: целые проценты (0–100), сумма по строкам 100%"
                     >
                       <Input
                         type="number"

@@ -32,6 +32,8 @@ interface BudgetTreemapProps {
   showMoney?: boolean;
   /** When support/off-track/stub filter changes, use filter animation (same speed as filter toggles) */
   contentKey?: string;
+  /** По умолчанию true (главная страница); для встроенных мини-превью — false */
+  showUploadButton?: boolean;
 }
 
 const BudgetTreemap = ({
@@ -58,6 +60,7 @@ const BudgetTreemap = ({
   viewKey,
   showMoney = true,
   contentKey,
+  showUploadButton = true,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
@@ -77,8 +80,8 @@ const BudgetTreemap = ({
       getColor={getUnitColor}
       emptyStateTitle="Нет инициатив по выбранным фильтрам"
       emptyStateSubtitle="Попробуйте изменить параметры фильтрации или сбросить фильтры"
-      showUploadButton={true}
-      onUploadClick={onUploadClick}
+      showUploadButton={showUploadButton}
+      onUploadClick={showUploadButton ? onUploadClick : undefined}
       onFileDrop={onFileDrop}
       onAutoEnableTeams={onAutoEnableTeams}
       onAutoEnableInitiatives={onAutoEnableInitiatives}

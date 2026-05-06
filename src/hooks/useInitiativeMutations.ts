@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useRef, useCallback, useState, useEffect } from 'react';
 import {
@@ -6,9 +6,15 @@ import {
   AdminQuarterData,
   confirmFinanceForAllQuartersInData,
   createEmptyQuarterData,
+  geoCostSplitToJson,
+  parseGeoCostSplit,
   type GeoCostSplit,
 } from '@/lib/adminDataManager';
-import { quarterlyDataToJson, quarterlyJsonToAdminRecord } from './useInitiatives';
+import {
+  quarterlyDataToJson,
+  quarterlyJsonToAdminRecord,
+  INITIATIVES_QUERY_KEY,
+} from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
 import { Json } from '@/integrations/supabase/types';
@@ -17,18 +23,41 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   unit: 'unit',
   team: 'team',
   initiative: 'initiative',
-  initiativeType: 'initiative_type',
   stakeholdersList: 'stakeholders_list',
   description: 'description',
   documentationLink: 'documentation_link',
   stakeholders: 'stakeholders',
   isTimelineStub: 'is_timeline_stub',
   quarterlyData: 'quarterly_data',
+  initiativeGeoCostSplit: 'geo_cost_split',
 };
+
+/** Суффиксы ключей `debouncedUpdate` — от длинного к короткому (id в UUID с дефисами). */
+const INIT_DEBOUNCE_KEY_SUFFIXES = [
+  'documentationLink',
+  'stakeholdersList',
+  'isTimelineStub',
+  'description',
+  'stakeholders',
+  'initiative',
+  'team',
+  'unit',
+  'initiativeGeoCostSplit',
+] as const;
 
 const SYNC_ASSIGNMENTS_PEOPLE_SELECT_COLUMNS = ['id'].join(', ');
 const SYNC_ASSIGNMENTS_EXISTING_SELECT_COLUMNS = ['id', 'person_id', 'quarterly_effort', 'is_auto'].join(', ');
 const SYNC_ASSIGNMENTS_WRITE_CHUNK = 20;
+
+/** Список инициатив кэшируется с ключом `['initiatives', { units, teams, tableAll }]` — обновляем все совпадающие запросы. */
+function findRowInInitiativeCaches(queryClient: QueryClient, id: string): AdminDataRow | undefined {
+  const entries = queryClient.getQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY });
+  for (const [, data] of entries) {
+    const row = data?.find((r) => r.id === id);
+    if (row) return row;
+  }
+  return undefined;
+}
 
 function valuesEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
@@ -46,7 +75,6 @@ function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>)
   if (p.unit !== undefined) next.unit = p.unit as string;
   if (p.team !== undefined) next.team = p.team as string;
   if (p.initiative !== undefined) next.initiative = p.initiative as string;
-  if (p.initiative_type !== undefined) next.initiativeType = (p.initiative_type as string) || '';
   if (p.stakeholders_list !== undefined) next.stakeholdersList = p.stakeholders_list as string[];
   if (p.description !== undefined) next.description = p.description as string;
   if (p.documentation_link !== undefined) next.documentationLink = p.documentation_link as string;
@@ -54,6 +82,11 @@ function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>)
   if (p.is_timeline_stub !== undefined) next.isTimelineStub = p.is_timeline_stub as boolean;
   if (p.quarterly_data !== undefined) {
     next.quarterlyData = quarterlyJsonToAdminRecord(p.quarterly_data);
+  }
+  if (p.geo_cost_split !== undefined) {
+    const g = parseGeoCostSplit(p.geo_cost_split);
+    if (g) next.initiativeGeoCostSplit = g;
+    else delete next.initiativeGeoCostSplit;
   }
   return next;
 }
@@ -81,10 +114,11 @@ export function useInitiativeMutations() {
     };
   }, []);
 
-  const scheduleInitiativesInvalidate = useCallback((delayMs = 350) => {
+  /** После записи даём БД/реплике чуть больше времени до GET — меньше шанс отката UI до старого текста. */
+  const scheduleInitiativesInvalidate = useCallback((delayMs = 650) => {
     if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
     invalidateTimerRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      queryClient.invalidateQueries({ queryKey: INITIATIVES_QUERY_KEY });
       invalidateTimerRef.current = null;
     }, delayMs);
   }, [queryClient]);
@@ -97,15 +131,15 @@ export function useInitiativeMutations() {
     onMutate: async (variables) => {
       setSyncStatus('saving');
       setLastError(null);
-      await queryClient.cancelQueries({ queryKey: ['initiatives'] });
-      const previous = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      await queryClient.cancelQueries({ queryKey: INITIATIVES_QUERY_KEY });
+      const previousEntries = queryClient.getQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY });
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.map((row) =>
           row.id === variables.id ? applyPatchToAdminRow(row, variables.patch) : row
         );
       });
-      return { previous };
+      return { previousEntries };
     },
     onError: (err, variables, context) => {
       const details =
@@ -117,8 +151,10 @@ export function useInitiativeMutations() {
       console.error('Update failed:', variables.id, err);
       setSyncStatus('error');
       setLastError(details);
-      if (context?.previous) {
-        queryClient.setQueryData(['initiatives'], context.previous);
+      if (context?.previousEntries) {
+        for (const [queryKey, data] of context.previousEntries) {
+          queryClient.setQueryData(queryKey, data);
+        }
       }
       toast({
         title: 'Ошибка сохранения',
@@ -152,13 +188,16 @@ export function useInitiativeMutations() {
           unit: data.unit,
           team: data.team,
           initiative: data.initiative,
-          initiative_type: data.initiativeType || null,
           stakeholders_list: data.stakeholdersList,
           description: data.description,
           documentation_link: data.documentationLink,
           stakeholders: data.stakeholders,
           is_timeline_stub: data.isTimelineStub ?? false,
           quarterly_data: quarterlyDataToJson(qd),
+          geo_cost_split:
+            data.initiativeGeoCostSplit?.entries?.length
+              ? (geoCostSplitToJson(data.initiativeGeoCostSplit) as Json)
+              : null,
         })
         .select()
         .single();
@@ -186,24 +225,29 @@ export function useInitiativeMutations() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('initiatives').delete().eq('id', id);
+      const { error } = await supabase
+        .from('initiatives')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id);
       if (error) throw error;
     },
     onMutate: async (id) => {
       setSyncStatus('saving');
-      await queryClient.cancelQueries({ queryKey: ['initiatives'] });
-      const previous = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      await queryClient.cancelQueries({ queryKey: INITIATIVES_QUERY_KEY });
+      const previousEntries = queryClient.getQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY });
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.filter((row) => row.id !== id);
       });
-      return { previous };
+      return { previousEntries };
     },
     onError: (err, id, context) => {
       console.error('Delete failed:', err);
       setSyncStatus('error');
-      if (context?.previous) {
-        queryClient.setQueryData(['initiatives'], context.previous);
+      if (context?.previousEntries) {
+        for (const [queryKey, data] of context.previousEntries) {
+          queryClient.setQueryData(queryKey, data);
+        }
       }
       toast({
         title: 'Ошибка удаления',
@@ -222,14 +266,14 @@ export function useInitiativeMutations() {
       const key = `${id}-${field}`;
       const existing = debounceTimers.current.get(key);
       if (existing) clearTimeout(existing);
-      const latest = queryClient.getQueryData<AdminDataRow[]>(['initiatives'])?.find((r) => r.id === id);
+      const latest = findRowInInitiativeCaches(queryClient, id);
       if (!latest) return;
       const originalValue = (latest as unknown as Record<string, unknown>)[field];
       if (valuesEqual(originalValue, value)) return;
 
       const dbColumn = FIELD_TO_COLUMN[field] || field;
 
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.map((row) => (row.id !== id ? row : { ...row, [field]: value }));
       });
@@ -238,13 +282,13 @@ export function useInitiativeMutations() {
       setPendingCount(debounceTimers.current.size + 1);
 
       const timer = setTimeout(() => {
-        const latest = queryClient.getQueryData<AdminDataRow[]>(['initiatives'])?.find((r) => r.id === id);
-        if (!latest) {
+        const latestRow = findRowInInitiativeCaches(queryClient, id);
+        if (!latestRow) {
           debounceTimers.current.delete(key);
           setPendingCount(debounceTimers.current.size);
           return;
         }
-        const latestValue = (latest as unknown as Record<string, unknown>)[field];
+        const latestValue = (latestRow as unknown as Record<string, unknown>)[field];
         if (valuesEqual(latestValue, originalValue)) {
           debounceTimers.current.delete(key);
           if (debounceTimers.current.size === 0) setSyncStatus('synced');
@@ -265,6 +309,10 @@ export function useInitiativeMutations() {
     [updateMutation, queryClient]
   );
 
+  /**
+   * Копирует командный effortCoefficient в person_initiative_assignments для людей команды
+   * только где is_auto: true. Ручные правки (is_auto: false) не перезаписываются.
+   */
   const syncAssignments = useCallback(
     async (initiative: AdminDataRow, quarter: string, effortValue: number) => {
       try {
@@ -345,13 +393,12 @@ export function useInitiativeMutations() {
   );
 
   const updateQuarterData = useCallback(
-    (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean | GeoCostSplit | undefined) => {
+    (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean | undefined) => {
       const key = `${id}-quarterly-${quarter}-${field}`;
       const existing = debounceTimers.current.get(key);
       if (existing) clearTimeout(existing);
 
-      const currentData = queryClient.getQueryData<AdminDataRow[]>(['initiatives']);
-      const currentRow = currentData?.find((r) => r.id === id);
+      const currentRow = findRowInInitiativeCaches(queryClient, id);
       if (!currentRow) return;
 
       const prevQ = currentRow.quarterlyData[quarter] || createEmptyQuarterData();
@@ -365,7 +412,7 @@ export function useInitiativeMutations() {
         [quarter]: nextQuarter,
       };
 
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.map((row) =>
           row.id === id ? { ...row, quarterlyData: updatedQuarterlyData } : row
@@ -375,13 +422,11 @@ export function useInitiativeMutations() {
       setSyncStatus('saving');
 
       const delay =
-        field === 'geoCostSplit'
-          ? 400
-          : typeof value === 'boolean'
-            ? 0
-            : typeof value === 'number'
-              ? 500
-              : 1000;
+        typeof value === 'boolean'
+          ? 0
+          : typeof value === 'number'
+            ? 500
+            : 1000;
 
       const timer = setTimeout(async () => {
         updateMutation.mutate({
@@ -408,7 +453,7 @@ export function useInitiativeMutations() {
     (id: string, quarterlyData: Record<string, AdminQuarterData>) => {
       setSyncStatus('saving');
       setLastError(null);
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.map((row) => (row.id === id ? { ...row, quarterlyData } : row));
       });
@@ -428,7 +473,7 @@ export function useInitiativeMutations() {
         id,
         patch: { quarterly_data: quarterlyDataToJson(quarterlyData) },
       });
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.map((row) => (row.id === id ? { ...row, quarterlyData } : row));
       });
@@ -438,10 +483,9 @@ export function useInitiativeMutations() {
 
   const immediateUpdate = useCallback(
     (id: string, field: string, value: unknown) => {
-      const latest = queryClient.getQueryData<AdminDataRow[]>(['initiatives'])?.find((r) => r.id === id);
-      if (!latest) return;
+      if (!findRowInInitiativeCaches(queryClient, id)) return;
       const dbColumn = FIELD_TO_COLUMN[field] || field;
-      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => {
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
         return old.map((row) => (row.id === id ? { ...row, [field]: value } : row));
       });
@@ -463,12 +507,23 @@ export function useInitiativeMutations() {
   const finalizeBulkInitiativeMutations = useCallback(() => {
     if (bulkInitiativeInvalidateSkipsRef.current > 0) {
       bulkInitiativeInvalidateSkipsRef.current = 0;
-      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      queryClient.invalidateQueries({ queryKey: INITIATIVES_QUERY_KEY });
     }
   }, [queryClient]);
 
   const updateInitiativeFieldAsync = useCallback(
     async (id: string, field: string, value: unknown) => {
+      if (field === 'initiativeGeoCostSplit') {
+        const split = value as GeoCostSplit | undefined;
+        await updateMutation.mutateAsync({
+          id,
+          patch: {
+            geo_cost_split:
+              split?.entries?.length ? (geoCostSplitToJson(split) as Json) : null,
+          },
+        });
+        return;
+      }
       const dbColumn = FIELD_TO_COLUMN[field] || field;
       await updateMutation.mutateAsync({
         id,
@@ -477,6 +532,126 @@ export function useInitiativeMutations() {
     },
     [updateMutation]
   );
+
+  const updateInitiativeGeoCostSplit = useCallback(
+    (id: string, split: GeoCostSplit | undefined) => {
+      const key = `${id}-initiativeGeoCostSplit`;
+      const existing = debounceTimers.current.get(key);
+      if (existing) clearTimeout(existing);
+
+      const currentRow = findRowInInitiativeCaches(queryClient, id);
+      if (!currentRow) return;
+
+      const normalized = split?.entries?.length ? split : undefined;
+      if (valuesEqual(currentRow.initiativeGeoCostSplit, normalized)) return;
+
+      queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
+        if (old === undefined) return undefined;
+        return old.map((row) =>
+          row.id === id ? { ...row, initiativeGeoCostSplit: normalized } : row
+        );
+      });
+
+      setSyncStatus('saving');
+      setPendingCount(debounceTimers.current.size + 1);
+
+      const timer = setTimeout(() => {
+        updateMutation.mutate({
+          id,
+          patch: {
+            geo_cost_split:
+              normalized?.entries?.length
+                ? (geoCostSplitToJson(normalized) as Json)
+                : null,
+          },
+        });
+        debounceTimers.current.delete(key);
+        setPendingCount(debounceTimers.current.size);
+      }, 400);
+
+      debounceTimers.current.set(key, timer);
+      setPendingCount(debounceTimers.current.size);
+    },
+    [updateMutation, queryClient]
+  );
+
+  /** Сразу отправить в БД все отложенные debounce-обновления (кнопка «Сохранить»). */
+  const flushDebouncedSavesNow = useCallback(async () => {
+    const keys = [...debounceTimers.current.keys()];
+    for (const key of keys) {
+      const t = debounceTimers.current.get(key);
+      if (t) clearTimeout(t);
+      debounceTimers.current.delete(key);
+    }
+    setPendingCount(0);
+
+    if (keys.length === 0) {
+      setSyncStatus('synced');
+      return;
+    }
+
+    setSyncStatus('saving');
+    setLastError(null);
+
+    const quarterKeyRe = /^(.+)-quarterly-(\d{4}-Q\d)-(.+)$/;
+
+    for (const key of keys) {
+      const qm = key.match(quarterKeyRe);
+      if (qm) {
+        const [, id, quarter, field] = qm;
+        const currentRow = findRowInInitiativeCaches(queryClient, id);
+        if (!currentRow) continue;
+        await updateMutation.mutateAsync({
+          id,
+          patch: { quarterly_data: quarterlyDataToJson(currentRow.quarterlyData) },
+        });
+        if (field === 'effortCoefficient') {
+          const eff = Math.max(
+            0,
+            Math.min(100, Number(currentRow.quarterlyData[quarter]?.effortCoefficient) || 0)
+          );
+          if (eff > 0) {
+            await syncAssignments(currentRow, quarter, eff);
+          }
+        }
+        continue;
+      }
+
+      let parsed: { id: string; field: string } | null = null;
+      for (const suffix of INIT_DEBOUNCE_KEY_SUFFIXES) {
+        if (key.endsWith(`-${suffix}`)) {
+          parsed = { id: key.slice(0, -(suffix.length + 1)), field: suffix };
+          break;
+        }
+      }
+      if (!parsed) {
+        console.warn('[flushDebouncedSavesNow] unrecognized debounce key:', key);
+        continue;
+      }
+      const latest = findRowInInitiativeCaches(queryClient, parsed.id);
+      if (!latest) continue;
+      if (parsed.field === 'initiativeGeoCostSplit') {
+        const split = latest.initiativeGeoCostSplit;
+        await updateMutation.mutateAsync({
+          id: parsed.id,
+          patch: {
+            geo_cost_split:
+              split?.entries?.length ? (geoCostSplitToJson(split) as Json) : null,
+          },
+        });
+        continue;
+      }
+      const dbColumn = FIELD_TO_COLUMN[parsed.field] || parsed.field;
+      const latestValue = (latest as unknown as Record<string, unknown>)[parsed.field];
+      await updateMutation.mutateAsync({
+        id: parsed.id,
+        patch: { [dbColumn]: latestValue },
+      });
+    }
+
+    setSyncStatus('synced');
+    scheduleInitiativesInvalidate(0);
+  }, [queryClient, updateMutation, syncAssignments, scheduleInitiativesInvalidate]);
 
   const flushPendingChanges = useCallback(() => {
     debounceTimers.current.forEach((timer) => clearTimeout(timer));
@@ -497,6 +672,7 @@ export function useInitiativeMutations() {
     updateQuarterDataBulkAsync,
     immediateUpdate,
     updateInitiativeFieldAsync,
+    updateInitiativeGeoCostSplit,
     syncAssignments,
     createInitiative: createMutation.mutateAsync,
     deleteInitiative: deleteMutation.mutateAsync,
@@ -505,6 +681,7 @@ export function useInitiativeMutations() {
     pendingChanges: pendingCount,
     lastError,
     flushPendingChanges,
+    flushDebouncedSavesNow,
     retry,
     beginBulkInitiativeMutations,
     finalizeBulkInitiativeMutations,

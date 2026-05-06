@@ -10,7 +10,6 @@ CREATE TABLE public.initiatives (
   description text,
   documentation_link text,
   initiative text NOT NULL,
-  initiative_type text,
   cost_finance_confirmed boolean NOT NULL DEFAULT true,
   quarterly_data jsonb DEFAULT '{}',
   stakeholders text,

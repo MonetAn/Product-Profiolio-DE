@@ -11,10 +11,8 @@ import {
   RawDataRow,
   calculateBudget,
   formatBudget,
-  hasPreliminaryQuarterInPeriod,
-  PRELIMINARY_COST_USER_MESSAGE,
 } from '@/lib/dataManager';
-import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, Pencil } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ExternalLink, Pencil } from 'lucide-react';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 
 interface InitiativePeekModalProps {
@@ -123,24 +121,6 @@ export function InitiativePeekModal({
                     </p>
                   </div>
                 )
-              ) : null}
-              {showMoney &&
-              selectedQuarters.length > 0 &&
-              hasPreliminaryQuarterInPeriod(row, selectedQuarters) ? (
-                <div
-                  role="status"
-                  className="rounded-lg border border-amber-500/45 bg-amber-500/[0.14] px-3 py-2.5 text-xs leading-snug dark:border-amber-500/40 dark:bg-amber-500/20"
-                >
-                  <div className="flex gap-2">
-                    <AlertTriangle
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400"
-                      aria-hidden
-                    />
-                    <p className="font-semibold text-amber-950 dark:text-amber-50">
-                      {PRELIMINARY_COST_USER_MESSAGE}
-                    </p>
-                  </div>
-                </div>
               ) : null}
               {showMoney && (
                 <section>

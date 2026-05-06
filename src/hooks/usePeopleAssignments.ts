@@ -3,9 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { PersonAssignment, Person } from '@/lib/peopleDataManager';
 import { useToast } from '@/hooks/use-toast';
 import { Json } from '@/integrations/supabase/types';
-import { AdminDataRow } from '@/lib/adminDataManager';
+import { AdminDataRow, type AdminQuarterData } from '@/lib/adminDataManager';
 
 const ASSIGNMENTS_SELECT_COLUMNS = ['id', 'person_id', 'initiative_id', 'quarterly_effort', 'is_auto', 'created_at', 'updated_at'].join(', ');
+
+function clampEffortPct(n: number): number {
+  return Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : 0)));
+}
 
 // Fetch all assignments
 export function usePersonAssignments() {
@@ -224,10 +228,78 @@ export function useAssignmentMutations() {
     }
   });
 
-  return { 
-    createAssignment, 
-    updateAssignment, 
+  /**
+   * Копирует доли по выбранным кварталам с source → target по всем инициативам списка.
+   * Значение квартала: из строки источника, иначе как у команды в инициативе (expected).
+   */
+  const copyPersonEffortFrom = useMutation({
+    mutationFn: async (payload: {
+      sourcePersonId: string;
+      targetPersonId: string;
+      initiatives: AdminDataRow[];
+      quarters: string[];
+      existingAssignments: PersonAssignment[];
+    }) => {
+      const { sourcePersonId, targetPersonId, initiatives, quarters, existingAssignments } = payload;
+      if (sourcePersonId === targetPersonId) return;
+
+      for (const initiative of initiatives) {
+        const src = existingAssignments.find(
+          (a) => a.person_id === sourcePersonId && a.initiative_id === initiative.id
+        );
+        const tgt = existingAssignments.find(
+          (a) => a.person_id === targetPersonId && a.initiative_id === initiative.id
+        );
+
+        const next: Record<string, number> = {};
+        for (const q of quarters) {
+          const raw = src?.quarterly_effort?.[q];
+          if (raw !== undefined && raw !== null) {
+            next[q] = clampEffortPct(Number(raw));
+          } else {
+            const qd = initiative.quarterlyData[q] as AdminQuarterData | undefined;
+            next[q] = clampEffortPct(Number(qd?.effortCoefficient ?? 0));
+          }
+        }
+
+        if (!tgt) {
+          const { error } = await supabase.from('person_initiative_assignments').insert({
+            person_id: targetPersonId,
+            initiative_id: initiative.id,
+            quarterly_effort: next as unknown as Json,
+            is_auto: false,
+          });
+          if (error) throw error;
+        } else {
+          const merged: Record<string, number> = {
+            ...(tgt.quarterly_effort as Record<string, number>),
+            ...next,
+          };
+          const { error } = await supabase
+            .from('person_initiative_assignments')
+            .update({
+              quarterly_effort: merged as unknown as Json,
+              is_auto: false,
+            })
+            .eq('id', tgt.id);
+          if (error) throw error;
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['person_assignments'] });
+      toast({ title: 'Скопировано' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  return {
+    createAssignment,
+    updateAssignment,
     deleteAssignment,
-    syncFromInitiative
+    syncFromInitiative,
+    copyPersonEffortFrom,
   };
 }

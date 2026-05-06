@@ -1,4 +1,8 @@
-import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
+import {
+  compareQuarters,
+  isCalendarPastQuarter,
+  isPortfolioMandatoryMetricFactQuarter,
+} from '@/lib/quarterUtils';
 
 // ===== GEO COST SPLIT (квартал: % от cost по строкам справочника market_countries) =====
 
@@ -10,6 +14,10 @@ export interface GeoCostSplit {
   entries: GeoCostSplitEntry[];
   /** Комментарий ко всему сплиту квартала (один на квартал). */
   note?: string;
+  /** Стабильный ключ пресета распределения (драйвер), см. `GEO_ALLOCATION_DRIVERS` в `geoAllocationDrivers.ts`. */
+  driverKey?: string;
+  /** Подпись драйвера для UI и выгрузок; при пересчёте коэффициентов ключ ищем по `driverKey`. */
+  driverLabel?: string;
 }
 
 // ===== ADMIN DATA TYPES =====
@@ -24,18 +32,7 @@ export interface AdminQuarterData {
   effortCoefficient: number; // 0-100% effort for this quarter
   /** false — предварительная стоимость (Quick Flow); true/undefined — подтверждено финансами */
   costFinanceConfirmed?: boolean;
-  /** Распределение стоимости квартала по строкам «Рынки» (в т.ч. Drinkit как одна строка справочника). */
-  geoCostSplit?: GeoCostSplit;
 }
-
-// Initiative types with descriptions
-export const INITIATIVE_TYPES = [
-  { value: 'Product', label: 'Product', description: 'Влияет на бизнес, зарабатывает или экономит деньги' },
-  { value: 'Stream', label: 'Stream', description: 'Влияет на ключевую метрику' },
-  { value: 'Enabler', label: 'Enabler', description: 'Поддержка инициатив бизнеса' },
-] as const;
-
-export type InitiativeType = typeof INITIATIVE_TYPES[number]['value'];
 
 // Available stakeholders (кластеры; IT убран)
 export const STAKEHOLDERS_LIST = [
@@ -76,12 +73,18 @@ export function sortStakeholderLabels(labels: string[]): string[] {
   });
 }
 
-/** JSON для `quarterly_data.*.geoCostSplit` (без пустых note). */
+/** JSON для колонки `initiatives.geo_cost_split` и API (без пустых note). */
 export function geoCostSplitToJson(split: GeoCostSplit): {
   entries: Record<string, unknown>[];
   note?: string;
+  driverKey?: string;
+  driverLabel?: string;
 } {
   const splitNote = typeof split.note === 'string' && split.note.trim() ? split.note.trim() : undefined;
+  const driverKey =
+    typeof split.driverKey === 'string' && split.driverKey.trim() ? split.driverKey.trim() : undefined;
+  const driverLabel =
+    typeof split.driverLabel === 'string' && split.driverLabel.trim() ? split.driverLabel.trim() : undefined;
   return {
     entries: split.entries.map((e) => {
       const note = typeof e.note === 'string' && e.note.trim() ? e.note.trim() : undefined;
@@ -101,6 +104,7 @@ export function geoCostSplitToJson(split: GeoCostSplit): {
       };
     }),
     ...(splitNote ? { note: splitNote } : {}),
+    ...(driverKey ? { driverKey, ...(driverLabel ? { driverLabel } : {}) } : {}),
   };
 }
 
@@ -127,14 +131,31 @@ export function parseGeoCostSplit(raw: unknown): GeoCostSplit | undefined {
   const splitNoteRaw = o.note;
   const splitNote =
     typeof splitNoteRaw === 'string' && splitNoteRaw.trim() ? splitNoteRaw.trim() : undefined;
-  return { entries, ...(splitNote ? { note: splitNote } : {}) };
+  const driverKeyRaw = o.driverKey;
+  const driverLabelRaw = o.driverLabel;
+  const driverKey =
+    typeof driverKeyRaw === 'string' && driverKeyRaw.trim() ? driverKeyRaw.trim() : undefined;
+  const driverLabel =
+    typeof driverLabelRaw === 'string' && driverLabelRaw.trim() ? driverLabelRaw.trim() : undefined;
+  return {
+    entries,
+    ...(splitNote ? { note: splitNote } : {}),
+    ...(driverKey ? { driverKey, ...(driverLabel ? { driverLabel } : {}) } : {}),
+  };
 }
 
 /** Копия сплита без общих ссылок на объекты строк (другой квартал, правки не затронут источник). */
 export function cloneGeoCostSplit(split: GeoCostSplit | undefined): GeoCostSplit | undefined {
   if (!split?.entries?.length) return undefined;
   const n = typeof split.note === 'string' && split.note.trim() ? split.note.trim() : undefined;
-  return { entries: split.entries.map((e) => ({ ...e })), ...(n ? { note: n } : {}) };
+  const dk = typeof split.driverKey === 'string' && split.driverKey.trim() ? split.driverKey.trim() : undefined;
+  const dl =
+    typeof split.driverLabel === 'string' && split.driverLabel.trim() ? split.driverLabel.trim() : undefined;
+  return {
+    entries: split.entries.map((e) => ({ ...e })),
+    ...(n ? { note: n } : {}),
+    ...(dk ? { driverKey: dk, ...(dl ? { driverLabel: dl } : {}) } : {}),
+  };
 }
 
 export function geoCostSplitPercentsTotal(entries: GeoCostSplitEntry[]): number {
@@ -162,17 +183,20 @@ export function isQuickFlowGeoCompleteForRow(row: AdminDataRow, fillQuarters: st
     const qd = row.quarterlyData[q];
     const cost = qd?.cost ?? 0;
     if (cost <= 0) return true;
-    return isGeoCostSplitCompleteForCost(cost, qd?.geoCostSplit);
+    return isGeoCostSplitCompleteForCost(cost, row.initiativeGeoCostSplit);
   });
 }
 
-/** Инициативы с затратами в интервале, у которых не везде заполнено распределение по странам. */
+/** Инициативы с затратами в интервале, у которых не везде заполнено распределение по странам. Заглушки не проверяем — они не разнесены ни по странам, ни по чему-либо. */
 export function getQuickFlowRowsWithIncompleteGeoSplit(
   rows: AdminDataRow[],
   fillQuarters: string[]
 ): AdminDataRow[] {
   return rows.filter(
-    (r) => quickFlowPaidQuartersForRow(r, fillQuarters).length > 0 && !isQuickFlowGeoCompleteForRow(r, fillQuarters)
+    (r) =>
+      !r.isTimelineStub &&
+      quickFlowPaidQuartersForRow(r, fillQuarters).length > 0 &&
+      !isQuickFlowGeoCompleteForRow(r, fillQuarters)
   );
 }
 
@@ -268,15 +292,50 @@ export interface AdminDataRow {
   unit: string;
   team: string;
   initiative: string;
-  initiativeType: InitiativeType | '';
   stakeholdersList: string[];
   description: string;
   documentationLink: string;
   stakeholders: string; // Legacy field for backward compatibility
   quarterlyData: Record<string, AdminQuarterData>;
+  /** Распределение стоимости по рынкам (на инициативу; сумма 100%). */
+  initiativeGeoCostSplit?: GeoCostSplit;
   isTimelineStub?: boolean;
   isNew?: boolean;
   isModified?: boolean;
+}
+
+/**
+ * Фильтр для матрицы коэффициентов: оставляем инициативы, где в выбранном году есть
+ * либо effortCoefficient > 0, либо стоимость (cost + otherCosts) > 0.
+ */
+export function hasInitiativeEffortOrCostInYear(row: AdminDataRow, year: number): boolean {
+  for (const [q, qd] of Object.entries(row.quarterlyData)) {
+    const m = q.match(/^(\d{4})-Q[1-4]$/);
+    if (!m) continue;
+    if (Number(m[1]) !== year) continue;
+    if ((qd?.effortCoefficient ?? 0) > 0) return true;
+    const totalCost = (qd?.cost ?? 0) + (qd?.otherCosts ?? 0);
+    if (totalCost > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Имя для отображения: для заглушки — «Нераспределено · {team}», независимо от поля initiative в БД.
+ * Это контейнер остатка бюджета команды; настоящее название инициативы для него не имеет смысла.
+ */
+export function getStubResidualLabel(team: string | null | undefined): string {
+  const t = (team ?? '').trim();
+  return t ? `Нераспределено · ${t}` : 'Нераспределено';
+}
+
+export function getInitiativeDisplayName(row: {
+  isTimelineStub?: boolean | null;
+  initiative?: string | null;
+  team?: string | null;
+}): string {
+  if (row.isTimelineStub) return getStubResidualLabel(row.team);
+  return row.initiative?.trim() || '—';
 }
 
 /** Всем кварталам YYYY-Qn в объекте — флаг подтверждения финансами. */
@@ -477,7 +536,6 @@ export function parseAdminCSV(text: string): {
   const unitIdx = headers.findIndex(h => h.toLowerCase().includes('unit') || h.toLowerCase() === 'юнит');
   const teamIdx = headers.findIndex(h => h.toLowerCase().includes('team') || h.toLowerCase() === 'команда');
   const initiativeIdx = headers.findIndex(h => h.toLowerCase().includes('initiative') || h.toLowerCase() === 'инициатива');
-  const typeIdx = headers.findIndex(h => h.toLowerCase() === 'type' || h.toLowerCase() === 'тип');
   // Single source of truth: column "Stakeholders" (exact name to avoid matching "Stakeholders List")
   const stakeholdersIdx = headers.findIndex(h => h.trim().toLowerCase() === 'stakeholders' || h.trim().toLowerCase() === 'стейкхолдеры');
   const descriptionIdx = headers.findIndex(h => h.toLowerCase().includes('description') || h.toLowerCase() === 'описание');
@@ -499,7 +557,6 @@ export function parseAdminCSV(text: string): {
       unit: values[unitIdx >= 0 ? unitIdx : 0]?.trim() || '',
       team: values[teamIdx >= 0 ? teamIdx : 1]?.trim() || '',
       initiative: values[initiativeIdx >= 0 ? initiativeIdx : 2]?.trim() || '',
-      initiativeType: (typeIdx >= 0 ? values[typeIdx]?.trim() || '' : '') as InitiativeType | '',
       stakeholdersList: parsedStakeholdersList,
       description: values[descriptionIdx >= 0 ? descriptionIdx : 3]?.trim() || '',
       documentationLink: docLinkIdx >= 0 ? values[docLinkIdx]?.trim() || '' : '',
@@ -554,7 +611,7 @@ export function exportAdminCSV(
   originalHeaders: string[]
 ): string {
   // Build headers
-  const baseHeaders = ['Unit', 'Team', 'Initiative', 'Type', 'Stakeholders List', 'Description', 'Documentation Link', 'Stakeholders'];
+  const baseHeaders = ['Unit', 'Team', 'Initiative', 'Stakeholders List', 'Description', 'Documentation Link', 'Stakeholders'];
   const quarterHeaders: string[] = [];
   
   quarters.forEach(q => {
@@ -579,7 +636,6 @@ export function exportAdminCSV(
       escapeCSVValue(row.unit),
       escapeCSVValue(row.team),
       escapeCSVValue(row.initiative),
-      escapeCSVValue(row.initiativeType || ''),
       escapeCSVValue(row.stakeholders),
       escapeCSVValue(row.description),
       escapeCSVValue(row.documentationLink),
@@ -624,6 +680,8 @@ export function exportGeoCostSplitCSV(
     'Team',
     'Initiative',
     'Quarter',
+    'Initiative_driver_key',
+    'Initiative_driver_label',
     'Cluster',
     'Country_or_ClusterOnly',
     'Percent',
@@ -636,9 +694,11 @@ export function exportGeoCostSplitCSV(
   for (const row of data) {
     for (const q of quarters) {
       const qd = row.quarterlyData[q];
-      const geo = qd?.geoCostSplit;
+      const geo = row.initiativeGeoCostSplit;
       const split = geo?.entries;
       const quarterSplitNote = geo?.note?.trim() ?? '';
+      const driverKey = geo?.driverKey?.trim() ?? '';
+      const driverLabel = geo?.driverLabel?.trim() ?? '';
       const cost = qd?.cost ?? 0;
       if (!split?.length || cost <= 0) continue;
       const rubles = rubleAmountsForGeoSplit(cost, split);
@@ -660,6 +720,8 @@ export function exportGeoCostSplitCSV(
             escapeCSVValue(row.team),
             escapeCSVValue(row.initiative),
             escapeCSVValue(q),
+            escapeCSVValue(driverKey),
+            escapeCSVValue(driverLabel),
             escapeCSVValue(cluster),
             escapeCSVValue(countryOr),
             String(e.percent),
@@ -754,7 +816,6 @@ export function createNewInitiative(
   unit: string,
   team: string,
   quarters: string[],
-  initiativeType: InitiativeType | '' = '',
   stakeholdersList: string[] = []
 ): AdminDataRow {
   const quarterlyData: Record<string, AdminQuarterData> = {};
@@ -767,7 +828,6 @@ export function createNewInitiative(
     unit,
     team,
     initiative: '',
-    initiativeType,
     stakeholdersList,
     description: '',
     documentationLink: '',
@@ -784,9 +844,9 @@ export function quarterRequiresPlanFact(qData: AdminQuarterData): boolean {
   return totalCost > 0;
 }
 
-/** Факт метрики обязателен только если нужен блок план/факт по стоимости и квартал календарно уже прошёл (см. `isMetricFactRequiredForQuarter`). */
+/** Факт метрики обязателен в UI для сохранения только для последнего закрытого квартала при активном план/факт. */
 export function quarterRequiresMetricFact(qData: AdminQuarterData, quarterKey: string): boolean {
-  return quarterRequiresPlanFact(qData) && isMetricFactRequiredForQuarter(quarterKey);
+  return quarterRequiresPlanFact(qData) && isPortfolioMandatoryMetricFactQuarter(quarterKey);
 }
 
 /** Визуальный статус ячейки «инициатива × квартал» для обзорных графиков. */
@@ -803,12 +863,10 @@ export function getInitiativeQuarterFillTone(
   return 'ok';
 }
 
-/** Missing required fields at initiative level (same rules as InitiativeTable). */
+/** Обязательные поля карточки для общих проверок (тип убран из продукта; стейкхолдеры — через аллокации на шаге рынков). */
 export function getMissingInitiativeFields(row: AdminDataRow): string[] {
   const missing: string[] = [];
-  if (!row.initiativeType) missing.push('Тип');
-  if (!row.stakeholdersList || row.stakeholdersList.length === 0) missing.push('Стейкх.');
-  if (!row.description) missing.push('Описание');
+  if (!row.description?.trim()) missing.push('Описание');
   return missing;
 }
 
@@ -846,8 +904,11 @@ export function getQuickFlowCellReadiness(row: AdminDataRow, quarter: string): Q
   if (cardMissing.length > 0) {
     blockerReasons.push(`Карточка: ${cardMissing.join(', ')}`);
   }
-  if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd.geoCostSplit)) {
+  if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, row.initiativeGeoCostSplit)) {
     blockerReasons.push('Распределение по рынкам (100%)');
+  }
+  if (quarterRequiresPlanFact(qd) && isPortfolioMandatoryMetricFactQuarter(quarter) && !qd.metricFact?.trim()) {
+    blockerReasons.push('Факт метрики (последний закрытый квартал)');
   }
   if (blockerReasons.length > 0) {
     return { level: 'blocker', reasons: blockerReasons };
@@ -856,8 +917,12 @@ export function getQuickFlowCellReadiness(row: AdminDataRow, quarter: string): Q
   const warnReasons: string[] = [];
   if (quarterRequiresPlanFact(qd)) {
     if (!qd.metricPlan?.trim()) warnReasons.push('План метрики');
-    if (isMetricFactRequiredForQuarter(quarter) && !qd.metricFact?.trim()) {
-      warnReasons.push('Факт метрики');
+    if (
+      isCalendarPastQuarter(quarter) &&
+      !isPortfolioMandatoryMetricFactQuarter(quarter) &&
+      !qd.metricFact?.trim()
+    ) {
+      warnReasons.push('Факт метрики (архивный квартал)');
     }
   }
   if (warnReasons.length > 0) {
@@ -874,6 +939,7 @@ export function getQuickFlowValidationIssues(
 ): { id: string; initiativeName: string; missing: string[] }[] {
   const result: { id: string; initiativeName: string; missing: string[] }[] = [];
   for (const row of rows) {
+    if (row.isTimelineStub) continue;
     const qd = row.quarterlyData[nextQuarter];
     const effort = qd?.effortCoefficient ?? 0;
     const cost = qd?.cost ?? 0;
@@ -881,12 +947,12 @@ export function getQuickFlowValidationIssues(
     const totalCost = cost + otherCosts;
     if (effort <= 0 && totalCost <= 0) continue;
     const missing: string[] = [...getMissingInitiativeFields(row)];
-    if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd?.geoCostSplit)) {
+    if (cost > 0 && !isGeoCostSplitCompleteForCost(cost, row.initiativeGeoCostSplit)) {
       missing.push('Распределение по рынкам');
     }
     if (qd && quarterRequiresPlanFact(qd)) {
       if (!qd.metricPlan?.trim()) missing.push('План метрики');
-      if (isMetricFactRequiredForQuarter(nextQuarter) && !qd.metricFact?.trim()) {
+      if (isPortfolioMandatoryMetricFactQuarter(nextQuarter) && !qd.metricFact?.trim()) {
         missing.push('Факт метрики');
       }
     }
@@ -905,6 +971,9 @@ export function getQuickFlowValidationIssues(
  * Тексты замечаний по паре «инициатива × квартал» для превью таймлайна в quick flow (не для дашборда).
  * Учитываются строки с усилиями или ненулевой стоимостью в квартале.
  */
+/**
+ * Замечания для таймлайна на шаге «План/факт»: только метрики квартала (не карточка инициативы).
+ */
 export function getQuickFlowTimelineQuarterWarnings(row: AdminDataRow, quarter: string): string[] {
   if (row.isTimelineStub) return [];
 
@@ -917,15 +986,14 @@ export function getQuickFlowTimelineQuarterWarnings(row: AdminDataRow, quarter: 
 
   const warnings: string[] = [];
 
-  const cardMissing = getMissingInitiativeFields(row);
-  if (cardMissing.length > 0) {
-    warnings.push(`Карточка: ${cardMissing.join(', ')}`);
-  }
-
   if (quarterRequiresPlanFact(qd)) {
     if (!qd.metricPlan?.trim()) warnings.push('Нет плана метрики');
-    if (isMetricFactRequiredForQuarter(quarter) && !qd.metricFact?.trim()) {
-      warnings.push('Нет факта метрики');
+    if (!qd.metricFact?.trim()) {
+      if (isPortfolioMandatoryMetricFactQuarter(quarter)) {
+        warnings.push('Нет факта метрики (обязательно за последний закрытый квартал)');
+      } else if (isCalendarPastQuarter(quarter)) {
+        warnings.push('Нет факта метрики (старый период)');
+      }
     }
   }
 
@@ -1030,16 +1098,99 @@ export function getQuickFlowValidationIssuesForQuarters(
   }));
 }
 
+/** Только план/факт по кварталам (для блока «План и факт» на обзоре портфеля). */
+export function getQuickFlowPlanFactQuarterIssues(
+  rows: AdminDataRow[],
+  quarter: string
+): { id: string; initiativeName: string; missing: string[] }[] {
+  const result: { id: string; initiativeName: string; missing: string[] }[] = [];
+  for (const row of rows) {
+    if (row.isTimelineStub) continue;
+    const qd = row.quarterlyData[quarter];
+    const effort = qd?.effortCoefficient ?? 0;
+    const cost = qd?.cost ?? 0;
+    const otherCosts = qd?.otherCosts ?? 0;
+    const totalCost = cost + otherCosts;
+    if (effort <= 0 && totalCost <= 0) continue;
+    if (!qd) continue;
+    const missing: string[] = [];
+    if (quarterRequiresPlanFact(qd)) {
+      if (!qd.metricPlan?.trim()) missing.push('План метрики');
+      if (isPortfolioMandatoryMetricFactQuarter(quarter) && !qd.metricFact?.trim()) {
+        missing.push('Факт метрики');
+      } else if (
+        !isPortfolioMandatoryMetricFactQuarter(quarter) &&
+        isCalendarPastQuarter(quarter) &&
+        !qd.metricFact?.trim()
+      ) {
+        missing.push('Факт метрики (архив)');
+      }
+    }
+    if (missing.length > 0) {
+      result.push({ id: row.id, initiativeName: row.initiative || '—', missing });
+    }
+  }
+  return result;
+}
+
+export function getQuickFlowPlanFactIssuesForQuarters(
+  rows: AdminDataRow[],
+  fillQuarters: string[]
+): { id: string; initiativeName: string; missing: string[] }[] {
+  const byId = new Map<string, { id: string; initiativeName: string; missing: Set<string> }>();
+  for (const q of fillQuarters) {
+    for (const issue of getQuickFlowPlanFactQuarterIssues(rows, q)) {
+      const cur = byId.get(issue.id);
+      if (!cur) {
+        byId.set(issue.id, {
+          id: issue.id,
+          initiativeName: issue.initiativeName,
+          missing: new Set(issue.missing),
+        });
+      } else {
+        issue.missing.forEach((m) => cur.missing.add(m));
+      }
+    }
+  }
+  return Array.from(byId.values()).map((x) => ({
+    ...x,
+    missing: [...x.missing],
+  }));
+}
+
+/** Сумма % усилий в колонке только по строкам без заглушки (совпадает с вводом в матрице). */
+export function nonStubQuarterEffortSum(rows: AdminDataRow[], quarter: string): number {
+  return rows.reduce((acc, row) => {
+    if (row.isTimelineStub) return acc;
+    const v = Number(row.quarterlyData[quarter]?.effortCoefficient);
+    const eff = Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+    return acc + eff;
+  }, 0);
+}
+
+const EFF_MATRIX_COL_EPS = 1e-4;
+
+/** Шапка колонки: сумма % только по строкам без заглушки (остаток до 100% — в строке «Нераспределено»). */
+export function effortMatrixColumnChipState(
+  rows: AdminDataRow[],
+  quarter: string
+): { sum: number; nonStubSum: number; valid: boolean } {
+  const nonStubSum = nonStubQuarterEffortSum(rows, quarter);
+  const sum = Math.round(nonStubSum * 100) / 100;
+  const valid = nonStubSum <= 100 + EFF_MATRIX_COL_EPS;
+  return { sum, nonStubSum: sum, valid };
+}
+
 // ===== QUARTERLY EFFORT VALIDATION =====
 export function getTeamQuarterEffortSum(
-  data: AdminDataRow[], 
-  unit: string, 
-  team: string, 
+  data: AdminDataRow[],
+  unit: string,
+  team: string,
   quarter: string,
   excludeId?: string
 ): number {
   return data
-    .filter(row => row.unit === unit && row.team === team && row.id !== excludeId)
+    .filter(row => !row.isTimelineStub && row.unit === unit && row.team === team && row.id !== excludeId)
     .reduce((sum, row) => sum + (row.quarterlyData[quarter]?.effortCoefficient || 0), 0);
 }
 

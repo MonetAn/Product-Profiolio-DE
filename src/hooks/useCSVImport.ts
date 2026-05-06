@@ -127,7 +127,6 @@ export function useCSVImport() {
             const { error: updateError } = await supabase
               .from('initiatives')
               .update({
-                initiative_type: row.initiativeType || null,
                 stakeholders_list: row.stakeholdersList,
                 stakeholders: row.stakeholders,
                 description: row.description,
@@ -159,7 +158,6 @@ export function useCSVImport() {
           unit: row.unit,
           team: row.team,
           initiative: row.initiative,
-          initiative_type: row.initiativeType || null,
           stakeholders_list: row.stakeholdersList,
           description: row.description,
           documentation_link: row.documentationLink,

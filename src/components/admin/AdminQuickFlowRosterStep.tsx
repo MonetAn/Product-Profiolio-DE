@@ -45,6 +45,7 @@ type Props = {
   unit: string;
   team: string;
   quartersCatalog: string[];
+  compactChrome?: boolean;
 };
 
 function snapshotFor(
@@ -70,7 +71,7 @@ function deriveDefaultIds(
   return eff.map((p) => p.id);
 }
 
-export function AdminQuickFlowRosterStep({ unit, team, quartersCatalog }: Props) {
+export function AdminQuickFlowRosterStep({ unit, team, quartersCatalog, compactChrome = false }: Props) {
   const { toast } = useToast();
   const quarter = getCurrentQuarter();
 
@@ -197,14 +198,16 @@ export function AdminQuickFlowRosterStep({ unit, team, quartersCatalog }: Props)
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-      <header>
-        <h1 className="font-juneau text-xl font-medium tracking-tight sm:text-2xl">
-          Состав команды · <span className="tabular-nums">{quarter}</span>
-        </h1>
-        <p className="mt-1.5 text-sm font-medium leading-snug text-muted-foreground sm:text-base">
-          Проверь состав команды
-        </p>
-      </header>
+      {!compactChrome ? (
+        <header>
+          <h1 className="font-juneau text-xl font-medium tracking-tight sm:text-2xl">
+            Состав команды · <span className="tabular-nums">{quarter}</span>
+          </h1>
+          <p className="mt-1.5 text-sm font-medium leading-snug text-muted-foreground sm:text-base">
+            Проверь состав команды
+          </p>
+        </header>
+      ) : null}
 
       <div
         className={cn(

@@ -290,17 +290,22 @@
   background-image: none;
 }
 
+/* Угол off-track: единый треугольник в правом верхнем углу (как treemap `.legend-off-track-icon`) */
 .gantt-segment.off-track::after {
   content: '';
   position: absolute;
   top: 0;
   right: 0;
-  width: 16px;
-  height: 16px;
+  width: 0;
+  height: 0;
   pointer-events: none;
-  background: hsl(var(--destructive));
-  transform: translate(50%, -50%) rotate(45deg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  border-style: solid;
+  border-width: 0 14px 14px 0;
+  border-color: transparent hsl(var(--destructive)) transparent transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+  transform: none;
+  background: none;
+  box-shadow: none;
 }
 
 /*
@@ -328,8 +333,19 @@ html.admin-engineering .gantt-segment.gantt-segment-admin-issue.support.off-trac
     rgba(0, 0, 0, 0.22) 6px
   );
 }
+/*
+ * Сегмент уже залит красным (admin-issue): красный маркер не виден.
+ * Показываем контрастный светлый угол — семантика «off-track» сохраняется.
+ */
 html.admin-engineering .gantt-segment.gantt-segment-admin-issue.off-track::after {
-  content: none;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 12px 12px 0;
+  border-color: transparent rgba(255, 255, 255, 0.92) transparent transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  background: none;
+  transform: none;
 }
 
 html.admin-engineering .gantt-row-is-stub .gantt-segment.gantt-segment-admin-issue.development,
@@ -394,8 +410,7 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
   );
 }
 .gantt-row-is-stub .gantt-segment.off-track::after {
-  width: 12px;
-  height: 12px;
+  border-width: 0 10px 10px 0;
 }
 
 /* Quarter details below segment */

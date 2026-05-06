@@ -133,9 +133,9 @@ export function usePeopleMutations() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from('people')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {

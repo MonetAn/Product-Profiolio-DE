@@ -1,21 +1,31 @@
 import { useMemo } from 'react';
 import { Users, ClipboardList } from 'lucide-react';
-import { Person, PersonAssignment, VirtualAssignment } from '@/lib/peopleDataManager';
+import type { Person } from '@/lib/peopleDataManager';
+import { PersonAssignment, VirtualAssignment } from '@/lib/peopleDataManager';
 import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import PersonGroupRow from './PersonGroupRow';
 import InitiativeGroupRow from './InitiativeGroupRow';
 
-type GroupMode = 'person' | 'initiative';
+export type PeopleAssignmentsGroupMode = 'person' | 'initiative';
 
 interface PeopleAssignmentsTableProps {
   people: Person[];
   initiatives: AdminDataRow[];
   assignments: PersonAssignment[];
   quarters: string[];
-  groupMode: GroupMode;
-  onGroupModeChange: (mode: GroupMode) => void;
+  groupMode: PeopleAssignmentsGroupMode;
+  onGroupModeChange: (mode: PeopleAssignmentsGroupMode) => void;
   onEffortChange: (assignment: VirtualAssignment, quarter: string, value: number) => void;
+  /**
+   * `peopleEffort` — шире колонки кварталов, тумблер группировки не в шапке (задаётся снаружи).
+   * `default` — как на странице «Люди».
+   */
+  variant?: 'default' | 'peopleEffort';
+  /** Экран усилий по людям: список людей для «Как у…» */
+  copyPeers?: Person[];
+  onCopyAssignmentsFrom?: (targetPersonId: string, sourcePersonId: string) => void | Promise<void>;
+  copyAssignmentsBusy?: boolean;
 }
 
 export default function PeopleAssignmentsTable({
@@ -25,16 +35,24 @@ export default function PeopleAssignmentsTable({
   quarters,
   groupMode,
   onGroupModeChange,
-  onEffortChange
+  onEffortChange,
+  variant = 'default',
+  copyPeers,
+  onCopyAssignmentsFrom,
+  copyAssignmentsBusy,
 }: PeopleAssignmentsTableProps) {
+  const isPeopleEffort = variant === 'peopleEffort';
+
   // Display all available quarters from initiatives (earliest to latest)
   const displayQuarters = useMemo(() => quarters, [quarters]);
 
-  // CSS Grid template columns: flex name column + fixed quarter columns + badge column
-  const gridCols = useMemo(() => 
-    `minmax(300px, 1fr) repeat(${displayQuarters.length}, 70px) 100px`,
-    [displayQuarters.length]
-  );
+  // CSS Grid: имя + кварталы + бейдж; в peopleEffort — шире колонки кварталов
+  const gridCols = useMemo(() => {
+    const qW = isPeopleEffort ? 92 : 70;
+    const badgeW = isPeopleEffort ? 80 : 100;
+    const nameMin = isPeopleEffort ? 240 : 300;
+    return `minmax(${nameMin}px, 1fr) repeat(${displayQuarters.length}, ${qW}px) ${badgeW}px`;
+  }, [displayQuarters.length, isPeopleEffort]);
 
   // Create lookup map for existing assignments
   const assignmentMap = useMemo(() => {
@@ -159,36 +177,40 @@ export default function PeopleAssignmentsTable({
   }, [initiatives, people, assignmentMap, displayQuarters]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header with toggle and quarter labels - uses CSS Grid for alignment */}
-      <div 
-        className="grid items-center px-4 py-3 bg-muted/50 border-b sticky top-0 z-10"
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Шапка: в default — тумблер здесь; в peopleEffort — тумблер снаружи */}
+      <div
+        className={`sticky top-0 z-10 grid items-center border-b bg-muted/50 ${
+          isPeopleEffort ? 'px-3 py-2' : 'px-4 py-3'
+        }`}
         style={{ gridTemplateColumns: gridCols }}
       >
-        <ToggleGroup 
-          type="single" 
-          value={groupMode} 
-          onValueChange={(v) => v && onGroupModeChange(v as GroupMode)}
-          className="bg-background rounded-md p-1 justify-start"
-        >
-          <ToggleGroupItem value="person" className="gap-2 px-3">
-            <Users className="h-4 w-4" />
-            По людям
-          </ToggleGroupItem>
-          <ToggleGroupItem value="initiative" className="gap-2 px-3">
-            <ClipboardList className="h-4 w-4" />
-            По инициативам
-          </ToggleGroupItem>
-        </ToggleGroup>
+        {isPeopleEffort ? (
+          <div className="min-w-0" aria-hidden />
+        ) : (
+          <ToggleGroup
+            type="single"
+            value={groupMode}
+            onValueChange={(v) => v && onGroupModeChange(v as PeopleAssignmentsGroupMode)}
+            className="justify-start rounded-md bg-background p-1"
+          >
+            <ToggleGroupItem value="person" className="gap-2 px-3">
+              <Users className="h-4 w-4" />
+              По людям
+            </ToggleGroupItem>
+            <ToggleGroupItem value="initiative" className="gap-2 px-3">
+              <ClipboardList className="h-4 w-4" />
+              По инициативам
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
 
-        {/* Quarter headers - each in its own grid cell */}
-        {displayQuarters.map(q => (
-          <div key={q} className="text-xs font-medium text-muted-foreground text-center">
+        {displayQuarters.map((q) => (
+          <div key={q} className="text-center text-xs font-medium tabular-nums text-muted-foreground">
             {q.replace('20', '').replace('-', ' ')}
           </div>
         ))}
-        
-        {/* Placeholder for badge column */}
+
         <div />
       </div>
 
@@ -206,6 +228,15 @@ export default function PeopleAssignmentsTable({
                 quarters={displayQuarters}
                 gridCols={gridCols}
                 onEffortChange={onEffortChange}
+                copyPeers={
+                  isPeopleEffort && copyPeers?.length
+                    ? copyPeers.filter((p) => p.id !== person.id)
+                    : undefined
+                }
+                onCopyFromPeer={
+                  isPeopleEffort && onCopyAssignmentsFrom ? onCopyAssignmentsFrom : undefined
+                }
+                copyBusy={isPeopleEffort ? copyAssignmentsBusy : undefined}
               />
             ))
           ) : (

@@ -2,16 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { LayoutGrid, MapPin } from 'lucide-react';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
@@ -22,21 +14,16 @@ import {
   createEmptyQuarterData,
   getMissingInitiativeFields,
   getQuickFlowCellReadiness,
-  INITIATIVE_TYPES,
   isGeoCostSplitCompleteForCost,
-  type InitiativeType,
   type QuickFlowReadinessLevel,
   quarterRequiresPlanFact,
-  STAKEHOLDERS_LIST,
   validateTeamQuarterEffort,
 } from '@/lib/adminDataManager';
-import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
+import { compareQuarters, isPortfolioMandatoryMetricFactQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 
 type DraftField =
   | 'initiative'
-  | 'initiativeType'
-  | 'stakeholdersList'
   | 'description'
   | 'documentationLink'
   | 'isTimelineStub';
@@ -51,9 +38,9 @@ type Props = {
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
+    value: string | number | boolean | undefined
   ) => void;
-  onGeoCostSplitDraftChange: (initiativeId: string, quarter: string, split: GeoCostSplit | undefined) => void;
+  onGeoCostSplitDraftChange: (initiativeId: string, split: GeoCostSplit | undefined) => void;
   onInitiativeDraftChange?: (id: string, field: DraftField, value: string | string[] | boolean) => void;
   onNavigateToCoefficients: () => void;
   onNavigateToTimeline: () => void;
@@ -294,19 +281,9 @@ function ValidationCellPanel({
   );
   const cardMissing = useMemo(() => getMissingInitiativeFields(row), [row]);
   const cost = qd.cost ?? 0;
-  const geoIncomplete = cost > 0 && !isGeoCostSplitCompleteForCost(cost, qd.geoCostSplit);
+  const geoIncomplete = cost > 0 && !isGeoCostSplitCompleteForCost(cost, row.initiativeGeoCostSplit);
   const planFactRequired = quarterRequiresPlanFact(qd);
-  const factRequired = isMetricFactRequiredForQuarter(quarter);
-
-  const stakeholders = row.stakeholdersList ?? [];
-
-  const toggleStakeholder = (label: string, checked: boolean) => {
-    if (!onInitiativeDraftChange) return;
-    const next = checked
-      ? [...new Set([...stakeholders, label])]
-      : stakeholders.filter((s) => s !== label);
-    onInitiativeDraftChange(row.id, 'stakeholdersList', next);
-  };
+  const factRequired = isPortfolioMandatoryMetricFactQuarter(quarter);
 
   return (
     <>
@@ -386,50 +363,6 @@ function ValidationCellPanel({
               >
                 Вернуться к шагу
               </Button>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Тип</Label>
-              <Select
-                value={row.initiativeType || ''}
-                onValueChange={(v) => onInitiativeDraftChange(row.id, 'initiativeType', v as InitiativeType | '')}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите тип" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INITIATIVE_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Стейкхолдеры</Label>
-              <div className="max-h-36 overflow-y-auto rounded-md border border-border/60 bg-background p-2">
-                <div className="flex flex-wrap gap-1.5">
-                  {STAKEHOLDERS_LIST.map((st) => {
-                    const on = stakeholders.includes(st);
-                    return (
-                      <label
-                        key={st}
-                        className={cn(
-                          'flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs',
-                          on ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/60'
-                        )}
-                      >
-                        <Checkbox
-                          checked={on}
-                          onCheckedChange={(c) => toggleStakeholder(st, c === true)}
-                          className="sr-only"
-                        />
-                        {st}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`qv-desc-${row.id}`}>Описание</Label>
@@ -539,9 +472,9 @@ function ValidationCellPanel({
             ) : (
               <GeoCostSplitEditor
                 cost={cost}
-                value={qd.geoCostSplit}
+                value={row.initiativeGeoCostSplit}
                 countries={marketCountries}
-                onChange={(next) => onGeoCostSplitDraftChange(row.id, quarter, next)}
+                onChange={(next) => onGeoCostSplitDraftChange(row.id, next)}
                 hideFooterCostLine
               />
             )}

@@ -10,9 +10,11 @@ import {
   Activity,
   LayoutDashboard,
   Globe2,
+  ShieldAlert,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
+import { useAccess } from '@/hooks/useAccess';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -24,7 +26,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { SyncStatus } from '@/hooks/useInitiativeMutations';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
-export type ViewMode = 'initiatives' | 'people' | 'markets' | 'access' | 'activity';
+export type ViewMode = 'initiatives' | 'people' | 'markets' | 'access' | 'activity' | 'sensitive';
 
 interface AdminHeaderProps {
   currentView: ViewMode;
@@ -64,6 +66,7 @@ const AdminHeader = ({
   onAddPerson,
 }: AdminHeaderProps) => {
   const [searchParams] = useSearchParams();
+  const { isSuperAdmin } = useAccess();
 
   // Build URLs preserving current filters
   const initiativesUrl = useMemo(() => {
@@ -76,10 +79,16 @@ const AdminHeader = ({
     return queryString ? `/admin/people?${queryString}` : '/admin/people';
   }, [searchParams]);
 
+  const dashboardUrl = useMemo(() => {
+    const queryString = searchParams.toString();
+    return queryString ? `/?${queryString}` : '/';
+  }, [searchParams]);
+
   const marketsUrl = '/admin/markets';
 
   const accessUrl = '/admin/access';
   const activityUrl = '/admin/activity';
+  const sensitiveUrl = '/admin/sensitive';
 
   // Sync status indicator
   const renderSyncStatus = () => {
@@ -147,7 +156,7 @@ const AdminHeader = ({
   return (
     <header className="h-14 w-full min-w-0 bg-header border-b border-border flex items-center px-4 sm:px-6 shrink-0">
       <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 sm:px-3 shrink-0" asChild>
-        <Link to="/" aria-label="К дашборду">
+        <Link to={dashboardUrl} aria-label="К дашборду">
           <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
           <span className="hidden sm:inline text-sm font-medium">К дашборду</span>
         </Link>
@@ -205,6 +214,17 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Активность</span>
             </ToggleGroupItem>
           </Link>
+          {isSuperAdmin && (
+            <Link to={sensitiveUrl}>
+              <ToggleGroupItem
+                value="sensitive"
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <ShieldAlert className="h-4 w-4" />
+                <span className="hidden sm:inline">Sensitive</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
         </ToggleGroup>
       </div>
 
@@ -231,7 +251,8 @@ const AdminHeader = ({
           {currentView === 'markets' && null}
           {currentView === 'access' && null}
           {currentView === 'activity' && null}
-          {currentView !== 'access' && currentView !== 'activity' && currentView !== 'markets' && renderSyncStatus()}
+          {currentView === 'sensitive' && null}
+          {currentView !== 'access' && currentView !== 'activity' && currentView !== 'markets' && currentView !== 'sensitive' && renderSyncStatus()}
         </div>
       )}
 

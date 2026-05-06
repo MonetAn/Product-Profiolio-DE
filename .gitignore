@@ -24,3 +24,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated budget reconcile SQL (local / one-off)
+scripts/out/
+
+# Database backups (хранятся отдельно — см. docs/DB_BACKUP_AND_DEV.md)
+backups/
+

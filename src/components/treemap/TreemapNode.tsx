@@ -1,7 +1,7 @@
 // Framer Motion treemap node component
 // Animates x, y, width, height for Flourish-style transitions
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, usePresence } from 'framer-motion';
 import { memo, type CSSProperties } from 'react';
 import { TreemapLayoutNode, AnimationType, getEffectiveDuration, TREEMAP_EASE, TEXT_OPACITY_TRANSITION_MS } from './types';
 import { formatBudget } from '@/lib/dataManager';
@@ -156,6 +156,7 @@ const TreemapNode = memo(({
   reduceMotion = false,
   nodeCursor = 'pointer',
 }: TreemapNodeProps) => {
+  const [isPresent] = usePresence();
   const duration = reduceMotion
     ? 0.15
     : (animationType === 'initial' ? 0 : getEffectiveDuration(animationType, visibleNodeCount) / 1000);
@@ -248,6 +249,7 @@ const TreemapNode = memo(({
     overflow: 'hidden',
     cursor: nodeCursor,
     zIndex: 1,
+    pointerEvents: isPresent ? 'auto' : 'none',
     ...(leafShadow ? { boxShadow: leafShadow } : {}),
   };
 
@@ -322,6 +324,7 @@ const TreemapNode = memo(({
         cursor: nodeCursor,
         transformOrigin: 'center center',
         zIndex: 1,
+        pointerEvents: isPresent ? 'auto' : 'none',
         ...(leafShadow ? { boxShadow: leafShadow } : {}),
       }}
       {...eventHandlers}

@@ -79,7 +79,7 @@ export function AdminQuickFlowEffortComparePanel({
       className={cn(
         'flex min-h-0 min-w-0 flex-1 flex-col',
         immersive
-          ? 'gap-0 rounded-none border-0 bg-muted/10 p-0 shadow-none dark:bg-muted/5'
+          ? 'gap-0 rounded-none border-0 bg-muted p-0 shadow-none dark:bg-muted/40'
           : 'gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-sm',
         className
       )}
@@ -174,14 +174,17 @@ export function AdminQuickFlowEffortComparePanel({
             </div>
           </section>
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-            <div
-              className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 border-b border-border/45 bg-muted/25 px-2.5 py-1 dark:bg-muted/30"
-              title={PRELIMINARY_COST_USER_MESSAGE}
-            >
-              <span className="text-[11px] font-semibold text-foreground">После изменений</span>
-              <span className="min-w-0 max-w-full text-right text-[10px] font-medium leading-snug text-amber-900 dark:text-amber-100">
-                {PRELIMINARY_COST_USER_MESSAGE}
-              </span>
+            <div className="shrink-0 border-b border-border/45 bg-muted/25 px-2.5 py-1 dark:bg-muted/30">
+              <p
+                className="m-0 min-w-0 text-left text-[11px] leading-snug text-foreground"
+                title={`После изменений — ${PRELIMINARY_COST_USER_MESSAGE}`}
+              >
+                <span className="font-semibold">После изменений</span>
+                <span className="text-[10px] font-medium leading-snug text-amber-900 dark:text-amber-100">
+                  {' '}
+                  {PRELIMINARY_COST_USER_MESSAGE}.
+                </span>
+              </p>
             </div>
             <div className="flex min-h-0 h-full min-w-0 flex-1 flex-col overflow-hidden">
               {afterModel.effectiveTotal > 0 && afterChildren.length > 0 ? (

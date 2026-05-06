@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, Check, ChevronDown, Plus } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
+import { Plus } from 'lucide-react';
+import { ConfigProvider, DatePicker } from 'antd';
+import ruRU from 'antd/locale/ru_RU';
+import type { Dayjs } from 'dayjs';
 import { Button } from '@/components/ui/button';
-import { compareQuarters } from '@/lib/quarterUtils';
+import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
+import { dayjsToQuarterKey, quarterKeyToDayjs } from '@/lib/quarterDayjs';
+import { antSemanticPointerStyles } from '@/lib/antPickerPointerStyles';
 import { cn } from '@/lib/utils';
+
+const { RangePicker } = DatePicker;
 
 export type AdminQuickFlowMatrixPeriodPickerProps = {
   catalogQuarters: string[];
   visibleQuarters: string[];
+  /** Раньше — подсветка при выборе диапазона двумя кликами; с Ant picker не используется. */
   previewQuarters: string[] | null;
   rangeAnchor: string | null;
   onQuarterClick: (q: string) => void;
@@ -26,10 +34,10 @@ export type AdminQuickFlowMatrixPeriodPickerProps = {
 export function AdminQuickFlowMatrixPeriodPicker({
   catalogQuarters,
   visibleQuarters,
-  previewQuarters,
-  rangeAnchor,
-  onQuarterClick,
-  onQuarterHover,
+  previewQuarters: _previewQuarters,
+  rangeAnchor: _rangeAnchor,
+  onQuarterClick: _onQuarterClick,
+  onQuarterHover: _onQuarterHover,
   onReplaceSelectedQuarters,
   onDismissTransientRangeUI,
   compactPeriodPicker = false,
@@ -39,70 +47,62 @@ export function AdminQuickFlowMatrixPeriodPicker({
   onOpenAddInitiative = () => {},
   splitImmersive = false,
 }: AdminQuickFlowMatrixPeriodPickerProps) {
-  const availableYears = useMemo(() => {
-    const years = new Set<string>();
-    for (const q of catalogQuarters) {
-      const m = q.match(/^(\d{4})-Q[1-4]$/);
-      if (m) years.add(m[1]);
-    }
-    return [...years].sort();
-  }, [catalogQuarters]);
+  void _previewQuarters;
+  void _rangeAnchor;
+  void _onQuarterClick;
+  void _onQuarterHover;
 
-  const periodRef = useRef<HTMLDivElement>(null);
-  const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (periodRef.current && !periodRef.current.contains(e.target as Node)) {
-        setPeriodMenuOpen(false);
-        onDismissTransientRangeUI();
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [onDismissTransientRangeUI]);
-
-  const periodLabel = useMemo(() => {
-    const sel = visibleQuarters;
-    const cat = catalogQuarters;
-    if (sel.length === 0) return 'Период';
-    if (
-      cat.length > 0 &&
-      sel.length === cat.length &&
-      sel.every((q) => cat.includes(q))
-    ) {
-      if (availableYears.length === 0) return 'Все кварталы';
-      return `${availableYears[0]}–${availableYears[availableYears.length - 1]}`;
-    }
-    if (sel.length === 1) return sel[0].replace('-', ' ');
-    return `${sel.length} кв.`;
-  }, [visibleQuarters, catalogQuarters, availableYears]);
-
-  const handleToggleYear = useCallback(
-    (year: string) => {
-      const yearQs = catalogQuarters.filter((q) => q.startsWith(`${year}-`)).sort(compareQuarters);
-      if (yearQs.length === 0) return;
-      const allIn = yearQs.every((q) => visibleQuarters.includes(q));
-      if (allIn) {
-        onReplaceSelectedQuarters(
-          visibleQuarters.filter((q) => !q.startsWith(`${year}-`)).sort(compareQuarters)
-        );
-      } else {
-        const set = new Set(visibleQuarters);
-        yearQs.forEach((q) => set.add(q));
-        onReplaceSelectedQuarters(catalogQuarters.filter((q) => set.has(q)).sort(compareQuarters));
-      }
-    },
-    [catalogQuarters, visibleQuarters, onReplaceSelectedQuarters]
+  const catalogSorted = useMemo(
+    () => [...catalogQuarters].filter(Boolean).sort(compareQuarters),
+    [catalogQuarters]
   );
 
-  const handleSelectAllCatalog = useCallback(() => {
-    onReplaceSelectedQuarters([...catalogQuarters].sort(compareQuarters));
-  }, [catalogQuarters, onReplaceSelectedQuarters]);
+  const catalogMin = catalogSorted[0] ?? null;
+  const catalogMax = catalogSorted.length > 0 ? catalogSorted[catalogSorted.length - 1] : null;
 
-  const handleResetQuarters = useCallback(() => {
-    onReplaceSelectedQuarters([]);
-  }, [onReplaceSelectedQuarters]);
+  const disabledDate = useCallback(
+    (current: Dayjs) => {
+      if (!catalogMin || !catalogMax) return true;
+      const key = dayjsToQuarterKey(current);
+      return compareQuarters(key, catalogMin) < 0 || compareQuarters(key, catalogMax) > 0;
+    },
+    [catalogMin, catalogMax]
+  );
+
+  const rangeValue: [Dayjs, Dayjs] | null = useMemo(() => {
+    const sel = [...visibleQuarters].filter((q) => catalogSorted.includes(q)).sort(compareQuarters);
+    if (sel.length === 0) return null;
+    const a = quarterKeyToDayjs(sel[0]);
+    const b = quarterKeyToDayjs(sel[sel.length - 1]);
+    if (!a || !b) return null;
+    return [a, b];
+  }, [visibleQuarters, catalogSorted]);
+
+  const handleRangeChange = useCallback(
+    (dates: null | [Dayjs | null, Dayjs | null]) => {
+      if (!dates || dates[0] == null || dates[1] == null) {
+        onReplaceSelectedQuarters([]);
+        onDismissTransientRangeUI();
+        return;
+      }
+      const from = dayjsToQuarterKey(dates[0]);
+      const to = dayjsToQuarterKey(dates[1]);
+      const next = filterQuartersInRange(from, to, catalogSorted);
+      onReplaceSelectedQuarters(next);
+      onDismissTransientRangeUI();
+    },
+    [catalogSorted, onDismissTransientRangeUI, onReplaceSelectedQuarters]
+  );
+
+  const presets = useMemo(() => {
+    if (catalogSorted.length === 0) return [];
+    const start = quarterKeyToDayjs(catalogSorted[0]);
+    const end = quarterKeyToDayjs(catalogSorted[catalogSorted.length - 1]);
+    if (!start || !end) return [];
+    return [{ label: 'Все кварталы', value: [start, end] as [Dayjs, Dayjs] }];
+  }, [catalogSorted]);
+
+  const pickerDisabled = catalogSorted.length === 0;
 
   return (
     <div
@@ -117,7 +117,7 @@ export function AdminQuickFlowMatrixPeriodPicker({
         splitImmersive && !embedded && 'border-border/55 bg-transparent'
       )}
     >
-      <div className={cn('flex shrink-0 items-start', compactPeriodPicker ? 'gap-1.5' : 'gap-2')}>
+      <div className={cn('flex shrink-0 items-center', compactPeriodPicker ? 'gap-1.5' : 'gap-2')}>
         {!hideAddInitiativeButton ? (
           <Button
             type="button"
@@ -140,137 +140,29 @@ export function AdminQuickFlowMatrixPeriodPicker({
             Все кварталы в выгрузке
           </div>
         ) : (
-          <div ref={periodRef} className="relative min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={() => setPeriodMenuOpen((o) => !o)}
-              onMouseDown={(e) => e.preventDefault()}
-              aria-expanded={periodMenuOpen}
-              aria-haspopup="dialog"
-              className={cn(
-                'flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-md border border-border bg-card text-left text-xs font-medium outline-none [-webkit-tap-highlight-color:transparent] hover:border-muted-foreground focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0',
-                compactPeriodPicker ? 'px-2 py-1' : 'px-2.5 py-1.5',
-                periodMenuOpen && 'border-muted-foreground'
-              )}
-            >
-              <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="min-w-0 flex-1 truncate">{periodLabel}</span>
-              <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-            </button>
-            {periodMenuOpen ? (
-              <div
-                className={cn(
-                  'absolute left-0 top-full z-[60] mt-1 rounded-lg border border-border bg-card shadow-lg animate-in fade-in slide-in-from-top-1',
-                  compactPeriodPicker
-                    ? 'min-w-[min(100%,260px)] max-w-[min(100vw-1rem,280px)] p-1.5'
-                    : 'min-w-[min(100%,300px)] max-w-[min(100vw-1rem,320px)] p-2'
-                )}
-                role="dialog"
-                aria-label="Период таблицы"
-              >
-                <div
-                  className={cn(
-                    'mb-1.5 flex justify-between border-b border-border',
-                    compactPeriodPicker ? 'pb-1.5' : 'pb-2'
-                  )}
-                >
-                  <button
-                    type="button"
-                    className="text-[11px] text-primary underline outline-none [-webkit-tap-highlight-color:transparent] focus:outline-none focus:ring-0 focus-visible:ring-0"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={handleSelectAllCatalog}
-                  >
-                    Все
-                  </button>
-                  <button
-                    type="button"
-                    className="text-[11px] text-primary underline outline-none [-webkit-tap-highlight-color:transparent] focus:outline-none focus:ring-0 focus-visible:ring-0"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={handleResetQuarters}
-                  >
-                    Сброс
-                  </button>
-                </div>
-                <p className="mb-1.5 text-[10px] leading-snug text-muted-foreground">
-                  {rangeAnchor
-                    ? `Второй клик — конец диапазона (${rangeAnchor.replace('-', ' ')})`
-                    : 'Два клика по кварталам — диапазон; год — весь год'}
-                </p>
-                <div className="max-h-[min(44vh,14rem)] overflow-y-auto pr-0.5 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1">
-                  {availableYears.map((year) => {
-                    const yearQuarters = catalogQuarters
-                      .filter((q) => q.startsWith(year))
-                      .sort(compareQuarters);
-                    const allYearSelected =
-                      yearQuarters.length > 0 && yearQuarters.every((q) => visibleQuarters.includes(q));
-                    return (
-                      <div key={year} className={cn(compactPeriodPicker ? 'mb-1.5' : 'mb-2', 'last:mb-0')}>
-                        <div
-                          role="button"
-                          tabIndex={-1}
-                          className={cn(
-                            'flex cursor-pointer items-center gap-1.5 rounded px-1 font-semibold outline-none [-webkit-tap-highlight-color:transparent] hover:bg-secondary focus:outline-none focus:ring-0 focus-visible:ring-0',
-                            compactPeriodPicker ? 'py-0.5 text-[11px]' : 'px-1.5 py-1 text-xs'
-                          )}
-                          onClick={() => handleToggleYear(year)}
-                        >
-                          <span
-                            className={cn(
-                              'flex shrink-0 items-center justify-center rounded border',
-                              compactPeriodPicker ? 'h-3 w-3' : 'h-3.5 w-3.5',
-                              allYearSelected
-                                ? 'border-primary bg-primary text-primary-foreground'
-                                : 'border-border'
-                            )}
-                          >
-                            {allYearSelected ? <Check size={compactPeriodPicker ? 8 : 10} aria-hidden /> : null}
-                          </span>
-                          {year}
-                        </div>
-                        <div
-                          className={cn(
-                            'mt-0.5 grid grid-cols-4 gap-0.5 px-1',
-                            !compactPeriodPicker && 'gap-1 px-1.5'
-                          )}
-                        >
-                          {yearQuarters.map((q) => {
-                            const qLabel = q.split('-')[1] ?? q;
-                            const isSelected = visibleQuarters.includes(q);
-                            const isHovered = previewQuarters != null && previewQuarters.includes(q);
-                            const isStart = rangeAnchor === q;
-                            return (
-                              <button
-                                key={q}
-                                type="button"
-                                tabIndex={-1}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => onQuarterClick(q)}
-                                onMouseEnter={() => onQuarterHover(q)}
-                                onMouseLeave={() => onQuarterHover(null)}
-                                className={cn(
-                                  'rounded border outline-none [-webkit-tap-highlight-color:transparent] transition-all focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0',
-                                  compactPeriodPicker ? 'px-1 py-0.5 text-[9px]' : 'px-1.5 py-1 text-[10px]',
-                                  isStart
-                                    ? 'border-primary bg-primary text-primary-foreground ring-1 ring-primary/30'
-                                    : isSelected
-                                      ? 'border-foreground bg-foreground text-background'
-                                      : isHovered
-                                        ? 'border-primary/50 bg-primary/30'
-                                        : 'border-border bg-secondary hover:border-muted-foreground'
-                                )}
-                              >
-                                {qLabel}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-          </div>
+          <ConfigProvider locale={ruRU}>
+            <div className="min-w-0 flex-1 [&_.ant-picker]:max-w-full">
+              <RangePicker
+                picker="quarter"
+                inputReadOnly
+                allowClear
+                value={rangeValue}
+                disabled={pickerDisabled}
+                disabledDate={disabledDate}
+                presets={presets}
+                format="YYYY-[Q]Q"
+                placeholder={['Начало', 'Конец']}
+                size={compactPeriodPicker ? 'small' : 'middle'}
+                styles={antSemanticPointerStyles(pickerDisabled)}
+                className={cn('w-full min-w-0', compactPeriodPicker && '[&_.ant-picker-input]:text-xs')}
+                onChange={handleRangeChange}
+                onOpenChange={(open) => {
+                  if (!open) onDismissTransientRangeUI();
+                }}
+                getPopupContainer={() => document.body}
+              />
+            </div>
+          </ConfigProvider>
         )}
       </div>
     </div>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Запуск бэкапа Supabase каждые 6 часов на macOS через launchd.
+
+  Установка (один раз):
+    cp scripts/launchd/com.product-portfolio.db-backup.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.product-portfolio.db-backup.plist
+    launchctl enable gui/$(id -u)/com.product-portfolio.db-backup
+    launchctl kickstart -k gui/$(id -u)/com.product-portfolio.db-backup   # запустить сразу для проверки
+
+  Снять с автозапуска:
+    launchctl bootout gui/$(id -u)/com.product-portfolio.db-backup
+
+  Логи:
+    backups/.log              — успехи/ошибки самого бэкапа
+    /tmp/db-backup.stdout.log — stdout последнего запуска (перезаписывается)
+    /tmp/db-backup.stderr.log — stderr последнего запуска (перезаписывается)
+
+  ВНИМАНИЕ: пути ниже захардкожены под текущий мак (имя пользователя и путь к проекту).
+  Если переезжаешь — поправь WorkingDirectory и пути в ProgramArguments.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.product-portfolio.db-backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/antonmonetov/.nvm/versions/node/v24.15.0/bin/node</string>
+    <string>scripts/db-backup.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Applications/Продуктовый портфель проект/product-porfolio-de-bb9a42f8-main</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/opt/libpq/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>21600</integer> <!-- 6 часов -->
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/db-backup.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/db-backup.stderr.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

@@ -243,7 +243,7 @@ const TreemapContainer = ({
     resizeObserver.observe(containerRef.current);
     
     return () => resizeObserver.disconnect();
-  }, []);
+  }, [viewKey]);
   
   // Detect animation type and drive text visibility: hide at transition start, show after layout duration
   useLayoutEffect(() => {

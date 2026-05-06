@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Усиленный режим: бэкап Supabase КАЖДЫЙ ЧАС.
+  Включается на сутки-двое после открытия доступа всем, потом снимается.
+
+  Установка:
+    cp scripts/launchd/com.product-portfolio.db-backup-hourly.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.product-portfolio.db-backup-hourly.plist
+    launchctl enable gui/$(id -u)/com.product-portfolio.db-backup-hourly
+
+  Снять (через 1-2 суток):
+    launchctl bootout gui/$(id -u)/com.product-portfolio.db-backup-hourly
+    rm ~/Library/LaunchAgents/com.product-portfolio.db-backup-hourly.plist
+
+  Дублирует основной 6-часовой плист — это нормально, пусть оба идут параллельно.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.product-portfolio.db-backup-hourly</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/antonmonetov/.nvm/versions/node/v24.15.0/bin/node</string>
+    <string>scripts/db-backup.mjs</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Applications/Продуктовый портфель проект/product-porfolio-de-bb9a42f8-main</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/opt/libpq/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>BACKUPS_KEEP_LAST</key>
+    <string>48</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>3600</integer> <!-- 1 час -->
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/db-backup-hourly.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/db-backup-hourly.stderr.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

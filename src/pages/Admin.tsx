@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Upload, ClipboardList, AlertCircle, RefreshCw, ArrowLeft, ChevronRight } from 'lucide-react';
+import {
+  Upload,
+  ClipboardList,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Check,
+  FileSpreadsheet,
+  LayoutDashboard,
+  RefreshCw,
+  ArrowLeft,
+  ChevronRight,
+  Loader2,
+} from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { MascotMessageScreen } from '@/components/MascotMessageScreen';
 import { useToast } from '@/hooks/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
 import ScopeSelector from '@/components/admin/ScopeSelector';
-import InitiativeTable from '@/components/admin/InitiativeTable';
 import NewInitiativeDialog, { type NewInitiativeSubmitData } from '@/components/admin/NewInitiativeDialog';
 import CSVImportDialog from '@/components/admin/CSVImportDialog';
 import { Button } from '@/components/ui/button';
@@ -19,14 +32,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { fillDefaultUnitTeam } from '@/lib/adminFillScope';
 import {
   getUniqueUnits,
   getTeamsForUnits,
-  getUnitSummary,
   createEmptyQuarterData,
   AdminDataRow,
   AdminQuarterData,
-  InitiativeType,
   type GeoCostSplit,
   stakeholdersListFromGeoSplit,
 } from '@/lib/adminDataManager';
@@ -40,11 +52,12 @@ import {
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
 import { useMarketCountries, buildCountryIdToClusterMap } from '@/hooks/useMarketCountries';
 import { useAccess } from '@/hooks/useAccess';
+import { useAuth } from '@/hooks/useAuth';
 import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
 import { useCSVExport } from '@/hooks/useCSVExport';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { compareQuarters } from '@/lib/quarterUtils';
+import { compareQuarters, getCurrentQuarter } from '@/lib/quarterUtils';
 import { buildQuarterlyDataFromPreview } from '@/lib/adminQuickFlowRedistributeCosts';
 import AdminQuickFlow from '@/components/admin/AdminQuickFlow';
 import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
@@ -52,12 +65,41 @@ import { AdminQuickFlowSetupScreen } from '@/components/admin/AdminQuickFlowSetu
 import { AdminQuickFlowRosterStep } from '@/components/admin/AdminQuickFlowRosterStep';
 import { AdminQuickFlowStepTrack } from '@/components/admin/AdminQuickFlowStepTrack';
 import { AdminQuickFlowPortfolioFilledCelebration } from '@/components/admin/AdminQuickFlowPortfolioFilledCelebration';
-import {
-  ScenarioFootstepsIllustration,
-  ScenarioTableIllustrationSlot,
-} from '@/components/admin/AdminScenarioIllustrations';
 import { GoogleSheetsSyncStrip } from '@/components/admin/GoogleSheetsSyncStrip';
+import { AdminPortfolioFillHub } from '@/components/admin/AdminPortfolioFillHub';
+import {
+  AdminPortfolioHubPanels,
+  type PortfolioHubBlock,
+  type PortfolioHubPanel,
+  nextHubBlock,
+  nextNavCaption,
+} from '@/components/admin/AdminPortfolioHubPanels';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import {
+  fetchHubBlockAcksForQuarter,
+  upsertHubBlockAckForQuarter,
+  getHubBlockAckAt,
+  formatHubAckTimestampRu,
+  setPortfolioHubCelebrationShown,
+  wasPortfolioHubCelebrationShown,
+  type PortfolioHubAckBlock,
+  type PortfolioHubAckByBlock,
+} from '@/lib/portfolioHubAck';
+import { isPortfolioHubFullyDoneForQuarter, portfolioHubBlockIncomplete } from '@/lib/portfolioHubCompletion';
+import { cn } from '@/lib/utils';
+import {
+  clearPortfolioHubDraft,
+  draftStateFromSnapshot,
+  isHubLocalRowId,
+  loadPortfolioHubDraft,
+  mergePortfolioHubDisplay,
+  portfolioHubDraftStorageKey,
+  savePortfolioHubDraft,
+  snapshotFromDraftState,
+  type HubRowFieldPatch,
+  HUB_LOCAL_ROW_PREFIX,
+} from '@/lib/portfolioHubDraft';
+import { quarterlyDataToJson } from '@/hooks/useInitiatives';
 
 /** Полоса Google Sheets под хедером: выключена, логика в компоненте и хендлерах сохранена. */
 const SHOW_GOOGLE_SHEETS_SYNC_STRIP_UI = false;
@@ -79,17 +121,22 @@ type InitiativesScreen =
 
 const Admin = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const { memberUnit, memberTeam, isAdmin } = useAccess();
+  const { memberUnit, memberTeam, memberAffiliations, isAdmin, isSuperAdmin, scope, accessLoading } = useAccess();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state from URL
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     selectedUnits,
-    selectedTeams
+    selectedTeams,
+    setFilters,
   } = useFilterParams();
   const adminTableAll = searchParams.get('table') === 'all';
+
+  // Release toggle: keep route/feature, but hide entry points in current iteration.
+  const peopleEffortFillTo: string | undefined = undefined;
 
   // Data from Supabase (без default на data — иначе нельзя отличить «ещё не загружали» от «пустой список»)
   const { data: initiativesData, isPending, error, refetch } = useInitiatives({
@@ -97,7 +144,21 @@ const Admin = () => {
     teams: selectedTeams,
     tableAll: adminTableAll,
   });
+  /**
+   * Каталог юнитов/команд для пикера: показываем полный каталог любому админу.
+   * Sensitive юниты/команды по-прежнему фильтрует RLS (видны только super_admin).
+   */
+  const catalogTableAll = true;
+  const { data: catalogInitiativesData } = useInitiatives({
+    units: [],
+    teams: [],
+    tableAll: catalogTableAll,
+  });
   const rawData = initiativesData ?? [];
+  const scopeCatalogData = useMemo(
+    () => catalogInitiativesData ?? [],
+    [catalogInitiativesData]
+  );
   const quarters = useQuarters(rawData);
   const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
   const countryIdToClusterKey = useMemo(
@@ -112,6 +173,7 @@ const Admin = () => {
     updateQuarterDataBulk,
     updateQuarterDataBulkAsync,
     updateInitiativeFieldAsync,
+    updateInitiativeGeoCostSplit,
     beginBulkInitiativeMutations,
     finalizeBulkInitiativeMutations,
     createInitiative, 
@@ -119,7 +181,10 @@ const Admin = () => {
     syncAssignments,
     syncStatus,
     pendingChanges,
-    retry 
+    retry,
+    flushDebouncedSavesNow,
+    isSaving: mutationsSaving,
+    immediateUpdate,
   } = useInitiativeMutations();
 
   // CSV Export
@@ -132,16 +197,56 @@ const Admin = () => {
 
   // Derived state (must be before canShowQuick / isQuickMode)
   const hasData = rawData.length > 0;
-  const units = getUniqueUnits(rawData);
-  const teams = getTeamsForUnits(rawData, selectedUnits);
+  const units = getUniqueUnits(scopeCatalogData);
+  const teams = getTeamsForUnits(scopeCatalogData, selectedUnits);
   const filteredData = rawData;
+
+  const fillAccessCtx = useMemo(
+    () => ({
+      isSuperAdmin,
+      scope,
+      memberUnit,
+      memberTeam,
+      memberAffiliations: memberAffiliations ?? [],
+    }),
+    [isSuperAdmin, scope, memberUnit, memberTeam, memberAffiliations]
+  );
+
+  /**
+   * В этой итерации админка не сужает скоп: любой админ может выбрать любой unit/team.
+   * Sensitive ряды по-прежнему фильтрует RLS — обычный admin их не получает в каталоге.
+   */
+  const fillUnitOptions = useMemo(
+    () => getUniqueUnits(scopeCatalogData),
+    [scopeCatalogData]
+  );
+
+  const fillResolveTeamsForUnit = useCallback(
+    (unit: string) => getTeamsForUnits(scopeCatalogData, [unit]),
+    [scopeCatalogData]
+  );
+
+  const fillScopeTeamOptions = useMemo(() => {
+    if (selectedUnits.length === 0) return getTeamsForUnits(scopeCatalogData, []);
+    const set = new Set<string>();
+    for (const u of selectedUnits) {
+      for (const t of fillResolveTeamsForUnit(u)) set.add(t);
+    }
+    return Array.from(set).sort();
+  }, [selectedUnits, fillResolveTeamsForUnit, scopeCatalogData]);
+
+  const fillLocks = { lockUnit: false, lockTeam: false } as const;
   const needsSelection = hasData && selectedUnits.length === 0 && !adminTableAll;
   const onlyUnitSelected = hasData && selectedUnits.length > 0 && selectedTeams.length === 0;
-  const unitSummary = onlyUnitSelected ? getUnitSummary(rawData, selectedUnits) : [];
-  const hideUnitTeamColumns = selectedUnits.length > 0;
 
   const isQuickMode = searchParams.get('mode') === 'quick';
   const canShowQuick = hasData && !needsSelection && !onlyUnitSelected;
+
+  /**
+   * В этой итерации не подставляем unit/team автоматически и не подрезаем URL по scope.
+   * Пустой выбор — это валидное состояние: пикер показывает заглушки «Юнит» / «Команда»,
+   * пользователь выбирает сам.
+   */
 
   const currentQueueTeam =
     quickTeamQueue && quickTeamQueue.teams.length > 0
@@ -194,7 +299,12 @@ const Admin = () => {
   type QuickFlowRowPatch = Partial<
     Pick<
       AdminDataRow,
-      'initiative' | 'initiativeType' | 'stakeholdersList' | 'description' | 'documentationLink' | 'isTimelineStub'
+      | 'initiative'
+      | 'stakeholdersList'
+      | 'description'
+      | 'documentationLink'
+      | 'isTimelineStub'
+      | 'initiativeGeoCostSplit'
     >
   >;
   const [quickRowPatches, setQuickRowPatches] = useState<Map<string, QuickFlowRowPatch>>(new Map());
@@ -202,9 +312,162 @@ const Admin = () => {
   const [exitConfirmState, setExitConfirmState] = useState<{ onProceed: () => void } | null>(null);
   const [quickStep, setQuickStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(1);
   const prevIsQuickModeRef = useRef(false);
+  /** Модальные блоки заполнения с полной таблицы (не режим mode=quick). */
+  const [hubPanelOpen, setHubPanelOpen] = useState<PortfolioHubPanel>(null);
+  const [hubAckByBlock, setHubAckByBlock] = useState<PortfolioHubAckByBlock>({});
+  const [hubAckRefresh, setHubAckRefresh] = useState(0);
+  const [hubCompletionCelebrationOpen, setHubCompletionCelebrationOpen] = useState(false);
   /** Оверлей после успешного «Сохранить и завершить» в конце quick flow; «Продолжить» выполняет выход из режима. */
   const [quickCompletionCelebrationOpen, setQuickCompletionCelebrationOpen] = useState(false);
   const quickExitAfterCelebrationRef = useRef<(() => void) | null>(null);
+
+  /** Черновик блоков портфеля (данные в БД только по «Сохранить»). */
+  const [hubRowPatches, setHubRowPatches] = useState<Map<string, HubRowFieldPatch>>(new Map());
+  const [hubQuarterPatches, setHubQuarterPatches] = useState<
+    Map<string, Record<string, Partial<AdminQuarterData>>>
+  >(new Map());
+  const [hubPendingRows, setHubPendingRows] = useState<AdminDataRow[]>([]);
+  const [hubDeletedIds, setHubDeletedIds] = useState<Set<string>>(new Set());
+  /** Полный цикл «Сохранить» в хабе: запись в БД + refetch + отметка прогресса на обзоре. */
+  const [hubPanelSaveBusy, setHubPanelSaveBusy] = useState(false);
+  /** Открыт диалог «есть несохранённое»; target — куда перейти после решения (null = закрыть хаб). */
+  const [hubNavPending, setHubNavPending] = useState<{ target: PortfolioHubPanel | null } | null>(null);
+  /** После полного закрытия оверлея хаба — при следующем открытии подтянуть черновик из localStorage. */
+  const hubSessionClosedRef = useRef(true);
+
+  const hubDisplayData = useMemo(
+    () =>
+      mergePortfolioHubDisplay(filteredData, {
+        rowPatches: hubRowPatches,
+        quarterPatches: hubQuarterPatches,
+        pendingRows: hubPendingRows,
+        deletedIds: hubDeletedIds,
+      }),
+    [filteredData, hubRowPatches, hubQuarterPatches, hubPendingRows, hubDeletedIds]
+  );
+
+  const hubDraftDirty = useMemo(
+    () =>
+      hubRowPatches.size > 0 ||
+      hubQuarterPatches.size > 0 ||
+      hubPendingRows.length > 0 ||
+      hubDeletedIds.size > 0,
+    [hubRowPatches, hubQuarterPatches, hubPendingRows, hubDeletedIds]
+  );
+
+  const hubActiveAckBlock = useMemo((): PortfolioHubAckBlock | null => {
+    if (!hubPanelOpen || hubPanelOpen === 'roster') return null;
+    return hubPanelOpen as PortfolioHubAckBlock;
+  }, [hubPanelOpen]);
+
+  const hubPanelBlockIncomplete = useMemo(() => {
+    if (!hubActiveAckBlock) return false;
+    return portfolioHubBlockIncomplete(hubActiveAckBlock, hubDisplayData, quarters);
+  }, [hubActiveAckBlock, hubDisplayData, quarters]);
+
+  const currentQuarter = getCurrentQuarter();
+
+  useEffect(() => {
+    const unit = selectedUnits[0] ?? '';
+    const team = selectedTeams[0] ?? '';
+    if (!unit || !team) {
+      setHubAckByBlock({});
+      return;
+    }
+    let cancelled = false;
+    fetchHubBlockAcksForQuarter(unit, team, currentQuarter)
+      .then((ack) => {
+        if (!cancelled) setHubAckByBlock(ack);
+      })
+      .catch(() => {
+        if (!cancelled) setHubAckByBlock({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUnits, selectedTeams, currentQuarter, hubAckRefresh]);
+
+  const hubPanelAckAtIso = useMemo(() => {
+    if (!hubActiveAckBlock) return null;
+    return getHubBlockAckAt(hubAckByBlock, hubActiveAckBlock);
+  }, [hubActiveAckBlock, hubAckByBlock]);
+
+  const hubSaveStatusTitle = useMemo(() => {
+    if (hubPanelSaveBusy) return 'Сохранение…';
+    if (hubDraftDirty) return 'Есть несохранённые изменения';
+    if (!hubActiveAckBlock) return 'Без черновика';
+    if (hubPanelBlockIncomplete) return 'Блок заполнен не полностью';
+    if (hubPanelAckAtIso) {
+      const t = formatHubAckTimestampRu(hubPanelAckAtIso);
+      return t ? `Данные актуальны · ${t}` : 'Данные актуальны';
+    }
+    return 'Сохраните — в базе и отметка просмотра';
+  }, [
+    hubPanelSaveBusy,
+    hubDraftDirty,
+    hubActiveAckBlock,
+    hubPanelBlockIncomplete,
+    hubPanelAckAtIso,
+  ]);
+
+  const hubSaveStatusIcon = useMemo(() => {
+    if (hubPanelSaveBusy) {
+      return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />;
+    }
+    if (hubDraftDirty) {
+      return <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />;
+    }
+    if (!hubActiveAckBlock) {
+      return <CheckCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />;
+    }
+    if (hubPanelBlockIncomplete) {
+      return <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />;
+    }
+    if (hubPanelAckAtIso) {
+      return <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" aria-hidden />;
+    }
+    return <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />;
+  }, [hubPanelSaveBusy, hubDraftDirty, hubActiveAckBlock, hubPanelBlockIncomplete, hubPanelAckAtIso]);
+
+  const hubSaveStatusBoxClass = useMemo(
+    () =>
+      cn(
+        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background',
+        hubPanelBlockIncomplete && !hubDraftDirty && hubActiveAckBlock
+          ? 'border-destructive/50'
+          : 'border-border'
+      ),
+    [hubPanelBlockIncomplete, hubDraftDirty, hubActiveAckBlock]
+  );
+
+  const hubDraftStorageKeyResolved = useMemo(() => {
+    const uid = user?.id;
+    if (!uid) return null;
+    return portfolioHubDraftStorageKey(uid, selectedUnits[0] ?? '', selectedTeams[0] ?? '');
+  }, [user?.id, selectedUnits, selectedTeams]);
+
+  const requestHubPanelChange = useCallback(
+    (next: PortfolioHubPanel | null) => {
+      if (hubDraftDirty && next !== hubPanelOpen) {
+        setHubNavPending({ target: next });
+        return;
+      }
+      setHubPanelOpen(next);
+    },
+    [hubDraftDirty, hubPanelOpen]
+  );
+
+  const handleHubGoNextBlock = useCallback(() => {
+    const open = hubPanelOpen;
+    if (!open) return;
+    if (open === 'roster') {
+      requestHubPanelChange('coefficients');
+      return;
+    }
+    const n = nextHubBlock(open as PortfolioHubBlock);
+    if (n) requestHubPanelChange(n);
+    else requestHubPanelChange(null);
+  }, [hubPanelOpen, requestHubPanelChange]);
 
   // Сбрасываем шаг только при **входе** в quick mode, а не при каждом canShowQuick === true.
   // Иначе кратковременный canShowQuick === false (рефетч без данных, мигание onlyUnitSelected и т.п.)
@@ -310,6 +573,7 @@ const Admin = () => {
     if (!current) return null;
     switch (current) {
       case 'fullTable':
+        return null;
       case 'unitSummary':
         return 'start';
       case 'quickSetupContext':
@@ -358,6 +622,11 @@ const Admin = () => {
   }, [setSearchParams]);
 
   const handleInitiativesBack = useCallback(() => {
+    if (hubPanelOpen !== null) {
+      requestHubPanelChange(null);
+      return;
+    }
+
     const cur = currentInitiativesScreen;
 
     if (cur === 'quickSetupContext') {
@@ -440,6 +709,8 @@ const Admin = () => {
       setQuickStep(1);
     }
   }, [
+    hubPanelOpen,
+    requestHubPanelChange,
     currentInitiativesScreen,
     previousInitiativesScreen,
     quickTeamQueue,
@@ -447,6 +718,479 @@ const Admin = () => {
     navigate,
     setSearchParams,
   ]);
+
+  const resetHubDraft = useCallback(() => {
+    setHubRowPatches(new Map());
+    setHubQuarterPatches(new Map());
+    setHubPendingRows([]);
+    setHubDeletedIds(new Set());
+  }, []);
+
+  const handleHubRowDraftChange = useCallback(
+    (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
+      const allowed: (keyof HubRowFieldPatch)[] = [
+        'initiative',
+        'stakeholdersList',
+        'description',
+        'documentationLink',
+        'isTimelineStub',
+      ];
+      if (!allowed.includes(field as keyof HubRowFieldPatch)) return;
+      setHubRowPatches((prev) => {
+        const next = new Map(prev);
+        const cur = next.get(id) ?? {};
+        next.set(id, { ...cur, [field]: value } as HubRowFieldPatch);
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleHubQuarterDraftChange = useCallback(
+    (
+      id: string,
+      quarter: string,
+      field: keyof AdminQuarterData,
+      value: string | number | boolean | undefined
+    ) => {
+      setHubQuarterPatches((prev) => {
+        const next = new Map(prev);
+        const byQuarter = next.get(id) ?? {};
+        const quarterPatch = { ...(byQuarter[quarter] ?? {}), [field]: value };
+        next.set(id, { ...byQuarter, [quarter]: quarterPatch });
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleHubInitiativeGeoCostSplitDraft = useCallback(
+    (id: string, split: GeoCostSplit | undefined) => {
+      setHubRowPatches((prev) => {
+        const next = new Map(prev);
+        const cur = next.get(id) ?? {};
+        const geo = split?.entries?.length ? split : undefined;
+        let patch: HubRowFieldPatch = {
+          ...cur,
+          initiativeGeoCostSplit: geo,
+        };
+        if (split?.entries?.length) {
+          patch = {
+            ...patch,
+            stakeholdersList: stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey),
+          };
+        } else {
+          const { stakeholdersList: _d, ...rest } = patch;
+          patch = rest as HubRowFieldPatch;
+        }
+        if (Object.keys(patch).length > 0) next.set(id, patch);
+        else next.delete(id);
+        return next;
+      });
+    },
+    [countryIdToClusterKey]
+  );
+
+  const handleHubAddPendingRow = useCallback(() => {
+    const u = selectedUnits[0] ?? '';
+    const t = selectedTeams[0] ?? '';
+    const quarterlyData: Record<string, AdminQuarterData> = {};
+    quarters.forEach((q) => {
+      quarterlyData[q] = { ...createEmptyQuarterData(), effortCoefficient: 0 };
+    });
+    const id = `${HUB_LOCAL_ROW_PREFIX}${crypto.randomUUID()}`;
+    const row: AdminDataRow = {
+      id,
+      unit: u,
+      team: t,
+      initiative: 'Новая инициатива',
+      isNew: true,
+      stakeholdersList: [],
+      description: '',
+      documentationLink: '',
+      stakeholders: '',
+      isTimelineStub: false,
+      quarterlyData,
+    };
+    setHubPendingRows((prev) => [row, ...prev]);
+    setMatrixFocusInitiativeId(id);
+  }, [quarters, selectedUnits, selectedTeams]);
+
+  const handleHubDeleteRow = useCallback((id: string) => {
+    if (isHubLocalRowId(id)) {
+      setHubPendingRows((prev) => prev.filter((r) => r.id !== id));
+      setHubRowPatches((prev) => {
+        const n = new Map(prev);
+        n.delete(id);
+        return n;
+      });
+      setHubQuarterPatches((prev) => {
+        const n = new Map(prev);
+        n.delete(id);
+        return n;
+      });
+      setMatrixFocusInitiativeId((cur) => (cur === id ? null : cur));
+      return;
+    }
+    setHubDeletedIds((prev) => new Set(prev).add(id));
+    setHubRowPatches((prev) => {
+      const n = new Map(prev);
+      n.delete(id);
+      return n;
+    });
+    setHubQuarterPatches((prev) => {
+      const n = new Map(prev);
+      n.delete(id);
+      return n;
+    });
+  }, []);
+
+  const persistHubDraftToServer = useCallback(async (): Promise<boolean> => {
+    const previewQs = [...quickFillQuarters].filter((q) => quarters.includes(q)).sort(compareQuarters);
+    const previewById =
+      previewQs.length > 0 && hubDisplayData.length > 0
+        ? buildQuarterlyDataFromPreview(hubDisplayData, previewQs)
+        : null;
+
+    const needsStructural =
+      hubDraftDirty ||
+      hubDeletedIds.size > 0 ||
+      hubPendingRows.length > 0;
+
+    const baselineById = new Map(filteredData.map((r) => [r.id, r]));
+    let needsPreviewQuarterWrite = false;
+    if (previewById) {
+      for (const merged of hubDisplayData) {
+        if (isHubLocalRowId(merged.id)) continue;
+        if (hubDeletedIds.has(merged.id)) continue;
+        const baseline = baselineById.get(merged.id);
+        if (!baseline) continue;
+        const quarterlyToPersist = previewById.get(merged.id) ?? merged.quarterlyData;
+        if (
+          JSON.stringify(quarterlyDataToJson(baseline.quarterlyData)) !==
+          JSON.stringify(quarterlyDataToJson(quarterlyToPersist))
+        ) {
+          needsPreviewQuarterWrite = true;
+          break;
+        }
+      }
+    }
+
+    if (!needsStructural && !needsPreviewQuarterWrite) return false;
+
+    const est =
+      hubDeletedIds.size + hubPendingRows.length + hubDisplayData.filter((r) => !isHubLocalRowId(r.id)).length;
+    beginBulkInitiativeMutations(Math.max(4, est * 2));
+    try {
+      for (const id of hubDeletedIds) {
+        if (!isHubLocalRowId(id)) {
+          await deleteInitiative(id);
+        }
+      }
+
+      const pendingMerged = hubDisplayData.filter((r) => isHubLocalRowId(r.id));
+      for (const merged of pendingMerged) {
+        const { id: _tempId, ...rest } = merged;
+        const payload: Omit<AdminDataRow, 'id'> = {
+          unit: rest.unit,
+          team: rest.team,
+          initiative: rest.initiative,
+          stakeholdersList: rest.stakeholdersList,
+          description: rest.description,
+          documentationLink: rest.documentationLink,
+          stakeholders: rest.stakeholders,
+          isTimelineStub: rest.isTimelineStub ?? false,
+          quarterlyData: previewById?.get(merged.id) ?? rest.quarterlyData,
+          initiativeGeoCostSplit: rest.initiativeGeoCostSplit,
+        };
+        const created = await createInitiative(payload);
+        const nid = (created as { id?: string })?.id;
+        if (nid) {
+          const savedRow: AdminDataRow = { ...merged, id: nid };
+          for (const q of quarters) {
+            const eff = savedRow.quarterlyData[q]?.effortCoefficient ?? 0;
+            if (eff > 0) await syncAssignments(savedRow, q, eff);
+          }
+        }
+      }
+
+      const scalarKeys: (keyof HubRowFieldPatch)[] = [
+        'initiative',
+        'stakeholdersList',
+        'description',
+        'documentationLink',
+        'isTimelineStub',
+      ];
+
+      for (const merged of hubDisplayData) {
+        if (isHubLocalRowId(merged.id)) continue;
+        if (hubDeletedIds.has(merged.id)) continue;
+        const baseline = baselineById.get(merged.id);
+        if (!baseline) continue;
+
+        const quarterlyToPersist = previewById?.get(merged.id) ?? merged.quarterlyData;
+        const qEqual =
+          JSON.stringify(quarterlyDataToJson(baseline.quarterlyData)) ===
+          JSON.stringify(quarterlyDataToJson(quarterlyToPersist));
+        if (!qEqual) {
+          await updateQuarterDataBulkAsync(merged.id, quarterlyToPersist);
+          for (const q of quarters) {
+            const be = baseline.quarterlyData[q]?.effortCoefficient ?? 0;
+            const me = merged.quarterlyData[q]?.effortCoefficient ?? 0;
+            if (be !== me && typeof me === 'number' && me > 0) {
+              await syncAssignments(merged, q, me);
+            }
+          }
+        }
+
+        for (const k of scalarKeys) {
+          if (baseline[k] !== merged[k]) {
+            await updateInitiativeFieldAsync(merged.id, k as string, merged[k] as never);
+          }
+        }
+
+        const geoEq =
+          JSON.stringify(baseline.initiativeGeoCostSplit ?? null) ===
+          JSON.stringify(merged.initiativeGeoCostSplit ?? null);
+        if (!geoEq) {
+          await updateInitiativeFieldAsync(
+            merged.id,
+            'initiativeGeoCostSplit',
+            merged.initiativeGeoCostSplit
+          );
+        }
+      }
+
+      resetHubDraft();
+      if (hubDraftStorageKeyResolved) clearPortfolioHubDraft(hubDraftStorageKeyResolved);
+      return true;
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'Не удалось сохранить',
+        description: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
+    } finally {
+      finalizeBulkInitiativeMutations();
+    }
+  }, [
+    hubDraftDirty,
+    hubDeletedIds,
+    hubPendingRows,
+    hubDisplayData,
+    filteredData,
+    quarters,
+    quickFillQuarters,
+    compareQuarters,
+    createInitiative,
+    deleteInitiative,
+    updateQuarterDataBulkAsync,
+    updateInitiativeFieldAsync,
+    syncAssignments,
+    beginBulkInitiativeMutations,
+    finalizeBulkInitiativeMutations,
+    resetHubDraft,
+    toast,
+    hubDraftStorageKeyResolved,
+  ]);
+
+  const handleHubPanelSave = useCallback(async () => {
+    const hadUnsavedDraft = hubDraftDirty;
+    const block = hubActiveAckBlock;
+    setHubPanelSaveBusy(true);
+    let didSetAck = false;
+    try {
+      const persisted = await persistHubDraftToServer();
+      const { data: freshRows } = await refetch();
+      const rowsAfter = freshRows ?? filteredData;
+      const uid = user?.id;
+      const quarter = getCurrentQuarter();
+      const unit = selectedUnits[0] ?? '';
+      const team = selectedTeams[0] ?? '';
+      let ackForCompletion = hubAckByBlock;
+      if (
+        block &&
+        unit &&
+        team &&
+        !portfolioHubBlockIncomplete(block, rowsAfter, quarters)
+      ) {
+        const at = await upsertHubBlockAckForQuarter(unit, team, quarter, block);
+        ackForCompletion = { ...ackForCompletion, [block]: at };
+        setHubAckByBlock(ackForCompletion);
+        didSetAck = true;
+      }
+      setHubAckRefresh((k) => k + 1);
+      if (uid && isPortfolioHubFullyDoneForQuarter(rowsAfter, quarters, ackForCompletion)) {
+        if (!wasPortfolioHubCelebrationShown(uid, quarter)) {
+          setHubCompletionCelebrationOpen(true);
+        }
+      }
+      if ((hadUnsavedDraft || persisted) && didSetAck) {
+        toast({ title: 'Сохранено, данные актуальны' });
+      } else if (hadUnsavedDraft || persisted) {
+        toast({
+          title: 'Сохранено',
+          description: 'Изменения записаны в базу.',
+        });
+      } else if (didSetAck) {
+        toast({ title: 'Данные актуальны' });
+      }
+    } catch {
+      return;
+    } finally {
+      setHubPanelSaveBusy(false);
+    }
+  }, [
+    hubDraftDirty,
+    hubActiveAckBlock,
+    hubAckByBlock,
+    persistHubDraftToServer,
+    user?.id,
+    filteredData,
+    quarters,
+    refetch,
+    selectedUnits,
+    selectedTeams,
+    toast,
+  ]);
+
+  const handleHubNavDiscard = useCallback(() => {
+    const pending = hubNavPending;
+    if (!pending) return;
+    resetHubDraft();
+    if (hubDraftStorageKeyResolved) clearPortfolioHubDraft(hubDraftStorageKeyResolved);
+    setHubPanelOpen(pending.target);
+    setHubNavPending(null);
+  }, [hubNavPending, resetHubDraft, hubDraftStorageKeyResolved]);
+
+  const handleHubNavSaveAndGo = useCallback(async () => {
+    const pending = hubNavPending;
+    if (!pending) return;
+    const block = hubActiveAckBlock;
+    const hadUnsavedDraft = hubDraftDirty;
+    setHubPanelSaveBusy(true);
+    let didSetAck = false;
+    try {
+      const persisted = await persistHubDraftToServer();
+      const { data: freshRows } = await refetch();
+      const rowsAfter = freshRows ?? filteredData;
+      const uid = user?.id;
+      const quarter = getCurrentQuarter();
+      const unit = selectedUnits[0] ?? '';
+      const team = selectedTeams[0] ?? '';
+      let ackForCompletion = hubAckByBlock;
+      if (
+        block &&
+        unit &&
+        team &&
+        !portfolioHubBlockIncomplete(block, rowsAfter, quarters)
+      ) {
+        const at = await upsertHubBlockAckForQuarter(unit, team, quarter, block);
+        ackForCompletion = { ...ackForCompletion, [block]: at };
+        setHubAckByBlock(ackForCompletion);
+        didSetAck = true;
+      }
+      setHubAckRefresh((k) => k + 1);
+      if (uid && isPortfolioHubFullyDoneForQuarter(rowsAfter, quarters, ackForCompletion)) {
+        if (!wasPortfolioHubCelebrationShown(uid, quarter)) {
+          setHubCompletionCelebrationOpen(true);
+        }
+      }
+      if ((hadUnsavedDraft || persisted) && didSetAck) {
+        toast({ title: 'Сохранено, данные актуальны' });
+      } else if (hadUnsavedDraft || persisted) {
+        toast({
+          title: 'Сохранено',
+          description: 'Изменения записаны в базу.',
+        });
+      } else if (didSetAck) {
+        toast({ title: 'Данные актуальны' });
+      }
+      setHubPanelOpen(pending.target);
+      setHubNavPending(null);
+    } catch {
+      return;
+    } finally {
+      setHubPanelSaveBusy(false);
+    }
+  }, [
+    hubNavPending,
+    hubActiveAckBlock,
+    hubAckByBlock,
+    hubDraftDirty,
+    persistHubDraftToServer,
+    refetch,
+    filteredData,
+    quarters,
+    selectedUnits,
+    selectedTeams,
+    toast,
+  ]);
+
+  const handleHubCelebrationDismiss = useCallback(() => {
+    const uid = user?.id;
+    if (uid) {
+      setPortfolioHubCelebrationShown(uid, getCurrentQuarter());
+    }
+    setHubCompletionCelebrationOpen(false);
+  }, [user?.id]);
+
+  /** Восстановление черновика при открытии хаба после полного закрытия. */
+  useEffect(() => {
+    if (hubPanelOpen === null) {
+      hubSessionClosedRef.current = true;
+      return;
+    }
+    const key = hubDraftStorageKeyResolved;
+    const uid = user?.id;
+    if (!uid || !key) return;
+    if (!hubSessionClosedRef.current) return;
+    hubSessionClosedRef.current = false;
+    const loaded = loadPortfolioHubDraft(key);
+    if (!loaded) return;
+    const d = draftStateFromSnapshot(loaded);
+    setHubRowPatches(d.rowPatches);
+    setHubQuarterPatches(d.quarterPatches);
+    setHubPendingRows(d.pendingRows);
+    setHubDeletedIds(d.deletedIds);
+  }, [hubPanelOpen, user?.id, hubDraftStorageKeyResolved]);
+
+  /** Автосохранение черновика в localStorage (пока открыт хаб и есть несохранённое). */
+  useEffect(() => {
+    if (hubPanelOpen === null || !hubDraftStorageKeyResolved || !hubDraftDirty) return;
+    const t = window.setTimeout(() => {
+      savePortfolioHubDraft(
+        hubDraftStorageKeyResolved,
+        snapshotFromDraftState({
+          rowPatches: hubRowPatches,
+          quarterPatches: hubQuarterPatches,
+          pendingRows: hubPendingRows,
+          deletedIds: hubDeletedIds,
+        })
+      );
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [
+    hubPanelOpen,
+    hubDraftStorageKeyResolved,
+    hubDraftDirty,
+    hubRowPatches,
+    hubQuarterPatches,
+    hubPendingRows,
+    hubDeletedIds,
+  ]);
+
+  /** Предупреждение при закрытии вкладки с несохранённым черновиком хаба. */
+  useEffect(() => {
+    if (hubPanelOpen === null || !hubDraftDirty) return;
+    const fn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', fn);
+    return () => window.removeEventListener('beforeunload', fn);
+  }, [hubPanelOpen, hubDraftDirty]);
 
   // Apply draft patches to rows (quick flow only)
   const applyQuickDraftPatches = useCallback((
@@ -526,6 +1270,32 @@ const Admin = () => {
     return Array.from(s);
   }, [quickDraftPatches]);
 
+  /** Совпадает ли выгрузка с фильтром: иначе это keepPreviousData от прошлого запроса. */
+  const quickCoeffDataMatchesSelection = useMemo(() => {
+    const us = selectedUnits.map((x) => x.trim()).filter(Boolean);
+    const ts = selectedTeams.map((x) => x.trim()).filter(Boolean);
+    if (filteredData.length === 0) return true;
+    if (us.length === 0 && ts.length === 0) return true;
+    const uset = new Set(us);
+    const tset = new Set(ts);
+    return filteredData.every((r) => {
+      const ru = (r.unit ?? '').trim();
+      const rt = (r.team ?? '').trim();
+      const uOk = uset.size === 0 || uset.has(ru);
+      const tOk = tset.size === 0 || tset.has(rt);
+      return uOk && tOk;
+    });
+  }, [filteredData, selectedUnits, selectedTeams]);
+
+  const quickCoeffRowSetSignature = useMemo(
+    () =>
+      [...filteredData]
+        .map((r) => r.id)
+        .sort()
+        .join('\u001f'),
+    [filteredData]
+  );
+
   const quickCoeffBaselineSnapshotKey = useMemo(
     () =>
       [
@@ -535,6 +1305,7 @@ const Admin = () => {
         quickTeamQueue?.unit ?? '',
         currentQueueTeam,
         quickFillQuarters.join(','),
+        quickCoeffRowSetSignature,
       ].join('|'),
     [
       selectedUnits,
@@ -543,12 +1314,14 @@ const Admin = () => {
       quickTeamQueue?.unit,
       currentQueueTeam,
       quickFillQuarters,
+      quickCoeffRowSetSignature,
     ]
   );
 
   /**
    * Снимок строк команды при первом входе на шаг «коэффициенты» (до черновика).
    * Новые инициативы в сеансе в «до» не попадают; при смене ключа (команда/кварталы) — новый снимок.
+   * Не фиксируем снимок на keepPreviousData: ключ меняется с selection раньше, чем приходят строки новой команды.
    */
   const quickCoefficientsBaselineStore = useRef<{ key: string; rows: AdminDataRow[] } | null>(null);
   if (!isQuickMode || !canShowQuick || needsRosterPreflight) {
@@ -556,17 +1329,22 @@ const Admin = () => {
   } else if (quickStep === coeffQuickStepIndex) {
     const k = quickCoeffBaselineSnapshotKey;
     if (!quickCoefficientsBaselineStore.current || quickCoefficientsBaselineStore.current.key !== k) {
-      quickCoefficientsBaselineStore.current = { key: k, rows: structuredClone(filteredData) };
+      if (quickCoeffDataMatchesSelection) {
+        quickCoefficientsBaselineStore.current = { key: k, rows: structuredClone(filteredData) };
+      }
     }
   }
   const quickCoefficientsBaselineRows =
-    quickCoefficientsBaselineStore.current?.rows ?? filteredData;
+    quickCoefficientsBaselineStore.current?.key === quickCoeffBaselineSnapshotKey &&
+    quickCoeffDataMatchesSelection
+      ? quickCoefficientsBaselineStore.current.rows
+      : filteredData;
 
   const handleQuickDraftChange = useCallback((
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
+    value: string | number | boolean | undefined
   ) => {
     setQuickDraftPatches((prev) => {
       const next = new Map(prev);
@@ -578,23 +1356,30 @@ const Admin = () => {
   }, []);
 
   const handleQuickGeoCostSplitDraft = useCallback(
-    (id: string, quarter: string, split: GeoCostSplit | undefined) => {
-      handleQuickDraftChange(id, quarter, 'geoCostSplit', split);
+    (id: string, split: GeoCostSplit | undefined) => {
       setQuickRowPatches((prev) => {
         const next = new Map(prev);
         const cur = next.get(id) ?? {};
+        const geo = split?.entries?.length ? split : undefined;
+        let patch: QuickFlowRowPatch = {
+          ...cur,
+          initiativeGeoCostSplit: geo,
+        };
         if (split?.entries?.length) {
-          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
-          next.set(id, { ...cur, stakeholdersList: sh });
+          patch = {
+            ...patch,
+            stakeholdersList: stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey),
+          };
         } else {
-          const { stakeholdersList: _drop, ...rest } = cur;
-          if (Object.keys(rest).length > 0) next.set(id, rest);
-          else next.delete(id);
+          const { stakeholdersList: _d, ...rest } = patch;
+          patch = rest as QuickFlowRowPatch;
         }
+        if (Object.keys(patch).length > 0) next.set(id, patch);
+        else next.delete(id);
         return next;
       });
     },
-    [handleQuickDraftChange, countryIdToClusterKey]
+    [countryIdToClusterKey]
   );
 
   const handleSaveQuickDraft = useCallback(async (opts?: { silent?: boolean }) => {
@@ -817,98 +1602,120 @@ const Admin = () => {
     onProceed?.();
   }, [exitConfirmState]);
 
-  /** Таблица заполнения (админка): без юнита — все строки; юнит без команды — все команды юнита; юнит+команда — узкий фильтр. */
+  /** Таблица заполнения (админка): без юнита — все строки; юнит без команды — все команды юнита; юнит+команда — узкий фильтр.
+   *  Супер-админ: не сужаем по организационному профилю — полный портфель (как без member_unit). */
   const handleOpenFullFillTable = useCallback(() => {
-    const u = memberUnit?.trim();
-    const t = memberTeam?.trim();
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      p.delete('mode');
-      if (!u) {
-        p.set('table', 'all');
-        p.delete('units');
-        p.delete('teams');
-        return p;
-      }
-      p.delete('table');
-      p.set('units', u);
-      if (t) {
-        p.set('teams', t);
-      } else {
-        const unitTeams = getTeamsForUnits(rawData, [u]);
-        if (unitTeams.length > 0) {
-          p.set('teams', unitTeams.join(','));
-        } else {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('mode');
+        if (isSuperAdmin) {
+          p.set('table', 'all');
+          p.delete('units');
           p.delete('teams');
+          return p;
         }
-      }
-      return p;
-    });
-  }, [memberUnit, memberTeam, rawData, setSearchParams]);
+        const d = fillDefaultUnitTeam(fillAccessCtx, scopeCatalogData);
+        if (!d.unit || !d.team) {
+          toast({
+            title: 'Нет доступной области',
+            description: 'Задайте доступ к юниту или команде на вкладке «Доступы», затем откройте таблицу снова.',
+            variant: 'destructive',
+          });
+          return p;
+        }
+        p.delete('table');
+        p.set('units', d.unit);
+        p.set('teams', d.team);
+        return p;
+      },
+      { replace: true }
+    );
+  }, [isSuperAdmin, fillAccessCtx, scopeCatalogData, setSearchParams, toast]);
 
   const scopeOnUnitsChange = useCallback(
     (next: string[]) => {
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        p.delete('table');
-        if (next.length > 0) p.set('units', next.join(','));
-        else p.delete('units');
-        return p;
-      });
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('table');
+          if (next.length > 0) p.set('units', next.join(','));
+          else p.delete('units');
+          return p;
+        },
+        { replace: true }
+      );
     },
     [setSearchParams]
   );
   const scopeOnTeamsChange = useCallback(
     (next: string[]) => {
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        p.delete('table');
-        if (next.length > 0) p.set('teams', next.join(','));
-        else p.delete('teams');
-        return p;
-      });
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('table');
+          if (next.length > 0) p.set('teams', next.join(','));
+          else p.delete('teams');
+          return p;
+        },
+        { replace: true }
+      );
     },
     [setSearchParams]
   );
   const scopeOnFiltersChange = useCallback(
     (nextU: string[], nextT: string[]) => {
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        p.delete('table');
-        if (nextU.length > 0) p.set('units', nextU.join(','));
-        else p.delete('units');
-        if (nextT.length > 0) p.set('teams', nextT.join(','));
-        else p.delete('teams');
-        return p;
-      });
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('table');
+          if (nextU.length > 0) p.set('units', nextU.join(','));
+          else p.delete('units');
+          if (nextT.length > 0) p.set('teams', nextT.join(','));
+          else p.delete('teams');
+          return p;
+        },
+        { replace: true }
+      );
     },
     [setSearchParams]
   );
 
   // Data modification handlers
-  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
-    // Arrays (stakeholders) and booleans save immediately, text/number fields use short debounce
-    const delay = (Array.isArray(value) || typeof value === 'boolean') ? 0 : 300;
-    updateInitiative(id, field, value, delay);
-  }, [updateInitiative]);
+  const handleDataChange = useCallback(
+    (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
+      /** Название без debounce: иначе refetch после create/инвалидации перезаписывает кэш до flush таймера — ввод «ломается». */
+      if (field === 'initiative' && typeof value === 'string') {
+        immediateUpdate(id, field, value);
+        return;
+      }
+      const delay = Array.isArray(value) || typeof value === 'boolean' ? 0 : 300;
+      updateInitiative(id, field, value, delay);
+    },
+    [updateInitiative, immediateUpdate]
+  );
 
   const handleQuarterDataChange = useCallback(
     (
       id: string,
       quarter: string,
       field: keyof AdminQuarterData,
-      value: string | number | boolean | GeoCostSplit | undefined
+      value: string | number | boolean | undefined
     ) => {
       updateQuarterData(id, quarter, field, value);
-      if (field === 'geoCostSplit') {
-        const split = value as GeoCostSplit | undefined;
-        if (split?.entries?.length) {
-          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
-          updateInitiative(id, 'stakeholdersList', sh, 0);
-        }
+    },
+    [updateQuarterData]
+  );
+
+  const handleInitiativeGeoCostSplitChange = useCallback(
+    (id: string, split: GeoCostSplit | undefined) => {
+      updateInitiativeGeoCostSplit(id, split);
+      if (split?.entries?.length) {
+        const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
+        updateInitiative(id, 'stakeholdersList', sh, 0);
       }
     },
-    [updateQuarterData, updateInitiative, countryIdToClusterKey]
+    [updateInitiativeGeoCostSplit, updateInitiative, countryIdToClusterKey]
   );
 
   const handleQuarterlyDataBulkChange = useCallback((
@@ -940,7 +1747,6 @@ const Admin = () => {
         unit: data.unit,
         team: data.team,
         initiative: data.initiative,
-        initiativeType: data.initiativeType,
         stakeholdersList: data.stakeholdersList,
         description: data.description,
         documentationLink: data.documentationLink,
@@ -971,7 +1777,6 @@ const Admin = () => {
         unit: u,
         team: t,
         initiative: 'Новая инициатива',
-        initiativeType: '',
         stakeholdersList: [],
         description: '',
         documentationLink: '',
@@ -1082,14 +1887,6 @@ const Admin = () => {
     toast,
     setSearchParams,
   ]);
-
-  const handleEnterQuickMode = useCallback(() => {
-    setSearchParams((prev) => {
-      const n = new URLSearchParams(prev);
-      n.set('mode', 'quick');
-      return n;
-    }, { setSearchParams });
-  }, [setSearchParams]);
 
   const handleQuickSetupStart = useCallback(
     (unit: string, teamsInOrder: string[]) => {
@@ -1232,25 +2029,54 @@ const Admin = () => {
     );
   }
 
-  const showInitiativesStepBack = hasData && previousInitiativesScreen !== null;
+  /** Не показывать «Назад» на экране выбора юнита/команды, пока scope не собран. */
+  const scopePickerIncomplete =
+    !isQuickMode &&
+    hasData &&
+    !adminTableAll &&
+    (selectedUnits.length === 0 || selectedTeams.length === 0);
+
+  const showInitiativesStepBack =
+    hasData &&
+    (previousInitiativesScreen !== null || hubPanelOpen !== null) &&
+    !scopePickerIncomplete;
+
+  /**
+   * Строка с пикером юнита/команды видна всегда, кроме quick mode и его сетапа,
+   * чтобы пользователь мог сразу выбрать scope (даже когда ничего не выбрано).
+   */
+  const showFillScopeToolbar = hasData && !isQuickMode && !showQuickSetup;
+  /** Только «К дашборду» сверху, если нет строки scope (quick / setup). */
+  const showAdminFillOnlyTopStrip = !isSuperAdmin && !showFillScopeToolbar;
 
   return (
     <div className="h-screen w-full min-w-0 bg-background flex flex-col overflow-hidden">
-      <AdminHeader
-        currentView="initiatives"
-        initiativeCount={filteredData.length}
-        totalInitiativeCount={rawData.length}
-        hasData={hasData}
-        hasFilters={selectedUnits.length > 0 || selectedTeams.length > 0}
-        syncStatus={syncStatus}
-        pendingChanges={pendingChanges}
-        onImportClick={() => setImportDialogOpen(true)}
-        onDownloadAll={handleDownloadAll}
-        onDownloadFiltered={handleDownloadFiltered}
-        onDownloadGeoSplitAll={handleDownloadGeoAll}
-        onDownloadGeoSplitFiltered={handleDownloadGeoFiltered}
-        onRetry={retry}
-      />
+      {isSuperAdmin ? (
+        <AdminHeader
+          currentView="initiatives"
+          initiativeCount={filteredData.length}
+          totalInitiativeCount={rawData.length}
+          hasData={hasData}
+          hasFilters={selectedUnits.length > 0 || selectedTeams.length > 0}
+          syncStatus={syncStatus}
+          pendingChanges={pendingChanges}
+          onImportClick={() => setImportDialogOpen(true)}
+          onDownloadAll={handleDownloadAll}
+          onDownloadFiltered={handleDownloadFiltered}
+          onDownloadGeoSplitAll={handleDownloadGeoAll}
+          onDownloadGeoSplitFiltered={handleDownloadGeoFiltered}
+          onRetry={retry}
+        />
+      ) : showAdminFillOnlyTopStrip ? (
+        <div className="flex h-12 w-full min-w-0 shrink-0 items-center border-b border-border bg-header px-2 sm:px-4">
+          <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 px-2 sm:px-3" asChild>
+            <Link to="/" aria-label="К дашборду">
+              <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="hidden sm:inline text-sm font-medium">К дашборду</span>
+            </Link>
+          </Button>
+        </div>
+      ) : null}
 
       {isAdmin && hasData && SHOW_GOOGLE_SHEETS_SYNC_STRIP_UI ? (
         <GoogleSheetsSyncStrip onAfterImport={() => refetch()} />
@@ -1260,6 +2086,10 @@ const Admin = () => {
         <AdminQuickFlowPortfolioFilledCelebration
           open={quickCompletionCelebrationOpen}
           onDismiss={handleQuickCompletionCelebrationDismiss}
+        />
+        <AdminQuickFlowPortfolioFilledCelebration
+          open={hubCompletionCelebrationOpen}
+          onDismiss={handleHubCelebrationDismiss}
         />
         {!hasData ? (
           /* Empty state */
@@ -1286,19 +2116,131 @@ const Admin = () => {
         ) : (
           /* Data view */
           <div className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
-            {!needsSelection && !isQuickMode && (
-              <div className="shrink-0 w-full min-w-0">
-                <ScopeSelector
-                  units={units}
-                  teams={teams}
-                  selectedUnits={selectedUnits}
-                  selectedTeams={selectedTeams}
-                  onUnitsChange={scopeOnUnitsChange}
-                  onTeamsChange={scopeOnTeamsChange}
-                  onFiltersChange={scopeOnFiltersChange}
-                  allData={rawData}
-                  adminViewAll={adminTableAll}
-                />
+            {showFillScopeToolbar && (
+              <div className="flex min-w-0 shrink-0 items-stretch gap-2 border-b border-border bg-muted/20 px-2 py-2 sm:gap-3 sm:px-4">
+                {!isSuperAdmin ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0 gap-1.5 self-center px-2 sm:px-3"
+                    asChild
+                  >
+                    <Link to="/" aria-label="К дашборду">
+                      <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
+                      <span className="hidden sm:inline text-sm font-medium">К дашборду</span>
+                    </Link>
+                  </Button>
+                ) : null}
+                {showInitiativesStepBack ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 shrink-0 gap-1.5 self-center text-muted-foreground hover:text-foreground"
+                    onClick={handleInitiativesBack}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Назад
+                  </Button>
+                ) : null}
+                <div className="min-w-0 flex-1 self-center">
+                  <ScopeSelector
+                    units={fillUnitOptions}
+                    teams={fillScopeTeamOptions}
+                    selectedUnits={selectedUnits}
+                    selectedTeams={selectedTeams}
+                    onUnitsChange={scopeOnUnitsChange}
+                    onTeamsChange={scopeOnTeamsChange}
+                    onFiltersChange={scopeOnFiltersChange}
+                    allData={scopeCatalogData}
+                    adminViewAll={adminTableAll && selectedUnits.length === 0}
+                    selectionMode="single"
+                    lockUnit={fillLocks.lockUnit}
+                    lockTeam={fillLocks.lockTeam}
+                  />
+                </div>
+                {!isSuperAdmin && !needsSelection ? (
+                  <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="tabular-nums">
+                        {filteredData.length === rawData.length
+                          ? `${filteredData.length} инициатив`
+                          : `${filteredData.length} из ${rawData.length}`}
+                      </span>
+                    </span>
+                    {syncStatus === 'saving' ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-primary">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                        Сохранение…
+                      </span>
+                    ) : syncStatus === 'synced' ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-primary">
+                        <Check className="h-3 w-3" aria-hidden />
+                        Сохранено
+                      </span>
+                    ) : syncStatus === 'error' ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2 py-0.5 text-destructive hover:bg-destructive/20"
+                        onClick={retry}
+                      >
+                        <AlertCircle className="h-3 w-3" aria-hidden />
+                        Ошибка
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {hubPanelOpen ? (
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-center">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={hubSaveStatusBoxClass}
+                        title={hubSaveStatusTitle}
+                        role="status"
+                        aria-label={hubSaveStatusTitle}
+                      >
+                        {hubSaveStatusIcon}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        className="h-9 shrink-0 shadow-sm"
+                        title="База и отметка просмотра"
+                        disabled={hubPanelSaveBusy}
+                        onClick={() => void handleHubPanelSave()}
+                      >
+                        {hubPanelSaveBusy ? 'Сохранение…' : 'Сохранить и подтвердить'}
+                      </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+                      disabled={hubPanelSaveBusy}
+                      onClick={handleHubGoNextBlock}
+                    >
+                      {hubPanelOpen === 'roster' ? (
+                        <>
+                          Далее: {nextNavCaption('roster')}
+                          <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                        </>
+                      ) : nextHubBlock(hubPanelOpen as PortfolioHubBlock) ? (
+                        <>
+                          Далее: {nextNavCaption(hubPanelOpen)}
+                          <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                        </>
+                      ) : (
+                        <>
+                          К обзору
+                          <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1307,7 +2249,7 @@ const Admin = () => {
                 <AdminQuickFlowSetupScreen
                   units={units}
                   rawData={rawData}
-                  memberUnit={memberUnit}
+                  memberUnit={isSuperAdmin ? null : memberUnit}
                   onStart={handleQuickSetupStart}
                   onTeamsOrderChange={setQuickSetupTeamCount}
                   stepTrack={
@@ -1321,119 +2263,31 @@ const Admin = () => {
                   }
                 />
               ) : (
-              <div className="flex-1 min-h-0 w-full min-w-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-px p-0 bg-border">
-                <motion.div
-                  className="min-h-0 w-full h-full flex rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none overflow-visible"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={reducedMotion ? { duration: 0 } : { duration: 0.25 }}
-                >
-                  <Button
-                    size="lg"
-                    variant="secondary"
-                    className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-quick' : ''}`}
-                    onClick={() => setShowQuickSetup(true)}
-                  >
-                    <div
-                      className="w-full min-h-2 shrink-0 basis-0 grow-[0.38]"
-                      aria-hidden
-                    />
-                    <div className="w-full flex flex-col items-center shrink-0">
-                      <div className="w-full min-h-[11.75rem] sm:min-h-[13rem] flex items-center justify-center overflow-hidden px-0 mb-4 sm:mb-5">
-                        <ScenarioFootstepsIllustration reducedMotion={!!reducedMotion} />
-                      </div>
-                      <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
-                        <span className="font-juneau font-medium text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
-                          Заполни по шагам
-                        </span>
-                        <span className="text-sm text-muted-foreground font-normal line-clamp-3 break-words max-w-sm">
-                          Для внесения и апдейта информации по портфелю
-                        </span>
-                      </div>
+                /**
+                 * Старт админки без выбора: пикер сверху уже виден с заглушками «Юнит» и «Команда».
+                 * Здесь только подсказка, чтобы пользователь сразу понял, что делать.
+                 */
+                <div className="flex flex-1 min-h-0 w-full flex-col overflow-auto">
+                  <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 lg:py-10">
+                    <div className="rounded-xl border border-dashed border-border p-8 text-center">
+                      <ClipboardList size={40} className="mx-auto mb-3 text-muted-foreground" />
+                      <h2 className="mb-2 font-juneau text-lg font-medium">Выберите unit и команду</h2>
+                      <p className="text-sm text-muted-foreground">
+                        В фильтрах выше задайте unit и команду, чтобы редактировать инициативы.
+                      </p>
                     </div>
-                    <div className="w-full min-h-3 shrink-0 basis-0 grow" aria-hidden />
-                  </Button>
-                </motion.div>
-                <motion.div
-                  className="min-h-0 w-full h-full flex rounded-b-2xl md:rounded-r-2xl md:rounded-bl-none overflow-hidden"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={reducedMotion ? { duration: 0 } : { duration: 0.25, delay: 0.1 }}
-                >
-                  <Button
-                    size="lg"
-                    variant="secondary"
-                    className={`relative min-h-0 w-full h-full rounded-none flex flex-col py-6 sm:py-8 px-3 sm:px-5 text-center bg-card border-0 shadow-sm hover:shadow-lg hover:z-10 transition-all duration-200 motion-reduce:transition-none overflow-visible focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-inset focus-visible:shadow-lg focus-visible:z-10 items-center ${!reducedMotion ? 'admin-scenario-full' : ''}`}
-                    onClick={handleOpenFullFillTable}
-                  >
-                    <div
-                      className="w-full min-h-2 shrink-0 basis-0 grow-[0.38]"
-                      aria-hidden
-                    />
-                    <div className="w-full flex flex-col items-center shrink-0">
-                      <div className="w-full min-h-[12.75rem] sm:min-h-[14.25rem] flex items-center justify-center overflow-hidden px-0 mb-4 sm:mb-5">
-                        <ScenarioTableIllustrationSlot reducedMotion={!!reducedMotion} />
-                      </div>
-                      <div className="flex flex-col items-center gap-2 sm:gap-2.5 w-full">
-                        <span className="font-juneau font-medium text-lg sm:text-xl leading-tight whitespace-normal text-balance max-w-sm">
-                          Открой всю таблицу
-                        </span>
-                        <span className="text-sm text-muted-foreground font-normal line-clamp-3 break-words max-w-sm">
-                          Посмотреть все инициативы по всем командам и кварталам
-                        </span>
-                      </div>
-                    </div>
-                    <div className="w-full min-h-3 shrink-0 basis-0 grow" aria-hidden />
-                  </Button>
-                </motion.div>
-              </div>
+                  </div>
+                </div>
               )
             ) : onlyUnitSelected ? (
-              /* Only Unit selected: hint + unit summary (no table to avoid 100% sum across teams) */
-              <div className="flex-1 flex flex-col overflow-auto w-full min-w-0">
-                {showInitiativesStepBack ? (
-                  <div className="shrink-0 flex items-center px-4 sm:px-6 py-2 border-b border-border bg-muted/20">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 h-8 -ml-2 text-muted-foreground"
-                      onClick={handleInitiativesBack}
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      Назад
-                    </Button>
-                  </div>
-                ) : null}
-                <div className="w-full max-w-none px-4 sm:px-6 lg:px-10 py-6 lg:py-8 space-y-6">
-                  <div className="border border-dashed border-border rounded-xl p-8 text-center">
-                    <ClipboardList size={40} className="mx-auto text-muted-foreground mb-3" />
-                    <h2 className="font-juneau font-medium text-lg mb-2">Выберите одну или несколько команд</h2>
-                    <p className="text-muted-foreground text-sm">
-                      Чтобы редактировать инициативы и проценты по кварталам, выберите команды в фильтрах выше
+              <div className="flex flex-1 min-h-0 w-full flex-col overflow-auto">
+                <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 lg:py-10">
+                  <div className="rounded-xl border border-dashed border-border p-8 text-center">
+                    <ClipboardList size={40} className="mx-auto mb-3 text-muted-foreground" />
+                    <h2 className="mb-2 font-juneau text-lg font-medium">Выберите одну или несколько команд</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Чтобы редактировать инициативы и проценты по кварталам, выберите команды в фильтрах выше.
                     </p>
-                  </div>
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground">Сводка по юнитам</h3>
-                    {unitSummary.map(({ unit, teams: unitTeams }) => (
-                      <div key={unit} className="rounded-lg border border-border bg-card p-4">
-                        <div className="font-medium mb-3">{unit}</div>
-                        <ul className="space-y-2">
-                          {unitTeams.map(({ team, initiativeCount }) => (
-                            <li key={team} className="flex justify-between text-sm items-center">
-                              <button
-                                type="button"
-                                onClick={() => scopeOnTeamsChange([team])}
-                                className="text-primary hover:underline text-left"
-                              >
-                                {team || '—'}
-                              </button>
-                              <span className="text-muted-foreground">{initiativeCount} инициатив</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>
@@ -1481,6 +2335,7 @@ const Admin = () => {
                 baselineFilteredData={quickCoefficientsBaselineRows}
                 quarters={quarters}
                 fillQuarters={quickFillQuarters}
+                peopleEffortFillTo={peopleEffortFillTo}
                 unit={selectedUnits[0] ?? ''}
                 team={selectedTeams[0] ?? ''}
                 onDeleteInitiativeAddedInQuickFlow={handleDeleteInitiativeAddedInQuickSession}
@@ -1520,52 +2375,39 @@ const Admin = () => {
                 />
               </div>
             ) : (
-              <div className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
-                {showInitiativesStepBack ? (
-                  <div className="shrink-0 flex items-center px-4 sm:px-6 py-2 border-b border-border bg-muted/20">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 h-8 -ml-2 text-muted-foreground"
-                      onClick={handleInitiativesBack}
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      Назад
-                    </Button>
-                  </div>
-                ) : null}
-                {canShowQuick && (
-                  <div className="px-4 py-2 border-b border-border flex flex-wrap items-center justify-between gap-2 bg-muted/30">
-                    <span className="text-sm text-muted-foreground">
-                      Заполнить информацию на следующие кварталы
-                      {selectedUnits.length === 1 && selectedTeams.length === 1 && (
-                        <span className="ml-2 text-xs text-muted-foreground/90">
-                          — Рекомендуется для быстрого ввода по одной команде
-                        </span>
-                      )}
-                    </span>
-                    <Button size="sm" variant="secondary" onClick={handleEnterQuickMode}>
-                      Заполнить информацию на следующие кварталы
-                    </Button>
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden w-full min-w-0">
+                {hubPanelOpen ? (
+                  <AdminPortfolioHubPanels
+                    open={hubPanelOpen}
+                    onOpenChange={requestHubPanelChange}
+                    filteredData={hubDisplayData}
+                    quarters={quarters}
+                    fillQuarters={quickFillQuarters}
+                    peopleEffortFillTo={peopleEffortFillTo}
+                    unit={selectedUnits[0] ?? ''}
+                    team={selectedTeams[0] ?? ''}
+                    marketCountries={marketCountries}
+                    onQuarterDataChange={handleHubQuarterDraftChange}
+                    onInitiativeGeoCostSplitChange={handleHubInitiativeGeoCostSplitDraft}
+                    onInitiativeFieldChange={handleHubRowDraftChange}
+                    onAddInitiativeFromMatrix={handleHubAddPendingRow}
+                    onDeleteInitiativeFromMatrix={handleHubDeleteRow}
+                  />
+                ) : (
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <AdminPortfolioFillHub
+                      rows={filteredData}
+                      quartersCatalog={quarters}
+                      selectedUnits={selectedUnits}
+                      selectedTeams={selectedTeams}
+                      ackByBlock={hubAckByBlock}
+                      fillQuarters={quickFillQuarters}
+                      marketCountries={marketCountries}
+                      onOpenRoster={() => requestHubPanelChange('roster')}
+                      onOpenBlock={(block) => requestHubPanelChange(block)}
+                    />
                   </div>
                 )}
-                <div className="flex-1 overflow-hidden w-full min-w-0">
-                  <InitiativeTable
-                    data={filteredData}
-                    allData={rawData}
-                    quarters={quarters}
-                    selectedUnits={selectedUnits}
-                    selectedTeams={selectedTeams}
-                    onDataChange={handleDataChange}
-                    onQuarterDataChange={handleQuarterDataChange}
-                    onQuarterlyDataBulkChange={handleQuarterlyDataBulkChange}
-                    onAddInitiative={() => setNewDialogOpen(true)}
-                    onDeleteInitiative={handleDeleteInitiative}
-                    modifiedIds={new Set()}
-                    hideUnitTeamColumns={hideUnitTeamColumns}
-                  />
-                </div>
               </div>
             )}
           </div>
@@ -1610,6 +2452,27 @@ const Admin = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Portfolio hub: несохранённый черновик при смене экрана / шага */}
+      <AlertDialog open={hubNavPending !== null} onOpenChange={(open) => !open && setHubNavPending(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Есть несохранённые правки</AlertDialogTitle>
+            <AlertDialogDescription>
+              Сохранить в базу и подтвердить просмотр перед переходом?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <Button type="button" variant="outline" onClick={handleHubNavDiscard}>
+              Не сохранять
+            </Button>
+            <Button type="button" variant="default" onClick={handleHubNavSaveAndGo} disabled={hubPanelSaveBusy}>
+              {hubPanelSaveBusy ? 'Сохранение…' : 'Сохранить и подтвердить'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Quick flow: fill-in dialog for validation step */}
       {isQuickMode && quickFillInitiativeId && (
         <InitiativeDetailDialog
@@ -1620,6 +2483,7 @@ const Admin = () => {
           onOpenChange={(open) => !open && setQuickFillInitiativeId(null)}
           onDataChange={handleDataChange}
           onQuarterDataChange={handleQuarterDataChange}
+          onInitiativeGeoCostSplitChange={handleInitiativeGeoCostSplitChange}
         />
       )}
 

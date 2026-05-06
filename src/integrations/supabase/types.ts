@@ -61,9 +61,9 @@ export type Database = {
           created_by: string | null
           description: string | null
           documentation_link: string | null
+          geo_cost_split: Json | null
           id: string
           initiative: string
-          initiative_type: string | null
           is_timeline_stub: boolean
           quarterly_data: Json
           stakeholders: string | null
@@ -78,9 +78,9 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           documentation_link?: string | null
+          geo_cost_split?: Json | null
           id?: string
           initiative: string
-          initiative_type?: string | null
           is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
@@ -95,9 +95,9 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           documentation_link?: string | null
+          geo_cost_split?: Json | null
           id?: string
           initiative?: string
-          initiative_type?: string | null
           is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
@@ -375,6 +375,143 @@ export type Database = {
         }
         Relationships: []
       }
+      team_effort_subgroup_members: {
+        Row: {
+          subgroup_id: string
+          person_id: string
+        }
+        Insert: {
+          subgroup_id: string
+          person_id: string
+        }
+        Update: {
+          subgroup_id?: string
+          person_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_effort_subgroup_members_subgroup_id_fkey"
+            columns: ["subgroup_id"]
+            isOneToOne: false
+            referencedRelation: "team_effort_subgroups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_effort_subgroup_members_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_effort_subgroups: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+          team: string
+          unit: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+          team: string
+          unit: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          team?: string
+          unit?: string
+        }
+        Relationships: []
+      }
+      team_subgroup_initiative_effort: {
+        Row: {
+          id: string
+          initiative_id: string
+          quarterly_effort: Json
+          subgroup_id: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          initiative_id: string
+          quarterly_effort?: Json
+          subgroup_id: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          initiative_id?: string
+          quarterly_effort?: Json
+          subgroup_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_subgroup_initiative_effort_initiative_id_fkey"
+            columns: ["initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_subgroup_initiative_effort_subgroup_id_fkey"
+            columns: ["subgroup_id"]
+            isOneToOne: false
+            referencedRelation: "team_effort_subgroups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portfolio_hub_block_acks: {
+        Row: {
+          block: string
+          confirmed_at: string
+          confirmed_by: string
+          confirmed_by_name: string | null
+          id: string
+          quarter: string
+          team: string
+          unit: string
+        }
+        Insert: {
+          block: string
+          confirmed_at?: string
+          confirmed_by?: string
+          confirmed_by_name?: string | null
+          id?: string
+          quarter: string
+          team: string
+          unit: string
+        }
+        Update: {
+          block?: string
+          confirmed_at?: string
+          confirmed_by?: string
+          confirmed_by_name?: string | null
+          id?: string
+          quarter?: string
+          team?: string
+          unit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portfolio_hub_block_acks_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       allowed_users: {
         Row: {
           id: string
@@ -387,6 +524,7 @@ export type Database = {
           display_name: string | null
           member_unit: string | null
           member_team: string | null
+          member_affiliations: Json | null
         }
         Insert: {
           id?: string
@@ -399,6 +537,7 @@ export type Database = {
           display_name?: string | null
           member_unit?: string | null
           member_team?: string | null
+          member_affiliations?: Json | null
         }
         Update: {
           id?: string
@@ -411,6 +550,28 @@ export type Database = {
           display_name?: string | null
           member_unit?: string | null
           member_team?: string | null
+          member_affiliations?: Json | null
+        }
+        Relationships: []
+      }
+      sensitive_scopes: {
+        Row: {
+          id: string
+          unit: string
+          team: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          unit: string
+          team?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          unit?: string
+          team?: string | null
+          created_at?: string
         }
         Relationships: []
       }

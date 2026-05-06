@@ -1,4 +1,11 @@
-import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+} from 'react';
 import {
   Plus,
   ChevronRight,
@@ -29,6 +36,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Link } from 'react-router-dom';
 import {
   Select,
   SelectContent,
@@ -53,6 +62,9 @@ import {
   type GeoCostSplit,
   getQuickFlowRowsWithIncompleteGeoSplit,
   getQuickFlowValidationIssuesForQuarters,
+  effortMatrixColumnChipState,
+  getStubResidualLabel,
+  nonStubQuarterEffortSum,
 } from '@/lib/adminDataManager';
 import {
   compareQuarters,
@@ -115,6 +127,8 @@ interface AdminQuickFlowProps {
   quarters: string[];
   /** Кварталы из выгрузки в выбранном на экране контекста интервале (по возрастанию). */
   fillQuarters: string[];
+  /** Черновик экрана усилий по людям (те же query в URL). */
+  peopleEffortFillTo?: string;
   unit: string;
   team: string;
   /** Удаление инициативы из БД с шага коэффициентов (все строки команды; подтверждение внутри quick flow). */
@@ -123,12 +137,12 @@ interface AdminQuickFlowProps {
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
+    value: string | number | boolean | undefined
   ) => void;
   /** Черновик полей карточки инициативы (quick flow), без записи в БД до «Сохранить». */
   onInitiativeDraftChange?: (
     id: string,
-    field: 'initiative' | 'initiativeType' | 'stakeholdersList' | 'description' | 'documentationLink' | 'isTimelineStub',
+    field: 'initiative' | 'stakeholdersList' | 'description' | 'documentationLink' | 'isTimelineStub',
     value: string | string[] | boolean
   ) => void;
   /** Резерв, если нет `onQuickAddInitiativeRow`. */
@@ -144,7 +158,7 @@ interface AdminQuickFlowProps {
   setStep?: (step: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => void;
   marketCountries: MarketCountryRow[];
   /** Черновик quick: geo split + обновление stakeholders_list на родителе */
-  onGeoCostSplitDraftChange: (initiativeId: string, quarter: string, split: GeoCostSplit | undefined) => void;
+  onGeoCostSplitDraftChange: (initiativeId: string, split: GeoCostSplit | undefined) => void;
   queueProgress?: { current: number; total: number; teamName: string };
   onSaveAndContinueQueue?: () => void | Promise<void>;
   queueActionLoading?: boolean;
@@ -230,7 +244,7 @@ function buildDbCostRows(rows: AdminDataRow[], keys: string[]): CostRowModel[] {
     }
     return {
       initiativeId: r.id,
-      initiativeName: r.initiative || '—',
+      initiativeName: r.isTimelineStub ? getStubResidualLabel(r.team) : r.initiative || '—',
       byQ,
       total,
     };
@@ -260,20 +274,21 @@ type QuarterDataChangeHandler = (
   id: string,
   quarter: string,
   field: keyof AdminQuarterData,
-  value: string | number | boolean | GeoCostSplit | undefined
+  value: string | number | boolean | undefined
 ) => void;
 
 function effortStatesForQuarters(
   quarterKeys: string[],
   rows: AdminDataRow[],
   catalogQuarters: string[]
-): { quarter: string; sum: number; valid: boolean; inCatalog: boolean }[] {
+): { quarter: string; sum: number; nonStubSum: number; valid: boolean; inCatalog: boolean }[] {
   return quarterKeys.map((targetQ) => {
-    const sum = rows.reduce((s, row) => s + (row.quarterlyData[targetQ]?.effortCoefficient ?? 0), 0);
+    const chip = effortMatrixColumnChipState(rows, targetQ);
     return {
       quarter: targetQ,
-      sum,
-      valid: sum <= 100,
+      sum: chip.sum,
+      nonStubSum: chip.nonStubSum,
+      valid: chip.valid,
       inCatalog: catalogQuarters.includes(targetQ),
     };
   });
@@ -283,9 +298,74 @@ function effortMatrixYearPrefix(key: string): string {
   return key.match(/^(\d{4})-/)?.[1] ?? '';
 }
 
+/**
+ * Локальный черновик + сохранение по blur/Enter, чтобы refetch после PATCH не откатывал строку
+ * (гонка: invalidate → GET быстрее, чем отражение update в реплике).
+ */
+function MatrixInitiativeNameInput({
+  rowId,
+  serverValue,
+  onCommit,
+  setInputRef,
+  className,
+}: {
+  rowId: string;
+  serverValue: string;
+  onCommit: (id: string, value: string) => void;
+  setInputRef?: (el: HTMLInputElement | null) => void;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState(() => serverValue);
+  const lastCommittedRef = useRef(serverValue);
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current) return;
+    setDraft(serverValue);
+    lastCommittedRef.current = serverValue;
+  }, [serverValue, rowId]);
+
+  const flushIfDirty = useCallback(() => {
+    if (draft !== lastCommittedRef.current) {
+      onCommit(rowId, draft);
+      lastCommittedRef.current = draft;
+    }
+  }, [draft, onCommit, rowId]);
+
+  return (
+    <Input
+      ref={setInputRef}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        flushIfDirty();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+      onDoubleClick={(e) => e.currentTarget.select()}
+      aria-label="Название инициативы"
+      title={
+        draft.trim()
+          ? `${draft.trim()} · двойной клик — выделить всё · Enter — сохранить`
+          : 'Двойной клик — выделить название · Enter — сохранить'
+      }
+      className={className}
+    />
+  );
+}
+
 type MatrixChipStateRow = {
   quarter: string;
   sum: number;
+  nonStubSum: number;
   valid: boolean;
   inCatalog: boolean;
 };
@@ -304,7 +384,7 @@ type EffortMatrixChipToolbarConfig = {
   onDismissTransientRangeUI: () => void;
 };
 
-type EffortMatrixInlineProps = {
+export type EffortMatrixInlineProps = {
   visibleQuarters: string[];
   filteredData: AdminDataRow[];
   onQuarterDataChange: QuarterDataChangeHandler;
@@ -328,7 +408,7 @@ type EffortMatrixInlineProps = {
   onFocusInitiativeConsumed?: () => void;
 };
 
-function EffortMatrixInline({
+export function EffortMatrixInline({
   visibleQuarters,
   filteredData,
   onQuarterDataChange,
@@ -384,6 +464,39 @@ function EffortMatrixInline({
     for (const s of chipStates) m.set(s.quarter, s);
     return m;
   }, [chipStates]);
+  const matrixRows = useMemo(() => {
+    const stubs = filteredData.filter((row) => row.isTimelineStub === true);
+    if (stubs.length === 0) return filteredData;
+    const regularRows = filteredData.filter((row) => row.isTimelineStub !== true);
+    return [...regularRows, ...stubs];
+  }, [filteredData]);
+
+  const matrixHasTimelineStub = useMemo(
+    () => filteredData.some((r) => r.isTimelineStub === true),
+    [filteredData]
+  );
+
+  const nonStubEffortByQuarter = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const q of visibleQuarters) {
+      m.set(q, nonStubQuarterEffortSum(filteredData, q));
+    }
+    return m;
+  }, [filteredData, visibleQuarters]);
+
+  /** Сумма (cost + otherCosts) по всем строкам команды в квартале — для подсказки в шапке. */
+  const quarterTeamCostRub = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const q of visibleQuarters) {
+      let s = 0;
+      for (const row of filteredData) {
+        const qd = row.quarterlyData[q] ?? createEmptyQuarterData();
+        s += Number(qd.cost ?? 0) + Number(qd.otherCosts ?? 0);
+      }
+      m.set(q, s);
+    }
+    return m;
+  }, [filteredData, visibleQuarters]);
 
   /** Подряд идущие кварталы одного года — для шапки «год над колонками» без дублирования года в каждой ячейке. */
   const coefficientYearGroups = useMemo(() => {
@@ -445,7 +558,7 @@ function EffortMatrixInline({
         onDismissTransientRangeUI={onDismissTransientRangeUI}
         compactPeriodPicker={compactPeriodPicker}
         hidePeriodPicker={hidePeriodPicker}
-        hideAddInitiativeButton={hideAddInitiativeButton}
+        hideAddInitiativeButton={hideAddInitiativeButton || Boolean(onHeaderAddInitiativeRow)}
         onOpenAddInitiative={onOpenAddInitiative}
         splitImmersive={splitImmersive}
       />
@@ -459,7 +572,7 @@ function EffortMatrixInline({
         >
           {hidePeriodPicker
             ? 'Нет кварталов в каталоге выгрузки.'
-            : 'Откройте «Период» кнопкой выше и выберите диапазон двумя кликами, год или «Все»'}
+            : 'Выберите диапазон кварталов в поле периода выше или пресет «Все кварталы»'}
         </div>
       ) : (
         <div
@@ -487,19 +600,19 @@ function EffortMatrixInline({
                       : 'border-r border-border align-middle'
                   )}
                 >
-                  <div className="flex min-w-0 items-center gap-0.5">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <span className="min-w-0 flex-1 leading-tight">Инициатива</span>
                     {onHeaderAddInitiativeRow ? (
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="icon"
+                        variant="secondary"
+                        size="sm"
                         className={cn(
-                          'h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground',
-                          compactPeriodPicker && 'h-6 w-6'
+                          'h-7 shrink-0 gap-1 px-2 text-xs font-medium text-foreground shadow-sm',
+                          compactPeriodPicker && 'h-6'
                         )}
                         disabled={headerAddBusy || visibleQuarters.length === 0}
-                        title="Добавить инициативу (новая строка)"
+                        title="Добавить новую инициативу"
                         aria-label="Добавить инициативу"
                         onClick={() => void handleHeaderAddClick()}
                       >
@@ -508,6 +621,7 @@ function EffortMatrixInline({
                         ) : (
                           <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         )}
+                        <span>Новая</span>
                       </Button>
                     ) : null}
                   </div>
@@ -516,9 +630,12 @@ function EffortMatrixInline({
                   const st = chipStateMap.get(q);
                   const qShort = q.split('-')[1] ?? q;
                   const sum = st?.sum ?? 0;
+                  const nonStubSum = st?.nonStubSum ?? sum;
                   const inCat = st?.inCatalog ?? false;
                   const valid = st?.valid ?? true;
-                  const baseline = inCat && valid && sum === 100;
+                  const residualToStubPct =
+                    valid && matrixHasTimelineStub ? Math.round((100 - sum) * 100) / 100 : null;
+                  const baseline = inCat && valid && Math.abs(nonStubSum - 100) < 0.02;
                   const missingCol = Boolean(st && !inCat);
                   const overflow = inCat && !valid;
                   const gi = quarterYearGroupIndex.get(q) ?? 0;
@@ -526,6 +643,8 @@ function EffortMatrixInline({
                   const prevQ = qi > 0 ? visibleQuarters[qi - 1] : null;
                   const showYear = !prevQ || effortMatrixYearPrefix(q) !== effortMatrixYearPrefix(prevQ);
                   const yearLabel = effortMatrixYearPrefix(q);
+                  const costRub = quarterTeamCostRub.get(q) ?? 0;
+                  const costLine = `${Math.round(costRub).toLocaleString('ru-RU')} ₽`;
                   return (
                     <th
                       key={q}
@@ -539,38 +658,86 @@ function EffortMatrixInline({
                         gi % 2 === 1 && (splitImmersive ? 'bg-muted dark:bg-muted' : 'bg-muted')
                       )}
                     >
-                      <div className="flex min-h-[14px] items-end justify-center text-[10px] font-semibold tabular-nums leading-none text-muted-foreground">
-                        {showYear ? yearLabel : <span className="opacity-0 select-none" aria-hidden>{yearLabel}</span>}
-                      </div>
-                      <div className="mt-1 tabular-nums text-xs font-semibold text-foreground">{qShort}</div>
-                      <div className="mt-0.5 flex min-h-[14px] items-center justify-center gap-0.5">
-                        {missingCol ? (
-                          <AlertTriangle className="h-3 w-3 shrink-0 text-primary" aria-hidden />
-                        ) : baseline ? (
-                          <span className="text-[9px] font-normal tabular-nums text-muted-foreground/80">100%</span>
-                        ) : overflow ? (
-                          <span className="flex items-center gap-0.5 text-[9px] font-semibold tabular-nums text-primary">
-                            {sum}%
-                            <AlertCircle className="h-3 w-3 shrink-0" aria-hidden />
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-semibold tabular-nums text-primary">{sum}%</span>
-                        )}
-                      </div>
+                      <Tooltip delayDuration={280}>
+                        <TooltipTrigger asChild>
+                          <div
+                            role="presentation"
+                            tabIndex={0}
+                            className={cn(
+                              'group/col cursor-default rounded-md px-0.5 pb-0.5 outline-none transition-[background-color,box-shadow]',
+                              'hover:bg-muted/80 hover:shadow-sm',
+                              'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                              splitImmersive && 'hover:bg-muted/50 dark:hover:bg-muted/40'
+                            )}
+                          >
+                            <div className="flex min-h-[14px] items-end justify-center text-[10px] font-semibold tabular-nums leading-none text-muted-foreground">
+                              {showYear ? (
+                                yearLabel
+                              ) : (
+                                <span className="opacity-0 select-none" aria-hidden>
+                                  {yearLabel}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 tabular-nums text-xs font-semibold text-foreground">{qShort}</div>
+                            <div className="mt-0.5 flex min-h-[14px] items-center justify-center gap-0.5">
+                              {missingCol ? (
+                                <AlertTriangle className="h-3 w-3 shrink-0 text-primary" aria-hidden />
+                              ) : baseline ? (
+                                <span className="text-[9px] font-normal tabular-nums text-muted-foreground/80">100%</span>
+                              ) : overflow ? (
+                                <span className="flex items-center gap-0.5 text-[9px] font-semibold tabular-nums text-primary">
+                                  {Math.round(nonStubSum * 100) / 100}%
+                                  <AlertCircle className="h-3 w-3 shrink-0" aria-hidden />
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-semibold tabular-nums text-primary">{sum}%</span>
+                              )}
+                            </div>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" align="center" className="max-w-[16rem] space-y-1 text-left text-xs">
+                          <p className="font-semibold text-foreground">{q.replace('-', ' ')}</p>
+                          <p className="text-muted-foreground">
+                            Сумма по строкам (без «Нераспределено»):{' '}
+                            <span className="font-medium tabular-nums text-foreground">{sum}%</span>
+                            {!inCat ? ' · колонка не в текущей выгрузке' : !valid ? ' · превышает 100%' : null}
+                          </p>
+                          {!inCat || !valid ? null : residualToStubPct != null &&
+                            residualToStubPct > 0 ? (
+                            <p className="text-muted-foreground">
+                              Остаток на заглушке:{' '}
+                              <span className="font-medium tabular-nums text-foreground">
+                                {residualToStubPct}%
+                              </span>
+                            </p>
+                          ) : null}
+                          <p>
+                            Стоимость по команде в квартале:{' '}
+                            <span className="font-semibold tabular-nums text-foreground">{costLine}</span>
+                            <span className="block text-[11px] font-normal text-muted-foreground">
+                              Сумма основной и прочих затрат по всем инициативам в колонке.
+                            </span>
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
                     </th>
                   );
                 })}
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((row) => (
+              {matrixRows.map((row) => {
+                const isStub = row.isTimelineStub === true;
+                const stubLabel = isStub ? getStubResidualLabel(row.team) : null;
+                return (
                 <tr
                   key={row.id}
                   className={cn(
                     'border-b last:border-0',
                     splitImmersive ? 'border-border/35' : 'border-border'
                   )}
-                  title={row.initiative?.trim() || undefined}
+                  title={isStub ? stubLabel ?? undefined : row.initiative?.trim() || undefined}
                 >
                   <td
                     className={cn(
@@ -579,13 +746,13 @@ function EffortMatrixInline({
                       splitImmersive
                         ? 'border-r border-border/45 bg-background/95 backdrop-blur-[2px] dark:bg-background/90'
                         : 'border-r border-border bg-background',
-                      row.isTimelineStub && (splitImmersive ? 'bg-muted/35' : 'bg-muted/40')
+                      isStub && (splitImmersive ? 'bg-muted/35' : 'bg-muted/40')
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-0.5">
                       {canOfferDelete ? (
                         <div className="flex h-8 w-6 shrink-0 items-center justify-center">
-                          {quickSessionDeletableIds!.has(row.id) ? (
+                          {!isStub && quickSessionDeletableIds!.has(row.id) ? (
                             <button
                               type="button"
                               onClick={() => onRequestDeleteQuickSessionRow!(row.id)}
@@ -604,33 +771,32 @@ function EffortMatrixInline({
                         </div>
                       ) : null}
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        {onInitiativeNameChange ? (
-                          <Input
-                            ref={(el) => {
+                        {isStub ? (
+                          <span
+                            className="truncate text-xs font-medium leading-snug text-muted-foreground"
+                            title="Контейнер остатка бюджета команды. Имя и коэффициенты не редактируются — заглушка держит то, что не разнесли по инициативам."
+                          >
+                            {stubLabel}
+                          </span>
+                        ) : onInitiativeNameChange ? (
+                          <MatrixInitiativeNameInput
+                            key={row.id}
+                            rowId={row.id}
+                            serverValue={row.initiative ?? ''}
+                            onCommit={onInitiativeNameChange}
+                            setInputRef={(el) => {
                               if (el) nameInputRefs.current.set(row.id, el);
                               else nameInputRefs.current.delete(row.id);
                             }}
-                            value={row.initiative ?? ''}
-                            onChange={(e) => onInitiativeNameChange(row.id, e.target.value)}
-                            onDoubleClick={(e) => e.currentTarget.select()}
-                            aria-label="Название инициативы"
-                            title={
-                              row.initiative?.trim()
-                                ? `${row.initiative.trim()} · двойной клик — выделить всё`
-                                : 'Двойной клик — выделить название целиком'
-                            }
                             className={cn(
-                              'h-8 min-w-0 w-full max-w-full border-transparent bg-transparent px-1 text-sm font-medium shadow-none',
+                              'h-8 min-w-0 w-full max-w-full border-transparent bg-transparent px-1 text-xs font-medium leading-snug shadow-none',
                               'hover:bg-muted/40 focus-visible:border-input focus-visible:bg-background',
                               '[&:focus-visible]:ring-1 [&:focus-visible]:ring-ring'
                             )}
                           />
                         ) : (
-                          <span className="truncate font-medium">{row.initiative || '—'}</span>
+                          <span className="truncate text-xs font-medium leading-snug">{row.initiative || '—'}</span>
                         )}
-                        {row.isTimelineStub ? (
-                          <span className="text-[10px] text-muted-foreground">Заглушка таймлайна</span>
-                        ) : null}
                       </div>
                     </div>
                   </td>
@@ -652,26 +818,55 @@ function EffortMatrixInline({
                             (splitImmersive ? 'bg-muted/25 dark:bg-muted/20' : 'bg-muted/30')
                         )}
                       >
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={effort === 0 ? '' : effort}
-                          onChange={(e) =>
-                            onQuarterDataChange(
-                              row.id,
-                              q,
-                              'effortCoefficient',
-                              parseInt(e.target.value, 10) || 0
-                            )
-                          }
-                          className="mx-auto h-8 w-[4rem] px-1 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none sm:w-[4.25rem]"
-                        />
+                        {isStub ? (
+                          (() => {
+                            const colNs = nonStubEffortByQuarter.get(q) ?? 0;
+                            const over = colNs > 100 + 1e-4;
+                            if (over) {
+                              return (
+                                <div
+                                  className="mx-auto flex h-8 w-[4rem] items-center justify-center rounded-md text-sm tabular-nums text-muted-foreground/50 sm:w-[4.25rem]"
+                                  aria-label="Перебор по колонке"
+                                  title="Сумма по строкам превышает 100%."
+                                >
+                                  —
+                                </div>
+                              );
+                            }
+                            const residual = Math.round((100 - colNs) * 100) / 100;
+                            return (
+                              <div
+                                className="mx-auto flex h-8 w-[4rem] items-center justify-center rounded-md text-sm tabular-nums text-muted-foreground sm:w-[4.25rem]"
+                                aria-label={`Остаток до 100%: ${residual}%`}
+                                title="Остаток до 100% в колонке (не редактируется)."
+                              >
+                                {residual}%
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={effort === 0 ? '' : effort}
+                            onChange={(e) =>
+                              onQuarterDataChange(
+                                row.id,
+                                q,
+                                'effortCoefficient',
+                                parseInt(e.target.value, 10) || 0
+                              )
+                            }
+                            className="mx-auto h-8 w-[4rem] px-1 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none sm:w-[4.25rem]"
+                          />
+                        )}
                       </td>
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -707,6 +902,7 @@ export default function AdminQuickFlow({
   baselineFilteredData,
   quarters,
   fillQuarters,
+  peopleEffortFillTo,
   unit,
   team,
   onDeleteInitiativeAddedInQuickFlow,
@@ -816,14 +1012,11 @@ export default function AdminQuickFlow({
 
   const quarterEffortStates = useMemo(() => {
     return fillQuarters.map((targetQ) => {
-      const sum = filteredData.reduce(
-        (s, row) => s + (row.quarterlyData[targetQ]?.effortCoefficient ?? 0),
-        0
-      );
+      const chip = effortMatrixColumnChipState(filteredData, targetQ);
       return {
         quarter: targetQ,
-        sum,
-        valid: sum <= 100,
+        sum: chip.sum,
+        valid: chip.valid,
         inCatalog: quarters.includes(targetQ),
       };
     });
@@ -1294,20 +1487,32 @@ export default function AdminQuickFlow({
 
   const renderStep1Body = () => (
     <>
-            <header className={cn('shrink-0 space-y-1', treemapCompareOpen && 'pl-0.5')}>
-              <h1
-                className={cn(
-                  'font-juneau text-balance font-medium tracking-tight',
-                  treemapCompareOpen
-                    ? 'text-lg font-medium sm:text-xl'
-                    : 'text-xl sm:text-2xl'
-                )}
-              >
-                Актуализируй коэффициенты
-              </h1>
-              <p className="max-w-prose text-sm text-muted-foreground">
-                Поменяй коэффициенты усилий и посмотри, как изменится ваш тримап
-              </p>
+            <header
+              className={cn(
+                'shrink-0 gap-2 sm:flex sm:items-start sm:justify-between',
+                treemapCompareOpen && 'pl-0.5'
+              )}
+            >
+              <div className="min-w-0 space-y-1">
+                <h1
+                  className={cn(
+                    'font-juneau text-balance font-medium tracking-tight',
+                    treemapCompareOpen
+                      ? 'text-lg font-medium sm:text-xl'
+                      : 'text-xl sm:text-2xl'
+                  )}
+                >
+                  Актуализируй коэффициенты
+                </h1>
+                <p className="max-w-prose text-sm text-muted-foreground">
+                  Поменяй коэффициенты усилий и посмотри, как изменится ваш тримап
+                </p>
+              </div>
+              {peopleEffortFillTo ? (
+                <Button variant="outline" size="sm" className="h-8 shrink-0" asChild>
+                  <Link to={peopleEffortFillTo}>По людям</Link>
+                </Button>
+              ) : null}
             </header>
             <section
               className={cn(
@@ -1343,7 +1548,7 @@ export default function AdminQuickFlow({
                     filteredData={filteredData}
                     onQuarterDataChange={onQuarterDataChange}
                     splitImmersive={treemapCompareOpen}
-                    compactPeriodPicker={treemapCompareOpen}
+                    compactPeriodPicker
                     hideAddInitiativeButton={Boolean(onQuickAddInitiativeRow)}
                     onHeaderAddInitiativeRow={onQuickAddInitiativeRow}
                     onInitiativeNameChange={

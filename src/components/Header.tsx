@@ -8,20 +8,23 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
-export type ViewType = 'budget' | 'budgetDepartments' | 'stakeholders' | 'timeline';
+export type ViewType = 'budget' | 'stakeholders' | 'timeline';
 
 interface HeaderProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   onSearchClick: () => void;
   isAdmin?: boolean;
+  /** Сохраняет `?units=&teams=` при переходе в админку (как в useFilterParams). */
+  adminTo?: string;
 }
 
 const Header = ({
   currentView,
   onViewChange,
   onSearchClick,
-  isAdmin = false
+  isAdmin = false,
+  adminTo,
 }: HeaderProps) => {
   const navigate = useNavigate();
   return (
@@ -47,21 +50,8 @@ const Header = ({
           }`}
           onClick={() => onViewChange('budget')}
         >
-          По HR структуре <kbd className="text-xs text-muted-foreground ml-1">1</kbd>
+          Бюджет <kbd className="text-xs text-muted-foreground ml-1">1</kbd>
           {currentView === 'budget' && (
-            <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
-          )}
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
-            currentView === 'budgetDepartments'
-              ? 'text-foreground'
-              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-          }`}
-          onClick={() => onViewChange('budgetDepartments')}
-        >
-          По бюджетному подразделению <kbd className="text-xs text-muted-foreground ml-1">2</kbd>
-          {currentView === 'budgetDepartments' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
         </button>
@@ -73,7 +63,7 @@ const Header = ({
           }`}
           onClick={() => onViewChange('stakeholders')}
         >
-          Кластеры <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
+          Кластеры <kbd className="text-xs text-muted-foreground ml-1">2</kbd>
           {currentView === 'stakeholders' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
@@ -86,7 +76,7 @@ const Header = ({
           }`}
           onClick={() => onViewChange('timeline')}
         >
-          Таймлайн <kbd className="text-xs text-muted-foreground ml-1">4</kbd>
+          Таймлайн <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
           {currentView === 'timeline' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
@@ -112,7 +102,7 @@ const Header = ({
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={() => navigate('/admin')}
+                  onClick={() => navigate(adminTo ?? '/admin')}
                 >
                   <Sliders size={16} />
                   <span className="hidden sm:inline">Админка</span>

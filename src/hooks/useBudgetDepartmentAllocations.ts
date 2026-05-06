@@ -51,13 +51,28 @@ function pickQuarterlyBudget(record: Record<string, unknown>): Record<string, nu
 }
 
 async function fetchBudgetDepartmentAllocations(): Promise<BudgetDepartmentAllocationRow[]> {
-  const { data, error } = await (supabase as any)
-    .from('initiative_budget_department_2026')
-    .select('*');
+  const pageSize = 1000;
+  let from = 0;
+  const rows: Record<string, unknown>[] = [];
 
-  if (error) throw error;
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await (supabase as any)
+      .from('initiative_budget_department_2026')
+      .select('*')
+      .order('initiative_id', { ascending: true })
+      .order('budget_department', { ascending: true })
+      .range(from, to);
 
-  const rows = Array.isArray(data) ? data : [];
+    if (error) throw error;
+
+    const batch = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+    rows.push(...batch);
+
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+
   return rows
     .map((raw) => {
       const record = (raw || {}) as Record<string, unknown>;

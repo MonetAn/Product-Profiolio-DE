@@ -14,13 +14,6 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Tooltip,
@@ -31,7 +24,6 @@ import {
 import {
   AdminDataRow,
   AdminQuarterData,
-  INITIATIVE_TYPES,
   STAKEHOLDERS_LIST,
   validateTeamQuarterEffort,
   quarterRequiresPlanFact,
@@ -40,7 +32,7 @@ import {
 } from '@/lib/adminDataManager';
 import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
-import { compareQuarters, isMetricFactRequiredForQuarter } from '@/lib/quarterUtils';
+import { compareQuarters, isCalendarPastQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -91,7 +83,7 @@ interface QuarterFieldsProps {
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
+    value: string | number | boolean | undefined
   ) => void;
   /** Полный режим (таблица) или только метрики/on-track + поддержка по периоду (шаг таймлайна quick flow). */
   variant?: QuarterFieldsVariant;
@@ -150,7 +142,6 @@ const QuarterFields = ({
   persistMode = 'blur',
   onDirtyChange,
 }: QuarterFieldsProps) => {
-  const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
   const useExplicit = persistMode === 'explicitSave' && variant === 'quickTimeline';
   const save = (field: keyof AdminQuarterData) => (value: string | number | boolean) =>
     onQuarterDataChange(initiativeId, quarter, field, value);
@@ -337,7 +328,7 @@ const QuarterFields = ({
     const showMetricBlock =
       quarterRequiresPlanFact(qDataForQuickUi) || qDataForQuickUi.support;
     const metricsMandatory = quarterRequiresPlanFact(qDataForQuickUi);
-    const showFactInput = showMetricBlock && isMetricFactRequiredForQuarter(quarter);
+    const showFactInput = showMetricBlock && isCalendarPastQuarter(quarter);
     const factNoteOnly = showMetricBlock && !showFactInput;
     const requiresMetricFactUi = quarterRequiresMetricFact(qDataForQuickUi, quarter);
     const supportChipSelected =
@@ -697,20 +688,6 @@ const QuarterFields = ({
         />
       </div>
 
-      {(qData.cost ?? 0) > 0 && marketCountries.length > 0 ? (
-        <div className="space-y-2 border-t border-border/60 pt-4">
-          <Label className="text-xs font-medium text-muted-foreground">
-            Распределение стоимости по странам и кластерам
-          </Label>
-          <GeoCostSplitEditor
-            cost={qData.cost ?? 0}
-            value={qData.geoCostSplit}
-            countries={marketCountries}
-            onChange={(next) => onQuarterDataChange(initiativeId, quarter, 'geoCostSplit', next)}
-            bulkAddQuarterLabel={quarter}
-          />
-        </div>
-      ) : null}
     </div>
   );
 };
@@ -726,8 +703,9 @@ interface InitiativeDetailDialogProps {
     id: string,
     quarter: string,
     field: keyof AdminQuarterData,
-    value: string | number | boolean | GeoCostSplit | undefined
+    value: string | number | boolean | undefined
   ) => void;
+  onInitiativeGeoCostSplitChange?: (id: string, split: GeoCostSplit | undefined) => void;
   /** Если false — только поля карточки (без блока кварталов), для quick flow поверх таймлайна */
   showQuarterSection?: boolean;
 }
@@ -740,8 +718,10 @@ const InitiativeDetailDialog = ({
   onOpenChange,
   onDataChange,
   onQuarterDataChange,
+  onInitiativeGeoCostSplitChange,
   showQuarterSection = true,
 }: InitiativeDetailDialogProps) => {
+  const { data: marketCountriesGeo = [] } = useMarketCountries({ includeInactive: false });
   const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
 
   // Top-level text fields with save-on-blur
@@ -759,6 +739,11 @@ const InitiativeDetailDialog = ({
   }, [initiative?.id]);
 
   if (!initiative) return null;
+
+  const totalQuarterCost = quarters.reduce(
+    (s, q) => s + (initiative.quarterlyData[q]?.cost ?? 0),
+    0
+  );
 
   const handleStakeholderToggle = (stakeholder: string, checked: boolean) => {
     const newList = checked
@@ -798,38 +783,6 @@ const InitiativeDetailDialog = ({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
-          {/* Initiative Type */}
-          <div className="space-y-2">
-            <RequiredLabel>Тип инициативы</RequiredLabel>
-            <TooltipProvider delayDuration={100}>
-              <Select
-                value={initiative.initiativeType || ''}
-                onValueChange={(v) => onDataChange(initiative.id, 'initiativeType', v)}
-              >
-                <SelectTrigger className={`w-full focus:ring-0 focus-visible:ring-0 ${!initiative.initiativeType ? 'ring-2 ring-primary/55' : ''}`}>
-                  <SelectValue placeholder="Выберите тип" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INITIATIVE_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      <div className="flex items-center gap-2">
-                        {type.label}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info size={12} className="text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-[200px]">
-                            <p className="text-xs">{type.description}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </TooltipProvider>
-          </div>
-
           {/* Stakeholders */}
           <div className="space-y-2">
             <RequiredLabel>Стейкхолдеры</RequiredLabel>
@@ -906,6 +859,18 @@ const InitiativeDetailDialog = ({
               onCheckedChange={(checked) => onDataChange(initiative.id, 'isTimelineStub', checked)}
             />
           </div>
+
+          {onInitiativeGeoCostSplitChange && totalQuarterCost > 0 && marketCountriesGeo.length > 0 ? (
+            <div className="space-y-2 border-t border-border/60 pt-4">
+              <Label className="text-xs font-medium text-muted-foreground">Распределение по рынкам (на инициативу)</Label>
+              <GeoCostSplitEditor
+                cost={Math.round(totalQuarterCost)}
+                value={initiative.initiativeGeoCostSplit}
+                countries={marketCountriesGeo}
+                onChange={(next) => onInitiativeGeoCostSplitChange(initiative.id, next)}
+              />
+            </div>
+          ) : null}
 
           {showQuarterSection ? (
             <>

@@ -17,14 +17,22 @@ export function getCurrentQuarter(): string {
 }
 
 /**
- * Факт метрики по смыслу портфеля обязателен только для кварталов **строго раньше**
- * текущего календарного (`getCurrentQuarter`): в текущем и будущих кварталах факт ещё не задан.
- * План при этом может оставаться обязательным (см. `quarterRequiresPlanFact` в adminDataManager).
+ * Календарно прошедший квартал (строго раньше `getCurrentQuarter()`):
+ * в UI можно вводить/редактировать факт за любой такой период.
  */
-export function isMetricFactRequiredForQuarter(quarter: string): boolean {
+export function isCalendarPastQuarter(quarter: string): boolean {
   const { year } = parseQuarter(quarter);
   if (year === 0) return false;
   return compareQuarters(quarter, getCurrentQuarter()) < 0;
+}
+
+/**
+ * Жёсткое требование портфеля: факт метрики обязателен только за **последний завершённый**
+ * квартал — тот же смысл, что `getPreviousQuarter()` (см. `getQuickFlowCellReadiness` в adminDataManager).
+ * Более старые пробелы по факту подсвечиваем мягче и не блокируем сценарий.
+ */
+export function isPortfolioMandatoryMetricFactQuarter(quarter: string): boolean {
+  return quarter === getPreviousQuarter();
 }
 
 function parseQuarter(q: string): { year: number; quarter: number } {

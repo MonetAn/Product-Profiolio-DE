@@ -47,7 +47,6 @@ export interface TreeNode {
   isUnit?: boolean;
   isTeam?: boolean;
   isInitiative?: boolean;
-  isBudgetDepartment?: boolean;
   isRoot?: boolean;
   isStakeholder?: boolean;
   isTimelineStub?: boolean;
@@ -150,14 +149,19 @@ export function convertFromDB(
       };
     });
 
+    const isStub = row.isTimelineStub ?? false;
     return {
       unit: row.unit,
       team: row.team,
-      initiative: row.initiative,
+      initiative: isStub
+        ? row.team
+          ? `Нераспределено · ${row.team}`
+          : 'Нераспределено'
+        : row.initiative,
       description: row.description || '',
       stakeholders: row.stakeholders || '',
       documentationLink: row.documentationLink || '',
-      isTimelineStub: row.isTimelineStub ?? false,
+      isTimelineStub: isStub,
       quarterlyData,
       adminInitiativeRowId: row.id,
       budgetDepartmentAllocations: budgetAllocationsByInitiativeId?.[row.id] || undefined,
@@ -391,22 +395,21 @@ export function parseCSV(text: string): {
 }
 
 // ===== BUDGET CALCULATION =====
-function selectBudgetAllocations(row: RawDataRow, includeNonPnlBudgets = false): BudgetDepartmentAllocation[] {
-  const allocations = row.budgetDepartmentAllocations || [];
-  if (allocations.length === 0) return [];
-  if (includeNonPnlBudgets) return allocations;
-  return allocations.filter((allocation) => allocation.isInPnlIt);
-}
-
 export function calculateBudget(
   row: RawDataRow,
   selectedQuarters: string[],
   options?: { includeNonPnlBudgets?: boolean }
 ): number {
   const includeNonPnlBudgets = options?.includeNonPnlBudgets ?? false;
-  const allocations = selectBudgetAllocations(row, includeNonPnlBudgets);
+  const allAllocations = row.budgetDepartmentAllocations || [];
 
-  if (allocations.length > 0) {
+  // If split allocations exist for this initiative, always use them.
+  // Otherwise PnL filter would silently fall back to quarterly_data and not hide false rows.
+  if (allAllocations.length > 0) {
+    const allocations = includeNonPnlBudgets
+      ? allAllocations
+      : allAllocations.filter((allocation) => allocation.isInPnlIt);
+
     return allocations.reduce((sum, allocation) => {
       return (
         sum +
@@ -417,7 +420,15 @@ export function calculateBudget(
     }, 0);
   }
 
-  return selectedQuarters.reduce((sum, quarter) => sum + (row.quarterlyData[quarter]?.budget || 0), 0);
+  /**
+   * 2026: источник истины по деньгам — finance split (initiative_budget_department_2026).
+   * Если по инициативе нет split-строк, не подмешиваем quarterly_data в totals для 2026,
+   * иначе ломаются контрольные суммы CSV.
+   */
+  return selectedQuarters.reduce((sum, quarter) => {
+    if (/^2026-Q[1-4]$/i.test(quarter)) return sum;
+    return sum + (row.quarterlyData[quarter]?.budget || 0);
+  }, 0);
 }
 
 /** Сумма % усилий по выбранным кварталам (если стоимость в выгрузке ещё 0, инициатива всё равно «в периоде»). */
@@ -515,14 +526,12 @@ export interface BuildTreeOptions {
   // NEW: control tree structure based on toggles
   showTeams?: boolean;
   showInitiatives?: boolean;
-  showBudgetDepartments?: boolean;
   includeNonPnlBudgets?: boolean;
 }
 
 export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
   const showTeams = options.showTeams ?? false;
   const showInitiatives = options.showInitiatives ?? false;
-  const showBudgetDepartments = options.showBudgetDepartments ?? false;
 
   // Different tree structures based on toggle combination:
   // 1. Nothing selected -> Units only (with aggregated value)
@@ -531,49 +540,15 @@ export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions
   // 4. Only Initiatives -> Units -> Initiatives directly (skip teams)
 
   if (!showTeams && !showInitiatives) {
-    // Case 1: Only Units - aggregate all to unit level
     return buildUnitsOnlyTree(rawData, options);
-  } else if (showTeams && !showInitiatives) {
-    // Case 2: Units -> Teams (aggregate initiatives into teams)
+  }
+  if (showTeams && !showInitiatives) {
     return buildUnitsTeamsTree(rawData, options);
-  } else if (showTeams && showInitiatives) {
-    // Case 3: Full hierarchy Units -> Teams -> Initiatives
-    if (showBudgetDepartments) {
-      return buildFullTreeWithBudgetDepartments(rawData, options);
-    }
+  }
+  if (showTeams && showInitiatives) {
     return buildFullTree(rawData, options);
-  } else {
-    // Case 4: Units -> Initiatives directly (skip teams)
-    if (showBudgetDepartments && showInitiatives) {
-      return buildUnitsInitiativesBudgetDepartmentsTree(rawData, options);
-    }
-    return buildUnitsInitiativesTree(rawData, options);
   }
-}
-
-function getBudgetDepartmentSlices(
-  row: RawDataRow,
-  selectedQuarters: string[],
-  includeNonPnlBudgets = false
-): Array<{ name: string; value: number; isInPnlIt: boolean }> {
-  const allocations = selectBudgetAllocations(row, includeNonPnlBudgets);
-  if (allocations.length > 0) {
-    return allocations
-      .map((allocation) => ({
-        name: allocation.budgetDepartment || 'Без бюджетного подразделения',
-        value: selectedQuarters.reduce(
-          (sum, quarter) => sum + (allocation.quarterlyBudget[quarter] || 0),
-          0
-        ),
-        isInPnlIt: allocation.isInPnlIt,
-      }))
-      .filter((slice) => slice.value > 0);
-  }
-
-  const fallback = calculateBudget(row, selectedQuarters, { includeNonPnlBudgets });
-  return fallback > 0
-    ? [{ name: 'Без бюджетного подразделения', value: fallback, isInPnlIt: true }]
-    : [];
+  return buildUnitsInitiativesTree(rawData, options);
 }
 
 // Helper: filter row based on options
@@ -748,69 +723,6 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
   return { name: 'Все Unit', children, isRoot: true };
 }
 
-// Case 3b: Units -> Teams -> Initiatives -> Budget departments
-function buildFullTreeWithBudgetDepartments(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
-  const unitMap: Record<string, { name: string; children: TreeNode[]; teamMap: Record<string, TreeNode>; isUnit: boolean }> = {};
-
-  rawData.forEach((row) => {
-    if (!shouldIncludeRow(row, options)) return;
-
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
-    const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const slices = getBudgetDepartmentSlices(
-      row,
-      options.selectedQuarters,
-      options.includeNonPnlBudgets ?? false
-    );
-    if (slices.length === 0) return;
-
-    if (!unitMap[row.unit]) {
-      unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
-    }
-
-    const unit = unitMap[row.unit];
-    const teamName = row.team || 'Без команды';
-
-    if (!unit.teamMap[teamName]) {
-      unit.teamMap[teamName] = { name: teamName, children: [], isTeam: true };
-      unit.children.push(unit.teamMap[teamName]);
-    }
-
-    const departmentChildren: TreeNode[] = slices.map((slice) => ({
-      name: slice.name,
-      value: slice.value,
-      support: isSupport,
-      offTrack: isOffTrack,
-      isBudgetDepartment: true,
-    }));
-
-    unit.teamMap[teamName].children!.push({
-      name: row.initiative,
-      children: departmentChildren,
-      description: row.description,
-      stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
-      support: isSupport,
-      offTrack: isOffTrack,
-      quarterlyData: row.quarterlyData,
-      isInitiative: true,
-      isTimelineStub: row.isTimelineStub ?? false,
-      hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
-    });
-  });
-
-  const children = Object.values(unitMap)
-    .map((unit) => {
-      const { teamMap, ...rest } = unit;
-      return {
-        ...rest,
-        children: rest.children.filter((team) => (team.children?.length || 0) > 0),
-      };
-    })
-    .filter((unit) => unit.children.length > 0);
-
-  return { name: 'Все Unit', children, isRoot: true };
-}
-
 // Case 4: Units -> Initiatives directly (skip teams)
 function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
   const unitMap: Record<string, { name: string; children: TreeNode[]; isUnit: boolean }> = {};
@@ -844,152 +756,6 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
 
   const children = Object.values(unitMap).filter(unit => unit.children.length > 0);
   return { name: 'Все Unit', children, isRoot: true };
-}
-
-// Case 4b: Units -> Initiatives -> Budget departments
-function buildUnitsInitiativesBudgetDepartmentsTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
-  const unitMap: Record<string, { name: string; children: TreeNode[]; isUnit: boolean }> = {};
-
-  rawData.forEach((row) => {
-    if (!shouldIncludeRow(row, options)) return;
-
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
-    const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const slices = getBudgetDepartmentSlices(
-      row,
-      options.selectedQuarters,
-      options.includeNonPnlBudgets ?? false
-    );
-    if (slices.length === 0) return;
-
-    if (!unitMap[row.unit]) {
-      unitMap[row.unit] = { name: row.unit, children: [], isUnit: true };
-    }
-
-    unitMap[row.unit].children.push({
-      name: row.initiative,
-      children: slices.map((slice) => ({
-        name: slice.name,
-        value: slice.value,
-        support: isSupport,
-        offTrack: isOffTrack,
-        isBudgetDepartment: true,
-      })),
-      description: row.description,
-      stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
-      support: isSupport,
-      offTrack: isOffTrack,
-      quarterlyData: row.quarterlyData,
-      isInitiative: true,
-      isTimelineStub: row.isTimelineStub ?? false,
-      hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
-    });
-  });
-
-  const children = Object.values(unitMap).filter((unit) => unit.children.length > 0);
-  return { name: 'Все Unit', children, isRoot: true };
-}
-
-export function buildBudgetDepartmentTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
-  const showTeams = options.showTeams ?? true;
-  const showInitiatives = options.showInitiatives ?? true;
-  const includeNonPnlBudgets = options.includeNonPnlBudgets ?? false;
-
-  const departmentMap: Record<
-    string,
-    {
-      name: string;
-      value: number;
-      isBudgetDepartment: boolean;
-      children: TreeNode[];
-      teamMap: Record<string, TreeNode>;
-    }
-  > = {};
-
-  rawData.forEach((row) => {
-    if (!shouldIncludeRow(row, options)) return;
-
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
-    const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const slices = getBudgetDepartmentSlices(row, options.selectedQuarters, includeNonPnlBudgets);
-    if (slices.length === 0) return;
-
-    slices.forEach((slice) => {
-      if (!departmentMap[slice.name]) {
-        departmentMap[slice.name] = {
-          name: slice.name,
-          value: 0,
-          isBudgetDepartment: true,
-          children: [],
-          teamMap: {},
-        };
-      }
-
-      const department = departmentMap[slice.name];
-      department.value += slice.value;
-
-      if (!showInitiatives) return;
-
-      if (showTeams) {
-        const teamName = row.team || 'Без команды';
-        if (!department.teamMap[teamName]) {
-          department.teamMap[teamName] = { name: teamName, children: [], isTeam: true };
-          department.children.push(department.teamMap[teamName]);
-        }
-
-        department.teamMap[teamName].children!.push({
-          name: row.initiative,
-          value: slice.value,
-          description: row.description,
-          stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
-          support: isSupport,
-          offTrack: isOffTrack,
-          quarterlyData: row.quarterlyData,
-          isInitiative: true,
-          isTimelineStub: row.isTimelineStub ?? false,
-          hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
-        });
-      } else {
-        department.children.push({
-          name: row.initiative,
-          value: slice.value,
-          description: row.description,
-          stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
-          support: isSupport,
-          offTrack: isOffTrack,
-          quarterlyData: row.quarterlyData,
-          isInitiative: true,
-          isTimelineStub: row.isTimelineStub ?? false,
-          hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
-        });
-      }
-    });
-  });
-
-  const children = Object.values(departmentMap)
-    .map((department) => {
-      const { teamMap, ...rest } = department;
-      if (!showInitiatives) {
-        return {
-          name: rest.name,
-          value: rest.value,
-          isBudgetDepartment: true,
-        } as TreeNode;
-      }
-      return {
-        ...rest,
-        children: rest.children.filter((child) => {
-          if (showTeams) return (child.children?.length || 0) > 0;
-          return (child.value || 0) > 0;
-        }),
-      };
-    })
-    .filter((department) => {
-      if (!showInitiatives) return (department.value || 0) > 0;
-      return (department.children?.length || 0) > 0;
-    });
-
-  return { name: 'Все бюджетные подразделения', children, isRoot: true };
 }
 
 // ===== FORMATTING =====

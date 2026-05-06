@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bar,
   BarChart,
@@ -14,6 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { TooltipProps } from 'recharts';
 import type { AdminDataRow, GeoCostSplitEntry } from '@/lib/adminDataManager';
 import {
   geoCostSplitPercentsTotal,
@@ -130,7 +132,7 @@ function buildMonthlyRowsByCluster(
       if (c <= 0) continue;
       const byCluster = new Map<string, number>();
       const unallocatedAcc = { rub: 0 };
-      addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
 
       const pushThird = (label: string, rub: number) => {
         if (rub <= 0) return;
@@ -209,7 +211,7 @@ function collectAllocationRubles(
     for (const q of quarterKeys) {
       const qd = row.quarterlyData[q];
       const cost = qd?.cost ?? 0;
-      addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, m, unallocatedAcc);
+      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, m, unallocatedAcc);
     }
   }
   return { byCluster: m, unallocatedRub: unallocatedAcc.rub };
@@ -269,7 +271,7 @@ function initiativeStackData(
       const c = Math.round(Number(cost) || 0);
       if (c <= 0) continue;
       totalCostRub += c;
-      addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, byC, unallocatedAcc);
+      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byC, unallocatedAcc);
     }
     if (totalCostRub <= 0) continue;
     const rec: StackDatum = {
@@ -306,7 +308,7 @@ function collectInitiativeRublesRows(
       const c = Math.round(Number(cost) || 0);
       if (c <= 0) continue;
       totalRub += c;
-      addQuarterGeoToMaps(cost, qd?.geoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
     }
     if (totalRub <= 0) continue;
     if (includeUnallocated && unallocatedAcc.rub > 0) {
@@ -344,14 +346,14 @@ function PieAllocationTooltip({ active, payload, totalRub }: PieTooltipProps) {
   );
 }
 
-type BarTooltipProps = {
-  active?: boolean;
-  label?: string;
-  payload?: Array<{ name?: string; value?: number; payload?: StackDatum }>;
-};
+type BarTooltipPayload = Array<{ name?: string; value?: number; payload?: StackDatum }>;
 
 /** При `shared={false}` в подсказке только сегмент под курсором. */
-function BarStackTooltip({ active, label, payload }: BarTooltipProps) {
+function renderBarStackTooltipInner(
+  active: boolean | undefined,
+  label: TooltipProps<number, string>['label'],
+  payload: BarTooltipPayload | undefined
+): React.ReactNode {
   if (!active || !payload?.length) return null;
   const p = payload[0];
   const row = p.payload;
@@ -363,13 +365,56 @@ function BarStackTooltip({ active, label, payload }: BarTooltipProps) {
     typeof label === 'string' && label.trim().length > 0 ? label : (row?.name ?? '—');
   const rub = totalRub > 0 ? (pct / 100) * totalRub : 0;
   return (
-    <div className="max-w-[min(100vw-2rem,18rem)] rounded-md border border-border bg-popover px-2.5 py-2 text-xs text-popover-foreground shadow-md">
+    <>
       <p className="font-medium leading-snug">{initiativeTitle}</p>
       <p className="mt-1 text-muted-foreground">{segName}</p>
       <p className="mt-1 tabular-nums">
         {pct.toFixed(1)}% · {Math.round(rub).toLocaleString('ru-RU')} ₽
       </p>
-    </div>
+    </>
+  );
+}
+
+/**
+ * Тултип в portal + fixed: иначе любой предок с overflow (скролл секции сводки) обрезает окно по краям графика.
+ */
+function BarStackTooltipPortal(
+  props: TooltipProps<number, string> & { anchorRef: React.RefObject<HTMLDivElement | null> }
+) {
+  const { active, label, payload, coordinate, anchorRef } = props;
+  const inner = renderBarStackTooltipInner(active, label, payload as BarTooltipPayload | undefined);
+  const [fixedPos, setFixedPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!active || !anchorRef.current || coordinate?.x == null || coordinate?.y == null) {
+      setFixedPos(null);
+      return;
+    }
+    const innerCheck = renderBarStackTooltipInner(active, label, payload as BarTooltipPayload | undefined);
+    if (innerCheck == null) {
+      setFixedPos(null);
+      return;
+    }
+    const root = anchorRef.current.querySelector('.recharts-wrapper') as HTMLElement | null;
+    const el = root ?? anchorRef.current;
+    const r = el.getBoundingClientRect();
+    setFixedPos({ left: r.left + coordinate.x, top: r.top + coordinate.y });
+  }, [active, anchorRef, coordinate?.x, coordinate?.y, label, payload]);
+
+  if (inner == null || fixedPos == null) return null;
+
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[300] max-w-[min(100vw-1.5rem,20rem)] rounded-md border border-border bg-popover px-2.5 py-2 text-xs text-popover-foreground shadow-md"
+      style={{
+        left: fixedPos.left,
+        top: fixedPos.top,
+        transform: 'translate(-50%, calc(-100% - 10px))',
+      }}
+    >
+      {inner}
+    </div>,
+    document.body
   );
 }
 
@@ -431,6 +476,7 @@ type Props = {
   onQuarterHover: (q: string | null) => void;
   onReplaceSelectedQuarters: (quarters: string[]) => void;
   onDismissTransientRangeUI: () => void;
+  compactChrome?: boolean;
 };
 
 export function AdminQuickFlowCountryAllocationsSummary({
@@ -445,6 +491,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
   onQuarterHover,
   onReplaceSelectedQuarters,
   onDismissTransientRangeUI,
+  compactChrome = false,
 }: Props) {
   const sortedFill = useMemo(
     () => [...fillQuarters].filter(Boolean).sort(compareQuarters),
@@ -467,6 +514,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
   const [monthlyLegendHoverKey, setMonthlyLegendHoverKey] = useState<string | null>(null);
   const [hoverBarCell, setHoverBarCell] = useState<{ row: number; key: string } | null>(null);
   const legendClearTimerRef = useRef<number | null>(null);
+  const initiativesBarChartSurfaceRef = useRef<HTMLDivElement | null>(null);
 
   const toggleClusterLock = useCallback((name: string) => {
     setLockedClusterKey((prev) => (prev === name ? null : name));
@@ -504,9 +552,12 @@ export function AdminQuickFlowCountryAllocationsSummary({
     return summaryCatalogQuarters.filter((q) => sel.has(q));
   }, [summaryCatalogQuarters, visibleQuarters]);
 
-  const quartersForCharts = useMemo(() => {
-    return summaryVisibleInCatalogOrder.length > 0 ? summaryVisibleInCatalogOrder : sortedFill;
-  }, [summaryVisibleInCatalogOrder, sortedFill]);
+  /**
+   * Используем строго пересечение пикера. Если пользователь снял все чипы — графики пустые
+   * (видны заглушки «Нет данных»), без скрытого fallback на весь fillQuarters (был источник
+   * утечки 2025 в инфографику, когда период сводился до пустого).
+   */
+  const quartersForCharts = summaryVisibleInCatalogOrder;
 
   const allocationSummary = useMemo(() => {
     const { byCluster, unallocatedRub } = collectAllocationRubles(
@@ -608,12 +659,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
     return map;
   }, [initiativeRublesRows, stackClusterKeys]);
 
-  const panelClusterKey = lockedClusterKey ?? highlightedClusterKey;
-
+  /** Список инициатив под графиками — только при закреплённом кластере (клик), иначе ховер по легенде удлиняет страницу и дёргает скролл у нижнего края. */
   const highlightedInitiativeRows = useMemo(() => {
-    if (!panelClusterKey) return [];
-    return initiativeRowsByCluster.get(panelClusterKey) ?? [];
-  }, [panelClusterKey, initiativeRowsByCluster]);
+    if (!lockedClusterKey) return [];
+    return initiativeRowsByCluster.get(lockedClusterKey) ?? [];
+  }, [lockedClusterKey, initiativeRowsByCluster]);
 
   useEffect(() => {
     if (lockedClusterKey && !stackClusterKeys.includes(lockedClusterKey)) {
@@ -718,7 +768,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
 
   return (
     <section className="alloc-summary-charts flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-auto">
-      <h2 className="text-lg font-semibold">Сводка по аллокациям</h2>
+      {!compactChrome ? <h2 className="text-lg font-semibold">Сводка по аллокациям</h2> : null}
 
       <Tabs
         value={allocationsSummaryTab}
@@ -955,11 +1005,11 @@ export function AdminQuickFlowCountryAllocationsSummary({
                     </ResponsiveContainer>
                     </div>
                   </div>
-                  {panelClusterKey ? (
+                  {lockedClusterKey ? (
                     <div className="mt-3 min-h-0 border-t border-border/50 pt-3">
                       <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                         Стоимость инициатив кластера
-                        <span className="ml-1.5 normal-case text-foreground">{panelClusterKey}</span>
+                        <span className="ml-1.5 normal-case text-foreground">{lockedClusterKey}</span>
                       </p>
                       {highlightedInitiativeRows.length === 0 ? (
                         <p className="text-xs text-muted-foreground">Нет сумм по выбранному кластеру.</p>
@@ -993,11 +1043,17 @@ export function AdminQuickFlowCountryAllocationsSummary({
               {stackData.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Нет данных для столбцов.</p>
               ) : (
-                <div
-                  className="w-full min-w-0 overflow-hidden rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
-                  style={{ height: barChartHeight }}
-                >
+                <>
+                  {/*
+                    Без overflow-hidden — иначе тултип Recharts обрезается сверху.
+                    z-index тултипа — см. wrapperStyle на <Tooltip>.
+                  */}
                   <div
+                    className="relative z-0 w-full min-w-0 rounded-xl bg-muted/15 p-2 ring-1 ring-border/40"
+                    style={{ height: barChartHeight }}
+                  >
+                  <div
+                    ref={initiativesBarChartSurfaceRef}
                     className={cn('h-full w-full min-h-0', ALLOCATIONS_RECHARTS_SHELL)}
                     onPointerDownCapture={handleAllocationsChartPointerDownCapture}
                     onPointerUpCapture={handleAllocationsChartPointerCapture}
@@ -1006,7 +1062,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
                     <BarChart
                       layout="vertical"
                       data={stackData}
-                      margin={{ top: 4, right: 10, left: 2, bottom: 4 }}
+                      margin={{ top: 8, right: 10, left: 2, bottom: 4 }}
                       barCategoryGap={2}
                       barGap={0}
                       maxBarSize={44}
@@ -1033,9 +1089,19 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         interval={0}
                       />
                       <Tooltip
-                        content={<BarStackTooltip />}
+                        content={(tp) => (
+                          <BarStackTooltipPortal {...tp} anchorRef={initiativesBarChartSurfaceRef} />
+                        )}
                         cursor={{ fill: 'hsl(var(--muted) / 0.25)' }}
                         shared={false}
+                        isAnimationActive={false}
+                        wrapperStyle={{
+                          visibility: 'hidden',
+                          pointerEvents: 'none',
+                          width: 0,
+                          height: 0,
+                          overflow: 'hidden',
+                        }}
                       />
                       {stackClusterKeys.map((key, clusterIdx) => (
                         <Bar
@@ -1112,6 +1178,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
                   </ResponsiveContainer>
                   </div>
                 </div>
+                </>
               )}
             </div>
           </div>

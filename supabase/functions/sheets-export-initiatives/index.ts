@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
   const { data: rows, error: dbError } = await supabase
     .from('initiatives')
     .select(
-      'id, unit, team, initiative, initiative_type, description, quarterly_data, updated_at'
+      'id, unit, team, initiative, description, quarterly_data, updated_at'
     )
     .order('unit')
     .order('team')
@@ -76,7 +76,6 @@ Deno.serve(async (req) => {
     'unit',
     'team',
     'initiative',
-    'initiative_type',
     'description',
     'quarterly_data_json',
     'updated_at',
@@ -96,7 +95,6 @@ Deno.serve(async (req) => {
       r.unit ?? '',
       r.team ?? '',
       r.initiative ?? '',
-      r.initiative_type ?? '',
       desc,
       qd,
       r.updated_at ?? '',

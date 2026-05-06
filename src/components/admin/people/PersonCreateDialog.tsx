@@ -7,6 +7,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { AntDayDatePicker } from '@/components/ui/AntDayDatePicker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -171,20 +172,20 @@ export default function PersonCreateDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="create_hired_at">Дата приёма</Label>
-              <Input
+              <AntDayDatePicker
                 id="create_hired_at"
-                type="date"
                 value={formData.hired_at}
-                onChange={(e) => setFormData((prev) => ({ ...prev, hired_at: e.target.value }))}
+                onChange={(v) => setFormData((prev) => ({ ...prev, hired_at: v }))}
+                className="w-full"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="create_terminated_at">Дата увольнения</Label>
-              <Input
+              <AntDayDatePicker
                 id="create_terminated_at"
-                type="date"
                 value={formData.terminated_at}
-                onChange={(e) => setFormData((prev) => ({ ...prev, terminated_at: e.target.value }))}
+                onChange={(v) => setFormData((prev) => ({ ...prev, terminated_at: v }))}
+                className="w-full"
               />
             </div>
           </div>

@@ -3,8 +3,8 @@ import { Loader2, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import AdminHeader from '@/components/admin/AdminHeader';
+import { AntDayDatePicker } from '@/components/ui/AntDayDatePicker';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
@@ -261,11 +261,11 @@ export default function AdminActivity() {
             <>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">С (UTC-день)</Label>
-                <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-40" />
+                <AntDayDatePicker value={customStart} onChange={setCustomStart} className="w-40" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">По</Label>
-                <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-40" />
+                <AntDayDatePicker value={customEnd} onChange={setCustomEnd} className="w-40" />
               </div>
             </>
           )}
@@ -341,9 +341,9 @@ export default function AdminActivity() {
         <div className="rounded-lg border border-border p-4 bg-muted/20 space-y-3 shrink-0">
           <p className="text-sm font-medium">Удалить записи за диапазон дат (UTC)</p>
           <div className="flex flex-wrap items-end gap-2">
-            <Input type="date" value={pruneStart} onChange={(e) => setPruneStart(e.target.value)} className="w-40" />
+            <AntDayDatePicker value={pruneStart} onChange={setPruneStart} className="w-40" />
             <span className="text-muted-foreground">—</span>
-            <Input type="date" value={pruneEnd} onChange={(e) => setPruneEnd(e.target.value)} className="w-40" />
+            <AntDayDatePicker value={pruneEnd} onChange={setPruneEnd} className="w-40" />
             <Button
               variant="outline"
               size="sm"
