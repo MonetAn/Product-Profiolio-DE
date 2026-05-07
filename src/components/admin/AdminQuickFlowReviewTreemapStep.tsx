@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { useAccess } from '@/hooks/useAccess';
 import {
   type AdminDataRow,
   getQuickFlowDescriptionDocIssuesForQuarters,
@@ -94,6 +95,7 @@ export function AdminQuickFlowReviewTreemapStep({
   onInitiativeDraftChange,
   compactChrome = false,
 }: Props) {
+  const { isSuperAdmin } = useAccess();
   const draft = onInitiativeDraftChange;
 
   /** Кварталы периода в порядке каталога (как у матрицы коэффициентов). */
@@ -266,13 +268,13 @@ export function AdminQuickFlowReviewTreemapStep({
           requestCloseDialog();
         }}
       >
-        <DialogContent className="max-w-lg gap-0 border-border p-0 sm:max-w-lg">
+        <DialogContent className="max-h-[92dvh] w-[min(96vw,68rem)] gap-0 overflow-hidden border-border p-0 sm:max-w-[68rem]">
           {dialogRow && draft ? (
             <>
               <DialogTitle className="sr-only">
                 {dialogRow.initiative?.trim() || 'Инициатива'}: название, описание и документация
               </DialogTitle>
-              <div className="flex flex-col gap-5 px-6 py-6">
+              <div className="flex max-h-[calc(92dvh-7rem)] flex-col gap-5 overflow-y-auto px-6 py-6">
                 <div className="space-y-2">
                   <Label htmlFor={`review-name-${dialogRow.id}`} className="text-sm font-medium">
                     Название инициативы
@@ -292,7 +294,7 @@ export function AdminQuickFlowReviewTreemapStep({
                     id={`review-desc-${dialogRow.id}`}
                     value={localDescription}
                     onChange={(e) => setLocalDescription(e.target.value)}
-                    className="min-h-[120px] resize-y"
+                    className="min-h-[240px] resize-y"
                   />
                 </div>
                 <div className="space-y-2">
@@ -325,24 +327,20 @@ export function AdminQuickFlowReviewTreemapStep({
                     ) : null}
                   </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                  <Label htmlFor={`review-stub-${dialogRow.id}`} className="text-sm font-medium">
-                    Заглушка
-                  </Label>
-                  <Switch
-                    id={`review-stub-${dialogRow.id}`}
-                    checked={localStub}
-                    onCheckedChange={(v) => setLocalStub(Boolean(v))}
-                  />
-                </div>
+                {isSuperAdmin ? (
+                  <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                    <Label htmlFor={`review-stub-${dialogRow.id}`} className="text-sm font-medium">
+                      Заглушка
+                    </Label>
+                    <Switch
+                      id={`review-stub-${dialogRow.id}`}
+                      checked={localStub}
+                      onCheckedChange={(v) => setLocalStub(Boolean(v))}
+                    />
+                  </div>
+                ) : null}
               </div>
               <DialogFooter className="flex-col gap-3 border-t border-border bg-muted/20 px-6 py-4 sm:justify-end">
-                {compactChrome ? (
-                  <p className="w-full text-left text-xs text-muted-foreground">
-                    Это только черновик на экране. Чтобы записать в базу и обновить галочку на обзоре, нажмите
-                    «Сохранить» вверху.
-                  </p>
-                ) : null}
                 <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button type="button" variant="outline" onClick={requestCloseDialog}>
                     Отмена

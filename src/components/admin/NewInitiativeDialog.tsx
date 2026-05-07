@@ -26,6 +26,7 @@ import {
 import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { STAKEHOLDERS_LIST } from '@/lib/adminDataManager';
+import { useAccess } from '@/hooks/useAccess';
 
 export type NewInitiativeSubmitData = {
   unit: string;
@@ -56,6 +57,7 @@ const NewInitiativeDialog = ({
   defaultTeam = '',
   onSubmit
 }: NewInitiativeDialogProps) => {
+  const { isSuperAdmin } = useAccess();
   const [unit, setUnit] = useState(defaultUnit);
   const [team, setTeam] = useState(defaultTeam);
   const [initiative, setInitiative] = useState('');
@@ -176,6 +178,7 @@ const NewInitiativeDialog = ({
             setDocumentationLink={setDocumentationLink}
             isTimelineStub={isTimelineStub}
             setIsTimelineStub={setIsTimelineStub}
+            showTimelineStubToggle={isSuperAdmin}
           />
         </div>
         </div>
@@ -202,6 +205,7 @@ type OptionalFieldsProps = {
   setDocumentationLink: (v: string) => void;
   isTimelineStub: boolean;
   setIsTimelineStub: (v: boolean) => void;
+  showTimelineStubToggle: boolean;
 };
 
 function OptionalInitiativeFields({
@@ -213,6 +217,7 @@ function OptionalInitiativeFields({
   setDocumentationLink,
   isTimelineStub,
   setIsTimelineStub,
+  showTimelineStubToggle,
 }: OptionalFieldsProps) {
   return (
     <>
@@ -265,17 +270,19 @@ function OptionalInitiativeFields({
         />
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-        <div className="min-w-0">
-          <Label className="text-sm font-medium">Заглушка в таймлайне</Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">Показывать внизу таймлайна</p>
+      {showTimelineStubToggle ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <div className="min-w-0">
+            <Label className="text-sm font-medium">Заглушка в таймлайне</Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">Показывать внизу таймлайна</p>
+          </div>
+          <Checkbox
+            checked={isTimelineStub}
+            onCheckedChange={(checked) => setIsTimelineStub(checked === true)}
+            className="shrink-0"
+          />
         </div>
-        <Checkbox
-          checked={isTimelineStub}
-          onCheckedChange={(checked) => setIsTimelineStub(checked === true)}
-          className="shrink-0"
-        />
-      </div>
+      ) : null}
     </>
   );
 }
