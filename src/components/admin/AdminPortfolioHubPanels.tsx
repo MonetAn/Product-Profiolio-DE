@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LayoutGrid } from 'lucide-react';
+import { CircleHelp, LayoutGrid } from 'lucide-react';
 import { EffortMatrixInline } from '@/components/admin/AdminQuickFlow';
 import { AdminQuickFlowEffortComparePanel } from '@/components/admin/AdminQuickFlowEffortComparePanel';
 import { AdminQuickFlowEffortMascot } from '@/components/admin/AdminQuickFlowEffortMascot';
@@ -20,10 +20,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { AdminDataRow, AdminQuarterData, GeoCostSplit } from '@/lib/adminDataManager';
 import { effortMatrixColumnChipState, hasInitiativeEffortOrCostInYear } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
-import { compareQuarters, filterQuartersInRange, getCurrentQuarter } from '@/lib/quarterUtils';
+import { compareQuarters, filterQuartersInRange, getCurrentQuarter, getPreviousQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 
 const YEAR_2025_KEYS = ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'] as const;
@@ -42,10 +43,64 @@ export type PortfolioHubBlock = Exclude<PortfolioHubPanel, 'roster' | null>;
 
 const BLOCK_FLOW: PortfolioHubBlock[] = ['coefficients', 'descriptions', 'planFact', 'geo'];
 
+type HubHelpContent = {
+  title: string;
+  body: string[];
+};
+
 export function nextHubBlock(current: PortfolioHubBlock): PortfolioHubBlock | null {
   const i = BLOCK_FLOW.indexOf(current);
   if (i < 0 || i >= BLOCK_FLOW.length - 1) return null;
   return BLOCK_FLOW[i + 1] ?? null;
+}
+
+function formatQuarterShort(q: string): string {
+  const m = q.match(/^(\d{4})-Q(\d)$/);
+  if (!m) return q;
+  return `Q${m[2]}`;
+}
+
+function hubHelpContent(block: PortfolioHubBlock, previousQuarterShort: string): HubHelpContent {
+  if (block === 'coefficients') {
+    return {
+      title: 'Коэффициенты и распределение усилий',
+      body: [
+        'Тут нужно выписать инициативы - ваш примерный план до конца года. Оцените, как примерно распределится время (стоимость) команды по этим инициативам.',
+        'Оценка должна быть быстрой и неточной, без большой дополнительной работы. Мы понимаем, что при экспертной оценке будет погрешность, но это лучший вариант по цене/качеству.',
+        'После изменений мы покажем предварительный расчет стоимости в долях от текущей стоимости команды - на базе перераспределения прошлого PnL. Позже переложим коэффициенты на конкретных людей в команде и пересчитаем более точно, чтобы совпадало с актуальным PnL.',
+        'Если вам принципиально распределять по людям, а не по команде, напишите Антону Монетову в Time - сейчас это в инструменте не поддерживается.',
+      ],
+    };
+  }
+  if (block === 'descriptions') {
+    return {
+      title: 'Описание и документация',
+      body: [
+        'Заполните описания по всем инициативам. Если все уже заполнено - проверьте актуальность и нажмите «Сохранить и подтвердить».',
+      ],
+    };
+  }
+  if (block === 'planFact') {
+    return {
+      title: 'План-факт по кварталам',
+      body: [
+        `Заполните факт по прошедшему кварталу: ${previousQuarterShort}. Если по вашей экспертной оценке не попали в план - поставьте кварталу статус off-track.`,
+        'Заполните план до конца года настолько далеко, насколько сейчас можете.',
+        'Нормально, если на часть кварталов до конца года вы еще не имеете плана. Тогда честно напишите, что плана нет.',
+        'Здесь важно выгрузить текущее понимание as-is, без дополнительной аналитической работы.',
+      ],
+    };
+  }
+  return {
+    title: 'Аллокации по рынкам',
+    body: [
+      'Цель блока - распределить стоимость, которую кластеры платят за DE.',
+      'Стоимость, распределенную по кварталам, потом делим на 3, и эти косты ежемесячно идут в управленческую отчетность и влияют на PnL рынков.',
+      'Добавьте по каждой инициативе рынки, в которые она бьет. Распределите стоимость инициативы между ними: можно по драйверу (количество пиццерий, количество юнитов, партнеров, выручка) или по вашей логике.',
+      'Если используете свою логику - кратко опишите ее снизу в 1-2 предложениях.',
+      'Глобальные фичи для всех обычно лучше распределять пропорционально выручке - так работает Global: Pizza + Drinkit и Global: Pizza only. Но при необходимости вы можете выбрать другую логику.',
+    ],
+  };
 }
 
 /** Подпись для кнопки «Далее: …»; для последнего шага потока вернётся null — показывают «К обзору». */
@@ -250,6 +305,7 @@ export function AdminPortfolioHubPanels({
   onAddInitiativeFromMatrix,
   onDeleteInitiativeFromMatrix,
 }: Props) {
+  const [helpOpen, setHelpOpen] = useState(false);
   /**
    * Матрица коэффициентов: видны строки с effort > 0 или cost > 0 в текущем году, плюс заглушки команды
    * и свежесозданные в сессии. При смене unit+team фиксируем список «квалифицированных»
@@ -492,6 +548,14 @@ export function AdminPortfolioHubPanels({
 
   if (open === null) return null;
 
+  const blockHelpTarget: PortfolioHubBlock | null =
+    open === 'coefficients' || open === 'descriptions' || open === 'planFact' || open === 'geo'
+      ? open
+      : null;
+  const help = blockHelpTarget
+    ? hubHelpContent(blockHelpTarget, formatQuarterShort(getPreviousQuarter()))
+    : null;
+
   return (
     <div
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
@@ -500,6 +564,26 @@ export function AdminPortfolioHubPanels({
       aria-label="Заполнение блока портфеля"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 py-3 sm:px-6 lg:px-8">
+          {help ? (
+            <header className="mb-3 border-b border-border/70 pb-2">
+              <div className="inline-flex max-w-full items-center gap-1.5">
+                <h2 className="min-w-0 text-base font-semibold leading-snug text-foreground sm:text-lg">
+                  {help.title}
+                </h2>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                  aria-label={`Подсказка: ${help.title}`}
+                  title="Как заполнять этот экран"
+                  onClick={() => setHelpOpen(true)}
+                >
+                  <CircleHelp className="h-4 w-4" aria-hidden />
+                </Button>
+              </div>
+            </header>
+          ) : null}
           {open === 'roster' ? (
             <AdminQuickFlowRosterStep unit={unit} team={team} quartersCatalog={quarters} compactChrome />
           ) : null}
@@ -616,6 +700,23 @@ export function AdminPortfolioHubPanels({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          {help ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <SheetHeader className="space-y-1 border-b border-border pb-3 pr-8 text-left">
+                <SheetTitle className="text-base leading-snug">{help.title}</SheetTitle>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pt-4 text-sm leading-relaxed text-muted-foreground">
+                {help.body.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
 
       {showCoeffTreemapFooter ? (
         <footer className="shrink-0 border-t border-border bg-muted/25 px-4 py-2.5 sm:px-6 lg:px-8">
