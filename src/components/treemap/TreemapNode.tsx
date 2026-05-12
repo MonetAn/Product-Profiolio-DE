@@ -238,6 +238,9 @@ const TreemapNode = memo(({
 
   const leafShadow = initiativeLeafBoxShadow(node);
 
+  /** Выходящие ячейки под живыми: иначе exit-анимация рисуется тем же z-index и «зависает» поверх новой раскладки. */
+  const stackZ = isPresent ? 2 : 0;
+
   const boxStyle: React.CSSProperties = {
     position: 'absolute',
     left: x,
@@ -248,7 +251,7 @@ const TreemapNode = memo(({
     borderRadius: 4,
     overflow: 'hidden',
     cursor: nodeCursor,
-    zIndex: 1,
+    zIndex: stackZ,
     pointerEvents: isPresent ? 'auto' : 'none',
     ...(leafShadow ? { boxShadow: leafShadow } : {}),
   };
@@ -323,7 +326,7 @@ const TreemapNode = memo(({
         overflow: 'hidden',
         cursor: nodeCursor,
         transformOrigin: 'center center',
-        zIndex: 1,
+        zIndex: stackZ,
         pointerEvents: isPresent ? 'auto' : 'none',
         ...(leafShadow ? { boxShadow: leafShadow } : {}),
       }}
