@@ -49,7 +49,12 @@ type Props = {
 };
 
 function isUnallocatedNodeName(name: string): boolean {
-  return name === 'Нераспределено' || name.startsWith('Нераспределено · ');
+  return (
+    name === 'Не распределено' ||
+    name.startsWith('Не распределено · ') ||
+    name === 'Нераспределено' ||
+    name.startsWith('Нераспределено · ')
+  );
 }
 
 function enrichReviewLeaves(children: TreeNode[], rows: AdminDataRow[]): TreeNode[] {

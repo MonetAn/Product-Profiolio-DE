@@ -321,12 +321,12 @@ export function hasInitiativeEffortOrCostInYear(row: AdminDataRow, year: number)
 }
 
 /**
- * Имя для отображения: для заглушки — «Нераспределено · {team}», независимо от поля initiative в БД.
+ * Имя для отображения: для заглушки — «Не распределено · {team}», независимо от поля initiative в БД.
  * Это контейнер остатка бюджета команды; настоящее название инициативы для него не имеет смысла.
  */
 export function getStubResidualLabel(team: string | null | undefined): string {
   const t = (team ?? '').trim();
-  return t ? `Нераспределено · ${t}` : 'Нераспределено';
+  return t ? `Не распределено · ${t}` : 'Не распределено';
 }
 
 export function getInitiativeDisplayName(row: {
@@ -1011,6 +1011,7 @@ export function getQuickFlowCardOnlyIssuesForQuarters(
   const byId = new Map<string, { id: string; initiativeName: string; missing: Set<string> }>();
   for (const q of fillQuarters) {
     for (const row of rows) {
+      if (row.isTimelineStub) continue;
       const qd = row.quarterlyData[q];
       const effort = qd?.effortCoefficient ?? 0;
       if (effort <= 0) continue;
@@ -1049,6 +1050,7 @@ export function getQuickFlowDescriptionDocIssuesForQuarters(
   const byId = new Map<string, { id: string; initiativeName: string; missing: Set<string> }>();
   for (const q of fillQuarters) {
     for (const row of rows) {
+      if (row.isTimelineStub) continue;
       const qd = row.quarterlyData[q];
       const effort = qd?.effortCoefficient ?? 0;
       if (effort <= 0) continue;
@@ -1170,7 +1172,7 @@ export function nonStubQuarterEffortSum(rows: AdminDataRow[], quarter: string): 
 
 const EFF_MATRIX_COL_EPS = 1e-4;
 
-/** Шапка колонки: сумма % только по строкам без заглушки (остаток до 100% — в строке «Нераспределено»). */
+/** Шапка колонки: сумма % только по строкам без заглушки (остаток до 100% — в строке «Не распределено»). */
 export function effortMatrixColumnChipState(
   rows: AdminDataRow[],
   quarter: string

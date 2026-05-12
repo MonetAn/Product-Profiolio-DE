@@ -166,8 +166,8 @@ export function convertFromDB(
       team: row.team,
       initiative: isStub
         ? row.team
-          ? `Нераспределено · ${row.team}`
-          : 'Нераспределено'
+          ? `Не распределено · ${row.team}`
+          : 'Не распределено'
         : row.initiative,
       description: row.description || '',
       stakeholders: row.stakeholders || '',

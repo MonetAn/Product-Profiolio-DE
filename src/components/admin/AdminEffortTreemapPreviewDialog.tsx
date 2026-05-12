@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { TreemapContainer } from '@/components/treemap';
 import type { AdminDataRow } from '@/lib/adminDataManager';
-import { createEmptyQuarterData } from '@/lib/adminDataManager';
+import { createEmptyQuarterData, getInitiativeDisplayName } from '@/lib/adminDataManager';
 import type { TreeNode } from '@/lib/dataManager';
 import { getUnitColor, mixHexWithNeutralGray } from '@/lib/dataManager';
 import { compareQuarters, filterQuartersInRange } from '@/lib/quarterUtils';
@@ -39,7 +39,7 @@ export type AdminEffortTreemapPreviewDialogProps = {
 
 const PREVIEW_ROOT_NAME = 'effort-preview-root';
 
-/** Как «нераспределено» на главной — нейтральный серый блок. */
+/** Как «не распределено» на главной — нейтральный серый блок. */
 const UNALLOCATED_COLOR = '#94a3b8';
 
 function teamQuarterCostSum(rows: AdminDataRow[], quarter: string): number {
@@ -180,7 +180,12 @@ export function AdminEffortTreemapPreviewDialog({
         treeChildren: [] as TreeNode[],
         contentKey: 'empty',
         getPreviewColor: (name: string) =>
-          name === 'Нераспределено' ? UNALLOCATED_COLOR : getUnitColor(name),
+          name === 'Не распределено' ||
+          name.startsWith('Не распределено · ') ||
+          name === 'Нераспределено' ||
+          name.startsWith('Нераспределено · ')
+            ? UNALLOCATED_COLOR
+            : getUnitColor(name),
         sumEffort: 0,
         zeroEffortLabels: [] as string[],
         overflowPct: false,
@@ -196,7 +201,7 @@ export function AdminEffortTreemapPreviewDialog({
     for (const row of filteredData) {
       const effort = meanEffortCoefficient(row, previewQuarters);
       const rounded = Math.round(effort * 1000) / 1000;
-      const base = row.initiative?.trim() || '—';
+      const base = getInitiativeDisplayName(row) || '—';
       if (rounded > 1e-6) {
         sumEffortAcc += effort;
         withPct.push({
@@ -234,7 +239,7 @@ export function AdminEffortTreemapPreviewDialog({
       }
       const restPct = Math.max(0, 100 - sumEffortAcc);
       if (restPct > 1e-4) {
-        pushLeaf('Нераспределено', (effectiveTotal * restPct) / 100, false);
+        pushLeaf('Не распределено', (effectiveTotal * restPct) / 100, false);
       }
     }
 
@@ -250,7 +255,13 @@ export function AdminEffortTreemapPreviewDialog({
       : null;
 
     const getPreviewColor = (name: string) => {
-      if (name === 'Нераспределено') return UNALLOCATED_COLOR;
+      if (
+        name === 'Не распределено' ||
+        name.startsWith('Не распределено · ') ||
+        name === 'Нераспределено' ||
+        name.startsWith('Нераспределено · ')
+      )
+        return UNALLOCATED_COLOR;
       const base = getUnitColor(name);
       if (stubNames.has(name)) return mixHexWithNeutralGray(base, 0.48);
       return base;
@@ -291,7 +302,7 @@ export function AdminEffortTreemapPreviewDialog({
           <DialogTitle>Превью treemap по коэффициентам</DialogTitle>
           <DialogDescription>
             Цвета совпадают с палитрой бюджетного treemap на главной. База — сумма стоимости и прочих расходов
-            команды за выбранный период. Коэффициенты усилий усредняются по кварталам периода; «Нераспределено» —
+            команды за выбранный период. Коэффициенты усилий усредняются по кварталам периода; «Не распределено» —
             до 100% по этой сумме. Не сохраняется в базу.
           </DialogDescription>
         </DialogHeader>

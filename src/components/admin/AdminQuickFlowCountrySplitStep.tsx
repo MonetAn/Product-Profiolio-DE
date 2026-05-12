@@ -4,6 +4,7 @@ import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import {
   geoCostSplitPercentsTotal,
+  getInitiativeDisplayName,
   isQuickFlowGeoCompleteForRow,
   quickFlowPaidQuartersForRow,
   type GeoCostSplit,
@@ -113,7 +114,7 @@ export function AdminQuickFlowCountrySplitStep({
     );
   }
 
-  const initiativeTitle = row.initiative?.trim() || 'Без названия';
+  const initiativeTitle = getInitiativeDisplayName(row) || 'Без названия';
 
   return (
     <section className={cn('flex min-h-0 min-w-0 flex-col gap-3', compactChrome ? 'w-full' : 'flex-1')}>

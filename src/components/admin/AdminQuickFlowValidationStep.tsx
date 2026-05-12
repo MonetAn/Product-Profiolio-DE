@@ -12,6 +12,7 @@ import {
   type AdminQuarterData,
   type GeoCostSplit,
   createEmptyQuarterData,
+  getInitiativeDisplayName,
   getMissingInitiativeFields,
   getQuickFlowCellReadiness,
   isGeoCostSplitCompleteForCost,
@@ -149,8 +150,11 @@ export function AdminQuickFlowValidationStep({
               {matrix.map(({ row, cells }) => (
                 <tr key={row.id} className="border-b border-border/70">
                   <td className="sticky left-0 z-10 max-w-[14rem] border-r border-border bg-card px-2 py-1.5 align-middle">
-                    <span className="line-clamp-2 font-medium leading-snug text-foreground" title={row.initiative || '—'}>
-                      {row.initiative?.trim() || '—'}
+                    <span
+                      className="line-clamp-2 font-medium leading-snug text-foreground"
+                      title={getInitiativeDisplayName(row) || '—'}
+                    >
+                      {getInitiativeDisplayName(row) || '—'}
                     </span>
                     {row.isTimelineStub ? (
                       <span className="mt-0.5 block text-[10px] text-muted-foreground">Заглушка</span>
@@ -179,7 +183,7 @@ export function AdminQuickFlowValidationStep({
                               LEVEL_CELL.ok
                             )}
                             title={`${quarter}: всё обязательное заполнено`}
-                            aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, заполнено`}
+                            aria-label={`${getInitiativeDisplayName(row) || 'Инициатива'}, ${quarter}, заполнено`}
                             onClick={() => setSelection({ rowId: row.id, quarter })}
                           >
                             ✓
@@ -192,7 +196,7 @@ export function AdminQuickFlowValidationStep({
                               LEVEL_CELL[readiness.level]
                             )}
                             title={`${quarter}: ${readiness.reasons.join(' · ')}`}
-                            aria-label={`${row.initiative || 'Инициатива'}, ${quarter}, не заполнено обязательное`}
+                            aria-label={`${getInitiativeDisplayName(row) || 'Инициатива'}, ${quarter}, не заполнено обязательное`}
                             onClick={() => setSelection({ rowId: row.id, quarter })}
                           >
                             !
@@ -288,7 +292,9 @@ function ValidationCellPanel({
   return (
     <>
       <SheetHeader className="shrink-0 space-y-1 border-b border-border px-6 py-4 pr-14 text-left">
-        <SheetTitle className="text-base leading-snug pr-2">{row.initiative?.trim() || 'Инициатива'}</SheetTitle>
+        <SheetTitle className="text-base leading-snug pr-2">
+          {getInitiativeDisplayName(row) || 'Инициатива'}
+        </SheetTitle>
         <SheetDescription className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground tabular-nums">{quarter}</span>
         </SheetDescription>

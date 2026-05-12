@@ -25,7 +25,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
-import { createEmptyQuarterData, getQuickFlowTimelineQuarterWarnings } from '@/lib/adminDataManager';
+import {
+  createEmptyQuarterData,
+  getInitiativeDisplayName,
+  getQuickFlowTimelineQuarterWarnings,
+} from '@/lib/adminDataManager';
 
 const TIMELINE_LEGEND_SWATCH = { h: 22, w: 46 } as const;
 
@@ -340,7 +344,7 @@ export function AdminQuickFlowTimelineFillStep({
                   </Button>
                   <div className="min-w-0 flex-1">
                     <DialogTitle className="text-left text-lg leading-snug sm:text-xl">
-                      {quarterEditRow.initiative || 'Инициатива'}{' '}
+                      {getInitiativeDisplayName(quarterEditRow) || 'Инициатива'}{' '}
                       <span className="text-muted-foreground">· {quarterEdit.quarter}</span>
                     </DialogTitle>
                     <DialogDescription className="sr-only">

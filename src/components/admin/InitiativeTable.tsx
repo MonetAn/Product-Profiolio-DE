@@ -38,6 +38,7 @@ import {
   validateTeamQuarterEffort,
   getTeamQuarterEffortSums,
   getInheritedSupportInfo,
+  getInitiativeDisplayName,
   type GeoCostSplit,
 } from '@/lib/adminDataManager';
 
@@ -249,7 +250,9 @@ const InitiativeTable = ({
                     onClick={() => handleRowClick(row)}
                   >
                     <span className="text-xs text-foreground font-medium truncate block max-w-[150px] xl:max-w-[min(24rem,22vw)] inline-flex items-center gap-1.5 group-hover:underline decoration-muted-foreground/50">
-                      {row.initiative || <span className="text-muted-foreground font-normal italic">—</span>}
+                      {getInitiativeDisplayName(row) || (
+                        <span className="text-muted-foreground font-normal italic">—</span>
+                      )}
                       {row.isNew && (
                         <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                           Новая

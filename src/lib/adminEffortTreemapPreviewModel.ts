@@ -302,7 +302,7 @@ export type EffortTreemapPreviewModel = {
 
 /**
  * Treemap превью: для не-заглушек доля = (eff/100)·Tq, для заглушки — остаток Tq.
- * Если в команде заглушки нет, остаток уходит в виртуальный лист «Нераспределено · {team}».
+ * Если в команде заглушки нет, остаток уходит в виртуальный лист «Не распределено · {team}».
  * `effectiveTotal` — сумма (cost + otherCosts) команды за `previewQuarters`.
  * При нулевой фактической базе квартала, но ненулевых % у не-заглушек, для превью подмешивается
  * синтетическая квартальная база (см. `computePreviewQuarterBudgets`), чтобы доли были видны на treemap.
@@ -315,7 +315,11 @@ export function buildEffortTreemapPreviewModel(
   const teamForResidual = rows.find((r) => r.team)?.team ?? '';
   const virtualUnallocLabel = getStubResidualLabel(teamForResidual);
   const isUnallocLabel = (name: string) =>
-    name === virtualUnallocLabel || name === 'Нераспределено' || name.startsWith('Нераспределено · ');
+    name === virtualUnallocLabel ||
+    name === 'Не распределено' ||
+    name.startsWith('Не распределено · ') ||
+    name === 'Нераспределено' ||
+    name.startsWith('Нераспределено · ');
 
   if (previewQuarters.length === 0 || effectiveTotal <= 0) {
     return {
@@ -434,7 +438,10 @@ export function applyEffortCompareToTreeChildren(
     children.map((node) => {
       const id = node.adminInitiativeRowId;
       const isUnalloc =
-        node.name === 'Нераспределено' || node.name.startsWith('Нераспределено · ');
+        node.name === 'Не распределено' ||
+        node.name.startsWith('Не распределено · ') ||
+        node.name === 'Нераспределено' ||
+        node.name.startsWith('Нераспределено · ');
       if (!id || isUnalloc) return node;
 
       const b = beforeLeaf.get(id);

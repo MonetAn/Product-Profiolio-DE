@@ -29,6 +29,8 @@ import {
   quarterRequiresPlanFact,
   quarterRequiresMetricFact,
   type GeoCostSplit,
+  getInitiativeDisplayName,
+  getStubResidualLabel,
 } from '@/lib/adminDataManager';
 import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { useAccess } from '@/hooks/useAccess';
@@ -765,22 +767,28 @@ const InitiativeDetailDialog = ({
             <Badge variant="outline">{initiative.team}</Badge>
           </div>
           <DialogTitle className="text-xl">
-            <div className="flex items-center gap-2 group">
-              <Input
-                value={localName}
-                onChange={(e) => setLocalName(e.target.value)}
-                onBlur={() => onDataChange(initiative.id, 'initiative', localName)}
-                className="text-xl font-semibold border border-transparent hover:border-input focus-visible:border-primary focus-visible:ring-1 px-2 py-1 -mx-2 -my-1 rounded min-w-0 flex-1"
-                placeholder="Название инициативы"
-                aria-label="Название инициативы (можно редактировать)"
-                autoFocus
-              />
-              <Pencil size={16} className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" aria-hidden />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Можно редактировать</p>
+            {initiative.isTimelineStub ? (
+              <div className="text-xl font-semibold text-muted-foreground">{getStubResidualLabel(initiative.team)}</div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 group">
+                  <Input
+                    value={localName}
+                    onChange={(e) => setLocalName(e.target.value)}
+                    onBlur={() => onDataChange(initiative.id, 'initiative', localName)}
+                    className="text-xl font-semibold border border-transparent hover:border-input focus-visible:border-primary focus-visible:ring-1 px-2 py-1 -mx-2 -my-1 rounded min-w-0 flex-1"
+                    placeholder="Название инициативы"
+                    aria-label="Название инициативы (можно редактировать)"
+                    autoFocus
+                  />
+                  <Pencil size={16} className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" aria-hidden />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Можно редактировать</p>
+              </>
+            )}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Редактирование инициативы {initiative.initiative}
+            Редактирование инициативы {getInitiativeDisplayName(initiative)}
           </DialogDescription>
         </DialogHeader>
 

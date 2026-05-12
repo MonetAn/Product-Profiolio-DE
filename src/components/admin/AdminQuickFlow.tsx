@@ -63,6 +63,7 @@ import {
   getQuickFlowRowsWithIncompleteGeoSplit,
   getQuickFlowValidationIssuesForQuarters,
   effortMatrixColumnChipState,
+  getInitiativeDisplayName,
   getStubResidualLabel,
   nonStubQuarterEffortSum,
 } from '@/lib/adminDataManager';
@@ -699,7 +700,7 @@ export function EffortMatrixInline({
                         <TooltipContent side="bottom" align="center" className="max-w-[16rem] space-y-1 text-left text-xs">
                           <p className="font-semibold text-foreground">{q.replace('-', ' ')}</p>
                           <p className="text-muted-foreground">
-                            Сумма по строкам (без «Нераспределено»):{' '}
+                            Сумма по строкам (без «Не распределено»):{' '}
                             <span className="font-medium tabular-nums text-foreground">{sum}%</span>
                             {!inCat ? ' · колонка не в текущей выгрузке' : !valid ? ' · превышает 100%' : null}
                           </p>
@@ -1159,9 +1160,8 @@ export default function AdminQuickFlow({
 
   const quickSessionDeleteRowLabel = useMemo(() => {
     if (!quickSessionDeleteConfirmId) return '';
-    return (
-      filteredData.find((r) => r.id === quickSessionDeleteConfirmId)?.initiative?.trim() || '—'
-    );
+    const r = filteredData.find((row) => row.id === quickSessionDeleteConfirmId);
+    return r ? getInitiativeDisplayName(r) || '—' : '';
   }, [quickSessionDeleteConfirmId, filteredData]);
 
   const confirmQuickSessionDelete = useCallback(async () => {
@@ -1996,7 +1996,7 @@ export default function AdminQuickFlow({
                 <p>Не заполнена аллокация по странам (кварталы интервала с затратами):</p>
                 <ul className="max-h-40 list-disc space-y-1 overflow-y-auto pl-4 text-foreground">
                   {rowsIncompleteGeoForCountryStep.map((row) => (
-                    <li key={row.id}>{row.initiative?.trim() || '—'}</li>
+                    <li key={row.id}>{getInitiativeDisplayName(row) || '—'}</li>
                   ))}
                 </ul>
               </div>

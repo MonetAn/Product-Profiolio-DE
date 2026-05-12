@@ -19,6 +19,7 @@ import type { TooltipProps } from 'recharts';
 import type { AdminDataRow, GeoCostSplitEntry } from '@/lib/adminDataManager';
 import {
   geoCostSplitPercentsTotal,
+  getInitiativeDisplayName,
   marketClusterKeyLabel,
   rubleAmountsFromGeoPercents,
   sortStakeholderLabels,
@@ -238,7 +239,7 @@ function integerPercentsByCluster(
   if (s <= 0 || totalRub <= 0) return Object.fromEntries(segmentKeys.map((c) => [c, 0]));
   const exact = weights.map((w) => (100 * w) / s);
   const floor = exact.map((x) => Math.floor(x));
-  let rem = 100 - floor.reduce((a, b) => a + b, 0);
+  const rem = 100 - floor.reduce((a, b) => a + b, 0);
   const order = exact
     .map((x, i) => ({ i, frac: x - floor[i] }))
     .sort((a, b) => b.frac - a.frac);
@@ -275,7 +276,7 @@ function initiativeStackData(
     }
     if (totalCostRub <= 0) continue;
     const rec: StackDatum = {
-      name: truncateLabel(row.initiative || 'Без названия'),
+      name: truncateLabel(getInitiativeDisplayName(row) || 'Без названия'),
       totalRub: totalCostRub,
     };
     const weightMap = new Map<string, number>(byC);
@@ -315,7 +316,7 @@ function collectInitiativeRublesRows(
       byCluster.set(UNALLOCATED_LABEL, unallocatedAcc.rub);
     }
     out.push({
-      name: truncateLabel(row.initiative || 'Без названия'),
+      name: truncateLabel(getInitiativeDisplayName(row) || 'Без названия'),
       totalRub,
       byCluster,
     });
@@ -352,7 +353,8 @@ type BarTooltipPayload = Array<{ name?: string; value?: number; payload?: StackD
 function renderBarStackTooltipInner(
   active: boolean | undefined,
   label: TooltipProps<number, string>['label'],
-  payload: BarTooltipPayload | undefined
+  payload: BarTooltipPayload | undefined,
+  initiativeLabelOverride: string | null
 ): React.ReactNode {
   if (!active || !payload?.length) return null;
   const p = payload[0];
@@ -361,13 +363,19 @@ function renderBarStackTooltipInner(
   const pct = Number(p.value);
   if (!Number.isFinite(pct) || pct <= 0) return null;
   const segName = String(p.name ?? '');
+  const fromPayload =
+    row?.name != null && String(row.name).trim().length > 0 ? String(row.name) : null;
   const initiativeTitle =
-    typeof label === 'string' && label.trim().length > 0 ? label : (row?.name ?? '—');
+    (initiativeLabelOverride != null && initiativeLabelOverride.trim().length > 0
+      ? initiativeLabelOverride
+      : fromPayload) ??
+    (typeof label === 'string' && label.trim().length > 0 ? label : null) ??
+    '—';
   const rub = totalRub > 0 ? (pct / 100) * totalRub : 0;
   return (
     <>
-      <p className="font-medium leading-snug">{initiativeTitle}</p>
-      <p className="mt-1 text-muted-foreground">{segName}</p>
+      <p className="font-medium leading-snug">{segName}</p>
+      <p className="mt-1 text-muted-foreground">{initiativeTitle}</p>
       <p className="mt-1 tabular-nums">
         {pct.toFixed(1)}% · {Math.round(rub).toLocaleString('ru-RU')} ₽
       </p>
@@ -379,10 +387,18 @@ function renderBarStackTooltipInner(
  * Тултип в portal + fixed: иначе любой предок с overflow (скролл секции сводки) обрезает окно по краям графика.
  */
 function BarStackTooltipPortal(
-  props: TooltipProps<number, string> & { anchorRef: React.RefObject<HTMLDivElement | null> }
+  props: TooltipProps<number, string> & {
+    anchorRef: React.RefObject<HTMLDivElement | null>;
+    initiativeLabelOverride?: string | null;
+  }
 ) {
-  const { active, label, payload, coordinate, anchorRef } = props;
-  const inner = renderBarStackTooltipInner(active, label, payload as BarTooltipPayload | undefined);
+  const { active, label, payload, coordinate, anchorRef, initiativeLabelOverride = null } = props;
+  const inner = renderBarStackTooltipInner(
+    active,
+    label,
+    payload as BarTooltipPayload | undefined,
+    initiativeLabelOverride
+  );
   const [fixedPos, setFixedPos] = useState<{ left: number; top: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -390,7 +406,12 @@ function BarStackTooltipPortal(
       setFixedPos(null);
       return;
     }
-    const innerCheck = renderBarStackTooltipInner(active, label, payload as BarTooltipPayload | undefined);
+    const innerCheck = renderBarStackTooltipInner(
+      active,
+      label,
+      payload as BarTooltipPayload | undefined,
+      initiativeLabelOverride
+    );
     if (innerCheck == null) {
       setFixedPos(null);
       return;
@@ -399,7 +420,7 @@ function BarStackTooltipPortal(
     const el = root ?? anchorRef.current;
     const r = el.getBoundingClientRect();
     setFixedPos({ left: r.left + coordinate.x, top: r.top + coordinate.y });
-  }, [active, anchorRef, coordinate?.x, coordinate?.y, label, payload]);
+  }, [active, anchorRef, coordinate?.x, coordinate?.y, label, payload, initiativeLabelOverride]);
 
   if (inner == null || fixedPos == null) return null;
 
@@ -1015,9 +1036,9 @@ export function AdminQuickFlowCountryAllocationsSummary({
                         <p className="text-xs text-muted-foreground">Нет сумм по выбранному кластеру.</p>
                       ) : (
                         <ul className="max-h-[min(42vh,18rem)] list-none space-y-0 divide-y divide-border/40 overflow-y-auto overscroll-contain text-xs [scrollbar-width:thin]">
-                          {highlightedInitiativeRows.map((row) => (
+                          {highlightedInitiativeRows.map((row, idx) => (
                             <li
-                              key={row.initiative}
+                              key={`${row.initiative}-${idx}`}
                               className="flex items-baseline justify-between gap-3 rounded-sm py-2.5 first:pt-1 last:pb-1 transition-colors hover:bg-muted/35"
                             >
                               <span className="min-w-0 flex-1 truncate leading-snug text-foreground">
@@ -1090,7 +1111,15 @@ export function AdminQuickFlowCountryAllocationsSummary({
                       />
                       <Tooltip
                         content={(tp) => (
-                          <BarStackTooltipPortal {...tp} anchorRef={initiativesBarChartSurfaceRef} />
+                          <BarStackTooltipPortal
+                            {...tp}
+                            anchorRef={initiativesBarChartSurfaceRef}
+                            initiativeLabelOverride={
+                              hoverBarCell != null
+                                ? (stackData[hoverBarCell.row]?.name ?? null)
+                                : null
+                            }
+                          />
                         )}
                         cursor={{ fill: 'hsl(var(--muted) / 0.25)' }}
                         shared={false}
