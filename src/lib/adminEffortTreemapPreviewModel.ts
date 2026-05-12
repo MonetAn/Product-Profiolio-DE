@@ -79,30 +79,94 @@ export function columnEffortSum(rows: AdminDataRow[], quarter: string): number {
   }, 0);
 }
 
+const NON_STUB_EFFORT_DETECT_EPS = 1e-6;
+
+/**
+ * Квартальные базы (руб) для превью treemap: сумма по кварталам = `effectiveTotal` (фактический cost+прочие за период).
+ * Если по кварталу фактическая база 0, но в матрице у не-заглушек есть % — подмешиваем синтетическую долю
+ * (среднее по кварталам с ненулевой фактической базой), затем масштабируем, чтобы сумма совпала с периодом.
+ * Так коэффициенты за «пустой» по выгрузке квартал (часто прошедший без отдельного PnL в строке команды) видны на treemap.
+ */
+function computePreviewQuarterBudgets(
+  rows: AdminDataRow[],
+  previewQuarters: string[],
+  effectiveTotal: number
+): Map<string, number> {
+  const budgets = new Map<string, number>();
+  if (previewQuarters.length === 0 || effectiveTotal <= PREVIEW_COST_EPS) {
+    return budgets;
+  }
+
+  const realTq = new Map<string, number>();
+  let anySynth = false;
+  for (const q of previewQuarters) {
+    const t = teamQuarterCostSum(rows, q);
+    realTq.set(q, t);
+    if (t <= PREVIEW_COST_EPS && columnEffortSum(rows, q) > NON_STUB_EFFORT_DETECT_EPS) {
+      anySynth = true;
+    }
+  }
+
+  if (!anySynth) {
+    for (const q of previewQuarters) {
+      budgets.set(q, realTq.get(q) ?? 0);
+    }
+    return budgets;
+  }
+
+  const positiveQs = previewQuarters.filter((q) => (realTq.get(q) ?? 0) > PREVIEW_COST_EPS);
+  const sumPos = positiveQs.reduce((s, q) => s + (realTq.get(q) ?? 0), 0);
+  const avgPos =
+    positiveQs.length > 0
+      ? sumPos / positiveQs.length
+      : effectiveTotal / Math.max(1, previewQuarters.length);
+
+  const raw = new Map<string, number>();
+  let sumRaw = 0;
+  for (const q of previewQuarters) {
+    const rt = realTq.get(q) ?? 0;
+    const needSynth =
+      rt <= PREVIEW_COST_EPS && columnEffortSum(rows, q) > NON_STUB_EFFORT_DETECT_EPS;
+    const r = rt > PREVIEW_COST_EPS ? rt : needSynth ? avgPos : 0;
+    raw.set(q, r);
+    sumRaw += r;
+  }
+
+  if (sumRaw <= PREVIEW_COST_EPS) {
+    for (const q of previewQuarters) {
+      budgets.set(q, realTq.get(q) ?? 0);
+    }
+    return budgets;
+  }
+
+  const scale = effectiveTotal / sumRaw;
+  for (const q of previewQuarters) {
+    budgets.set(q, (raw.get(q) ?? 0) * scale);
+  }
+  return budgets;
+}
+
 /** Заглушки команды в строках. Несколько — допустимо, остаток делим между ними пропорционально текущей cost. */
 function stubRows(rows: AdminDataRow[]): AdminDataRow[] {
   return rows.filter((r) => r.isTimelineStub === true);
 }
 
 /**
- * Доля квартального бюджета команды Tq для строки.
+ * Доля квартального бюджета команды для строки при заданной базе Tq (рубли за квартал).
  * Для обычных: (eff/100)·Tq. Для заглушки: остаток Tq − Σ(non-stub).
- * Несколько заглушек в команде делят остаток пропорционально их сохранённой cost (или поровну, если 0).
- * Никакого «равного фолбэка» — пустые коэффициенты у обычных = 0 у обычных, всё остаётся на заглушке.
  */
-export function initiativeShareInQuarter(
+export function initiativeShareInQuarterWithBudget(
   row: AdminDataRow,
   quarter: string,
-  teamRows: AdminDataRow[]
+  teamRows: AdminDataRow[],
+  Tq: number
 ): number {
-  const Tq = teamQuarterCostSum(teamRows, quarter);
   if (Tq <= 0) return 0;
 
   if (!row.isTimelineStub) {
     return nonStubFractionForQuarter(row, quarter) * Tq;
   }
 
-  // Заглушка: остаток Tq − Σ(доли обычных), не уходим в минус при Σeff > 100% (валидируется отдельно).
   const stubs = stubRows(teamRows);
   if (stubs.length === 0) return 0;
   let nonStubFrac = 0;
@@ -129,6 +193,20 @@ export function initiativeShareInQuarter(
   return residual * (myStubCost / stubCostSum);
 }
 
+/**
+ * Доля квартального бюджета команды Tq для строки (фактическая сумма cost+прочие по команде за квартал).
+ * Для обычных: (eff/100)·Tq. Для заглушки: остаток Tq − Σ(non-stub).
+ * Несколько заглушек в команде делят остаток пропорционально их сохранённой cost (или поровну, если 0).
+ * Никакого «равного фолбэка» — пустые коэффициенты у обычных = 0 у обычных, всё остаётся на заглушке.
+ */
+export function initiativeShareInQuarter(
+  row: AdminDataRow,
+  quarter: string,
+  teamRows: AdminDataRow[]
+): number {
+  return initiativeShareInQuarterWithBudget(row, quarter, teamRows, teamQuarterCostSum(teamRows, quarter));
+}
+
 /** Сумма долей по preview-кварталам (соответствует cost+other цели после пересчёта). */
 export function initiativePeriodCostFromCoefficients(
   row: AdminDataRow,
@@ -142,6 +220,20 @@ export function initiativePeriodCostFromCoefficients(
   return s;
 }
 
+function initiativePeriodCostFromPreviewBudgets(
+  row: AdminDataRow,
+  previewQuarters: string[],
+  teamRows: AdminDataRow[],
+  budgets: Map<string, number>
+): number {
+  let s = 0;
+  for (const q of previewQuarters) {
+    const Tq = budgets.get(q) ?? teamQuarterCostSum(teamRows, q);
+    s += initiativeShareInQuarterWithBudget(row, q, teamRows, Tq);
+  }
+  return s;
+}
+
 /**
  * Виртуальный остаток для команд **без заглушки**: Tq · (1 − Σnon-stub eff/100) суммарно по preview.
  * Если в команде есть хоть одна заглушка — она и держит остаток, и эта функция вернёт 0.
@@ -151,6 +243,26 @@ export function unallocatedPeriodTotal(rows: AdminDataRow[], previewQuarters: st
   let total = 0;
   for (const q of previewQuarters) {
     const Tq = teamQuarterCostSum(rows, q);
+    if (Tq <= 0) continue;
+    let nonStubFrac = 0;
+    for (const r of rows) {
+      if (r.isTimelineStub) continue;
+      nonStubFrac += nonStubFractionForQuarter(r, q);
+    }
+    total += Math.max(0, 1 - nonStubFrac) * Tq;
+  }
+  return total;
+}
+
+function unallocatedPeriodTotalFromBudgets(
+  rows: AdminDataRow[],
+  previewQuarters: string[],
+  budgets: Map<string, number>
+): number {
+  if (stubRows(rows).length > 0) return 0;
+  let total = 0;
+  for (const q of previewQuarters) {
+    const Tq = budgets.get(q) ?? 0;
     if (Tq <= 0) continue;
     let nonStubFrac = 0;
     for (const r of rows) {
@@ -192,6 +304,8 @@ export type EffortTreemapPreviewModel = {
  * Treemap превью: для не-заглушек доля = (eff/100)·Tq, для заглушки — остаток Tq.
  * Если в команде заглушки нет, остаток уходит в виртуальный лист «Нераспределено · {team}».
  * `effectiveTotal` — сумма (cost + otherCosts) команды за `previewQuarters`.
+ * При нулевой фактической базе квартала, но ненулевых % у не-заглушек, для превью подмешивается
+ * синтетическая квартальная база (см. `computePreviewQuarterBudgets`), чтобы доли были видны на treemap.
  */
 export function buildEffortTreemapPreviewModel(
   rows: AdminDataRow[],
@@ -218,13 +332,15 @@ export function buildEffortTreemapPreviewModel(
     };
   }
 
+  const previewBudgets = computePreviewQuarterBudgets(rows, previewQuarters, effectiveTotal);
+
   let maxColEffort = 0;
   for (const q of previewQuarters) {
     maxColEffort = Math.max(maxColEffort, columnEffortSum(rows, q));
   }
   const overflowPct = previewQuarters.some((q) => columnEffortSum(rows, q) > 100 + COL_OVERFLOW_EPS);
 
-  const unalloc = unallocatedPeriodTotal(rows, previewQuarters);
+  const unalloc = unallocatedPeriodTotalFromBudgets(rows, previewQuarters, previewBudgets);
   const zeroNames: string[] = [];
   const labelUsed = new Map<string, number>();
   const treeChildren: TreeNode[] = [];
@@ -245,7 +361,7 @@ export function buildEffortTreemapPreviewModel(
   };
 
   for (const row of rows) {
-    const periodValue = initiativePeriodCostFromCoefficients(row, previewQuarters, rows);
+    const periodValue = initiativePeriodCostFromPreviewBudgets(row, previewQuarters, rows, previewBudgets);
     const meanEff = meanEffortCoefficient(row, previewQuarters);
     const base = row.isTimelineStub
       ? getStubResidualLabel(row.team)
