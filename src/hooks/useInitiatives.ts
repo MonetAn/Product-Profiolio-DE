@@ -178,7 +178,15 @@ export async function fetchInitiatives(scope?: InitiativesScope): Promise<AdminD
   const teams = normalizeFilterValues(scope?.teams);
   const tableAll = scope?.tableAll === true;
 
-  let query = supabase.from('initiatives').select(INITIATIVE_SELECT_COLUMNS);
+  let query = supabase
+    .from('initiatives')
+    .select(INITIATIVE_SELECT_COLUMNS)
+    /**
+     * Soft-delete: для обычного юзера такие строки прячет RLS, но super_admin их видит.
+     * Без явного фильтра удалённая инициатива «возвращается» в матрице после refetch
+     * сразу после «Сохранить и подтвердить».
+     */
+    .is('deleted_at', null);
   if (!tableAll && units.length > 0) {
     query = query.in('unit', units);
   }

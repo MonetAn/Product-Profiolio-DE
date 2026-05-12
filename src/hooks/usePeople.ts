@@ -34,6 +34,11 @@ export function usePeople() {
       const { data, error } = await supabase
         .from('people')
         .select('*')
+        /**
+         * Soft-delete: RLS прячет удалённых от обычного юзера, но не от super_admin —
+         * без явного фильтра удалённый человек «возвращается» после refetch.
+         */
+        .is('deleted_at', null)
         .order('full_name');
       
       if (error) throw error;
