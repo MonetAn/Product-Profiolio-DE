@@ -7,6 +7,8 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
+  Check,
+  FileSpreadsheet,
   LayoutDashboard,
   RefreshCw,
   ArrowLeft,
@@ -98,6 +100,19 @@ import {
   HUB_LOCAL_ROW_PREFIX,
 } from '@/lib/portfolioHubDraft';
 import { quarterlyDataToJson } from '@/hooks/useInitiatives';
+
+function messageFromUnknownError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e) {
+    const m = (e as { message: unknown }).message;
+    if (typeof m === 'string' && m.trim()) return m;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
 
 /** Полоса Google Sheets под хедером: выключена, логика в компоненте и хендлерах сохранена. */
 const SHOW_GOOGLE_SHEETS_SYNC_STRIP_UI = false;
@@ -966,7 +981,7 @@ const Admin = () => {
       toast({
         variant: 'destructive',
         title: 'Не удалось сохранить',
-        description: e instanceof Error ? e.message : String(e),
+        description: messageFromUnknownError(e),
       });
       throw e;
     } finally {
@@ -1453,7 +1468,7 @@ const Admin = () => {
     } catch (e) {
       toast({
         title: 'Ошибка сохранения',
-        description: e instanceof Error ? e.message : String(e),
+        description: messageFromUnknownError(e),
         variant: 'destructive',
       });
     } finally {
@@ -1515,7 +1530,7 @@ const Admin = () => {
     } catch (e) {
       toast({
         title: 'Не удалось сохранить предварительные стоимости',
-        description: e instanceof Error ? e.message : String(e),
+        description: messageFromUnknownError(e),
         variant: 'destructive',
       });
       throw e;
@@ -2157,6 +2172,38 @@ const Admin = () => {
                     lockTeam={fillLocks.lockTeam}
                   />
                 </div>
+                {!isSuperAdmin && !needsSelection ? (
+                  <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="tabular-nums">
+                        {filteredData.length === rawData.length
+                          ? `${filteredData.length} инициатив`
+                          : `${filteredData.length} из ${rawData.length}`}
+                      </span>
+                    </span>
+                    {syncStatus === 'saving' ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-primary">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                        Сохранение…
+                      </span>
+                    ) : syncStatus === 'synced' ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-primary">
+                        <Check className="h-3 w-3" aria-hidden />
+                        Сохранено
+                      </span>
+                    ) : syncStatus === 'error' ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2 py-0.5 text-destructive hover:bg-destructive/20"
+                        onClick={retry}
+                      >
+                        <AlertCircle className="h-3 w-3" aria-hidden />
+                        Ошибка
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 {hubPanelOpen ? (
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-center">
                     <div className="flex items-center gap-1.5">

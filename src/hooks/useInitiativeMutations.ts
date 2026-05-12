@@ -228,7 +228,9 @@ export function useInitiativeMutations() {
       const { error } = await supabase
         .from('initiatives')
         .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        // Не запрашивать строку после PATCH: иначе PostgREST может проверить SELECT на new row с deleted_at.
+        .setHeader('Prefer', 'return=minimal');
       if (error) throw error;
     },
     onMutate: async (id) => {
