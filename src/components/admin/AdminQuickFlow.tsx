@@ -605,10 +605,10 @@ export function EffortMatrixInline({
                     {onHeaderAddInitiativeRow ? (
                       <Button
                         type="button"
-                        variant="secondary"
+                        variant="default"
                         size="sm"
                         className={cn(
-                          'h-7 shrink-0 gap-1 px-2 text-xs font-medium text-foreground shadow-sm',
+                          'h-7 shrink-0 gap-1 px-2 text-xs font-semibold shadow-sm',
                           compactPeriodPicker && 'h-6'
                         )}
                         disabled={headerAddBusy || visibleQuarters.length === 0}
