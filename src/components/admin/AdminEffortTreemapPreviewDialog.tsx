@@ -466,6 +466,7 @@ export function AdminEffortTreemapPreviewDialog({
                     emptyStateTitle="Нет долей для treemap"
                     emptyStateSubtitle="Задайте коэффициенты усилий или проверьте сумму базы"
                     showMoney={true}
+                    skipExitAnimation
                   />
                 </div>
                 <p className="border-t border-border px-2 py-2 text-center text-xs text-muted-foreground tabular-nums">

@@ -57,6 +57,8 @@ interface TreemapNodeProps {
   showMoney?: boolean;
   /** When true (e.g. prefers-reduced-motion), use short fixed duration for enter/exit */
   reduceMotion?: boolean;
+  /** Админ-превью: мгновенный unmount без exit — нет просветов удалённых листьев */
+  skipExitAnimation?: boolean;
   /** Курсор над ячейками (например `default` для превью без клика). */
   nodeCursor?: CSSProperties['cursor'];
 }
@@ -154,15 +156,18 @@ const TreemapNode = memo(({
   visibleNodeCount,
   showMoney = true,
   reduceMotion = false,
+  skipExitAnimation = false,
   nodeCursor = 'pointer',
 }: TreemapNodeProps) => {
   const [isPresent] = usePresence();
   const duration = reduceMotion
     ? 0.15
     : (animationType === 'initial' ? 0 : getEffectiveDuration(animationType, visibleNodeCount) / 1000);
-  const exitDuration = reduceMotion
-    ? 0.15
-    : (animationType === 'initial' ? 0.3 : getEffectiveDuration(animationType, visibleNodeCount) / 1000);
+  const exitDuration = skipExitAnimation
+    ? 0
+    : reduceMotion
+      ? 0.15
+      : (animationType === 'initial' ? 0.3 : getEffectiveDuration(animationType, visibleNodeCount) / 1000);
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
@@ -284,6 +289,7 @@ const TreemapNode = memo(({
           textVisible={textVisible}
           visibleNodeCount={visibleNodeCount}
           reduceMotion={reduceMotion}
+          skipExitAnimation={skipExitAnimation}
           parentX={node.x0}
           parentY={node.y0}
           onClick={onClick}

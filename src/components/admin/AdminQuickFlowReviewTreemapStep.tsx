@@ -256,6 +256,7 @@ export function AdminQuickFlowReviewTreemapStep({
                     }
                   : undefined
               }
+              skipExitAnimation
             />
           </div>
         )}

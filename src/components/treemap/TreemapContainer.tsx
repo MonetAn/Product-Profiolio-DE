@@ -58,6 +58,11 @@ interface TreemapContainerProps {
   nodeCursor?: CSSProperties['cursor'];
   /** Показывать предупреждение о предварительных данных в тултипе инициативы */
   showPreliminaryWarnings?: boolean;
+  /**
+   * Админ-превью (матрица усилий): без exit-анимации при смене данных + изолированный фон под плитками,
+   * чтобы удалённые ячейки не просвечивали в щелях между прямоугольниками.
+   */
+  skipExitAnimation?: boolean;
 }
 
 const TreemapContainer = ({
@@ -95,6 +100,7 @@ const TreemapContainer = ({
   treemapQuarterCatalog,
   nodeCursor = 'pointer',
   showPreliminaryWarnings = false,
+  skipExitAnimation = false,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -583,7 +589,17 @@ const TreemapContainer = ({
       
       {/* Framer Motion treemap rendering */}
       {!isEmpty && dimensions.width > 0 && (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            minHeight: 0,
+            ...(skipExitAnimation
+              ? { isolation: 'isolate', backgroundColor: 'hsl(var(--card))' }
+              : {}),
+          }}
+        >
           <AnimatePresence mode="sync">
             {layoutNodes.map(node => (
               <TreemapNode
@@ -595,6 +611,7 @@ const TreemapContainer = ({
                 textVisible={reduceMotion ? true : textVisible}
                 visibleNodeCount={nodeCountForAnimation}
                 reduceMotion={reduceMotion}
+                skipExitAnimation={skipExitAnimation}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}

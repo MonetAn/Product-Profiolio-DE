@@ -167,6 +167,7 @@ export function AdminQuickFlowEffortComparePanel({
                   emptyStateSubtitle="Задайте коэффициенты"
                   showMoney={true}
                   nodeCursor="default"
+                  skipExitAnimation
                 />
               ) : (
                 <p className="p-3 text-xs text-muted-foreground">Нет долей для отображения.</p>
@@ -202,6 +203,7 @@ export function AdminQuickFlowEffortComparePanel({
                   emptyStateSubtitle="Задайте коэффициенты"
                   showMoney={true}
                   nodeCursor="default"
+                  skipExitAnimation
                 />
               ) : (
                 <p className="p-3 text-xs text-muted-foreground">Нет долей для отображения.</p>
@@ -231,6 +233,7 @@ export function AdminQuickFlowEffortComparePanel({
                   emptyStateSubtitle="Задайте коэффициенты"
                   showMoney={true}
                   nodeCursor="default"
+                  skipExitAnimation
                 />
               ) : (
                 <p className="p-3 text-xs text-muted-foreground">Нет долей для отображения.</p>
@@ -260,6 +263,7 @@ export function AdminQuickFlowEffortComparePanel({
                   emptyStateSubtitle="Задайте коэффициенты"
                   showMoney={true}
                   nodeCursor="default"
+                  skipExitAnimation
                 />
               ) : (
                 <p className="p-3 text-xs text-muted-foreground">Нет долей для отображения.</p>
