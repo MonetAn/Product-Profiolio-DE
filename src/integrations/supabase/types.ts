@@ -627,6 +627,14 @@ export type Database = {
         Returns: Json
       }
       get_user_presence_stats: { Args: Record<string, never>; Returns: Json }
+      get_sensitive_scopes_for_client: {
+        Args: Record<string, never>
+        Returns: { unit: string; team: string | null }[]
+      }
+      sensitive_pairs_among_input: {
+        Args: { p_pairs: Json }
+        Returns: { unit: string; team: string | null }[]
+      }
       prune_user_presence_by_range: {
         Args: { period_start: string; period_end: string }
         Returns: number

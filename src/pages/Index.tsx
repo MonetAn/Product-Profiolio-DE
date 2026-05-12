@@ -31,9 +31,11 @@ import { useInitiatives } from '@/hooks/useInitiatives';
 import { useBudgetDepartmentAllocations } from '@/hooks/useBudgetDepartmentAllocations';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { useAccess } from '@/hooks/useAccess';
-import { useSensitiveScopes } from '@/hooks/useSensitiveScopes';
-import { isUnitTeamSensitive } from '@/lib/sensitiveScopes';
+import { useSensitiveDashboardMask } from '@/hooks/useSensitiveDashboardMask';
+import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
 import { toast } from 'sonner';
+
+const EMPTY_SENSITIVE_KEY_SET = new Set<string>();
 
 const Index = () => {
   const location = useLocation();
@@ -53,7 +55,6 @@ const Index = () => {
   // Fetch data from database
   const { data: dbData, isLoading, error, refetch } = useInitiatives();
   const { data: budgetDepartmentAllocations = [] } = useBudgetDepartmentAllocations();
-  const { data: sensitiveScopes = [], isPending: sensitiveScopesLoading } = useSensitiveScopes(isSuperAdmin);
 
   // Data state (derived from DB or CSV fallback)
   const [rawData, setRawData] = useState<RawDataRow[]>([]);
@@ -118,11 +119,36 @@ const Index = () => {
     }
   }, [isSuperAdmin, showFinancialDataForSuperAdmin]);
 
+  useEffect(() => {
+    if (!isSuperAdmin && showSensitiveTreemap) {
+      setShowSensitiveTreemap(false);
+    }
+  }, [isSuperAdmin, showSensitiveTreemap]);
+
+  const revealSensitiveTreemap = isSuperAdmin && showSensitiveTreemap;
+
+  const needsSensitiveMask = !revealSensitiveTreemap && (isSuperAdmin || isAdmin);
+  const {
+    data: sensitiveKeySet,
+    isPending: sensitiveMaskPending,
+    isError: sensitiveMaskError,
+  } = useSensitiveDashboardMask(rawData, needsSensitiveMask);
+  const sensitiveKeysForFilter = sensitiveKeySet ?? EMPTY_SENSITIVE_KEY_SET;
+
   const displayData = useMemo(() => {
-    if (!isSuperAdmin || showSensitiveTreemap) return rawData;
-    if (sensitiveScopesLoading) return rawData;
-    return rawData.filter((r) => !isUnitTeamSensitive(r.unit, r.team, sensitiveScopes));
-  }, [rawData, isSuperAdmin, showSensitiveTreemap, sensitiveScopes, sensitiveScopesLoading]);
+    if (revealSensitiveTreemap) return rawData;
+    if (!needsSensitiveMask) return rawData;
+    if (sensitiveMaskPending) return rawData;
+    if (sensitiveMaskError) return [];
+    return rawData.filter((r) => !sensitiveKeysForFilter.has(dashboardSensitiveRowKey(r.unit, r.team)));
+  }, [
+    rawData,
+    revealSensitiveTreemap,
+    needsSensitiveMask,
+    sensitiveKeysForFilter,
+    sensitiveMaskPending,
+    sensitiveMaskError,
+  ]);
 
   const preliminaryQuarterBudgetMap = useMemo(
     () =>
@@ -134,9 +160,9 @@ const Index = () => {
     [preliminaryModeEnabled, displayData, selectedQuarters, showOnlyPnlIt]
   );
 
-  /** Пока грузим список sensitive, показываем лоадер поверх тримапа (не мелькать секретными строками). */
+  /** Пока считаем маску sensitive, лоадер поверх тримапа. */
   const sensitiveTreemapBlock =
-    isSuperAdmin && !showSensitiveTreemap && sensitiveScopesLoading && rawData.length > 0;
+    needsSensitiveMask && sensitiveMaskPending && rawData.length > 0;
 
   // Get unique units and teams (видимые строки)
   const units = [...new Set(displayData.map((r) => r.unit))].sort();
@@ -209,7 +235,15 @@ const Index = () => {
 
   // Build tree whenever filters change
   const rebuildTree = useCallback(() => {
-    if (displayData.length === 0) return;
+    if (displayData.length === 0) {
+      const budgetRoot: TreeNode = { name: 'Все Unit', children: [], isRoot: true };
+      const stakeholdersRoot: TreeNode = { name: 'Все стейкхолдеры', children: [], isRoot: true };
+      setPortfolioData(budgetRoot);
+      setStakeholdersData(stakeholdersRoot);
+      setCurrentRoot(currentView === 'stakeholders' ? stakeholdersRoot : budgetRoot);
+      setNavigationStack([]);
+      return;
+    }
 
     // For multi-select: if nothing selected, show all
     const unitFilter = selectedUnits.length === 1 ? selectedUnits[0] : '';
@@ -242,10 +276,6 @@ const Index = () => {
   }, [displayData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showOnlyPnlIt, preliminaryModeEnabled, preliminaryQuarterBudgetMap]);
 
   useEffect(() => {
-    if (displayData.length === 0) {
-      setTreeReady(false);
-      return;
-    }
     rebuildTree();
     setTreeReady(true);
   }, [rebuildTree, displayData.length]);
@@ -592,7 +622,7 @@ const Index = () => {
         hideStubs ? 'stubs:0' : 'stubs:1',
         showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
         preliminaryModeEnabled ? 'prelim:1' : 'prelim:0',
-        showSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
+        revealSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
         showTeams ? 'teams:1' : 'teams:0',
         showInitiatives ? 'initiatives:1' : 'initiatives:0',
         `units:${sortedJoin(selectedUnits)}`,
@@ -606,7 +636,7 @@ const Index = () => {
       hideStubs,
       showOnlyPnlIt,
       preliminaryModeEnabled,
-      showSensitiveTreemap,
+      revealSensitiveTreemap,
       showTeams,
       showInitiatives,
       selectedUnits,
@@ -757,7 +787,7 @@ const Index = () => {
         rawData={displayData}
         preliminaryQuarterBudgetMap={preliminaryQuarterBudgetMap}
         sensitiveTreemapToggleVisible={isSuperAdmin}
-        showSensitiveTreemap={showSensitiveTreemap}
+        showSensitiveTreemap={revealSensitiveTreemap}
         onShowSensitiveTreemapChange={setShowSensitiveTreemap}
         showFinancialDataToggleVisible={isSuperAdmin}
         showFinancialData={showFinancialVerifiedData}
