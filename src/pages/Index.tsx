@@ -138,7 +138,8 @@ const Index = () => {
   const displayData = useMemo(() => {
     if (revealSensitiveTreemap) return rawData;
     if (!needsSensitiveMask) return rawData;
-    if (sensitiveMaskPending) return rawData;
+    /** Не подставляем rawData до маски — иначе под лоадером остаётся полное дерево (риск просвета sensitive). */
+    if (sensitiveMaskPending) return [];
     if (sensitiveMaskError) return [];
     return rawData.filter((r) => !sensitiveKeysForFilter.has(dashboardSensitiveRowKey(r.unit, r.team)));
   }, [
@@ -149,6 +150,22 @@ const Index = () => {
     sensitiveMaskPending,
     sensitiveMaskError,
   ]);
+
+  /** Стабильный фрагмент для contentKey treemap: смена набора sensitive-юнитов сбрасывает exit-слой. */
+  const sensitiveMaskFingerprint = useMemo(() => {
+    if (!needsSensitiveMask) return 'nomask';
+    if (sensitiveMaskPending) return 'pending';
+    if (sensitiveMaskError) return 'error';
+    const keys = [...sensitiveKeysForFilter].sort();
+    return `${keys.length}:${keys.join(',')}`;
+  }, [
+    needsSensitiveMask,
+    sensitiveMaskPending,
+    sensitiveMaskError,
+    sensitiveKeysForFilter,
+  ]);
+
+  const treemapSkipExitAnimation = needsSensitiveMask && !revealSensitiveTreemap;
 
   const preliminaryQuarterBudgetMap = useMemo(
     () =>
@@ -629,6 +646,7 @@ const Index = () => {
         `teamsSel:${sortedJoin(selectedTeams)}`,
         `stakeholders:${sortedJoin(selectedStakeholders)}`,
         `quarters:${sortedJoin(selectedQuarters)}`,
+        `mask:${sensitiveMaskFingerprint}`,
       ].join('|'),
     [
       supportFilter,
@@ -643,6 +661,7 @@ const Index = () => {
       selectedTeams,
       selectedStakeholders,
       selectedQuarters,
+      sensitiveMaskFingerprint,
     ]
   );
 
@@ -655,12 +674,14 @@ const Index = () => {
         hideStubs ? 'stubs:0' : 'stubs:1',
         showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
         preliminaryModeEnabled ? 'prelim:1' : 'prelim:0',
+        revealSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
         showTeams ? 'teams:1' : 'teams:0',
         showInitiatives ? 'initiatives:1' : 'initiatives:0',
         `units:${sortedJoin(selectedUnits)}`,
         `teamsSel:${sortedJoin(selectedTeams)}`,
         `stakeholders:${sortedJoin(selectedStakeholders)}`,
         `quarters:${sortedJoin(selectedQuarters)}`,
+        `mask:${sensitiveMaskFingerprint}`,
       ].join('|'),
     [
       supportFilter,
@@ -668,12 +689,14 @@ const Index = () => {
       hideStubs,
       showOnlyPnlIt,
       preliminaryModeEnabled,
+      revealSensitiveTreemap,
       showTeams,
       showInitiatives,
       selectedUnits,
       selectedTeams,
       selectedStakeholders,
       selectedQuarters,
+      sensitiveMaskFingerprint,
     ]
   );
 
@@ -888,6 +911,7 @@ const Index = () => {
             initialFocusedPath={zoomPath}
             showMoney={effectiveShowMoney}
             showPreliminaryWarnings={preliminaryModeEnabled}
+            skipExitAnimation={treemapSkipExitAnimation}
           />
         )}
 
@@ -917,6 +941,7 @@ const Index = () => {
             initialFocusedPath={zoomPath}
             showMoney={effectiveShowMoney}
             showPreliminaryWarnings={preliminaryModeEnabled}
+            skipExitAnimation={treemapSkipExitAnimation}
           />
         )}
 

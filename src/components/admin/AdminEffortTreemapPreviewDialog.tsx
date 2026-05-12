@@ -449,6 +449,7 @@ export function AdminEffortTreemapPreviewDialog({
               <div className="w-full overflow-hidden rounded-lg border border-border bg-card">
                 <div className="h-[380px] min-h-[280px] w-full">
                   <TreemapContainer
+                    key={previewModel.contentKey}
                     data={treeData}
                     showTeams={false}
                     showInitiatives={true}

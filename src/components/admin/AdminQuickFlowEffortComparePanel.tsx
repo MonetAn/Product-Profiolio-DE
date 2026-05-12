@@ -154,6 +154,7 @@ export function AdminQuickFlowEffortComparePanel({
             <div className="flex min-h-0 h-full min-w-0 flex-1 flex-col overflow-hidden">
               {beforeModel.effectiveTotal > 0 && beforeChildren.length > 0 ? (
                 <TreemapContainer
+                  key={`bef-${beforeModel.contentKey}`}
                   data={treeBefore}
                   showTeams={false}
                   showInitiatives={true}
@@ -190,6 +191,7 @@ export function AdminQuickFlowEffortComparePanel({
             <div className="flex min-h-0 h-full min-w-0 flex-1 flex-col overflow-hidden">
               {afterModel.effectiveTotal > 0 && afterChildren.length > 0 ? (
                 <TreemapContainer
+                  key={`aft-${afterModel.contentKey}`}
                   data={treeAfter}
                   showTeams={false}
                   showInitiatives={true}
@@ -220,6 +222,7 @@ export function AdminQuickFlowEffortComparePanel({
             <div className="min-h-[200px] flex-1 w-full min-w-0">
               {beforeModel.effectiveTotal > 0 && beforeChildren.length > 0 ? (
                 <TreemapContainer
+                  key={`bef-${beforeModel.contentKey}`}
                   data={treeBefore}
                   showTeams={false}
                   showInitiatives={true}
@@ -250,6 +253,7 @@ export function AdminQuickFlowEffortComparePanel({
             <div className="min-h-0 flex-1 w-full min-w-0">
               {afterModel.effectiveTotal > 0 && afterChildren.length > 0 ? (
                 <TreemapContainer
+                  key={`aft-${afterModel.contentKey}`}
                   data={treeAfter}
                   showTeams={false}
                   showInitiatives={true}

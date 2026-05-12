@@ -35,6 +35,8 @@ interface BudgetTreemapProps {
   /** По умолчанию true (главная страница); для встроенных мини-превью — false */
   showUploadButton?: boolean;
   showPreliminaryWarnings?: boolean;
+  /** Главная: при маске sensitive без exit-анимации — нет просвета старых листьев при перестроении */
+  skipExitAnimation?: boolean;
 }
 
 const BudgetTreemap = ({
@@ -63,11 +65,13 @@ const BudgetTreemap = ({
   contentKey,
   showUploadButton = true,
   showPreliminaryWarnings = false,
+  skipExitAnimation = false,
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
       data={data}
       contentKey={contentKey}
+      skipExitAnimation={skipExitAnimation}
       showTeams={showTeams}
       showInitiatives={showInitiatives}
       showMoney={showMoney}

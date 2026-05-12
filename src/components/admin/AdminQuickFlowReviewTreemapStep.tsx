@@ -232,6 +232,7 @@ export function AdminQuickFlowReviewTreemapStep({
         ) : (
           <div className="min-h-0 min-w-0 w-full flex-1">
             <TreemapContainer
+              key={treemapViewKey}
               data={treeData}
               showTeams={false}
               showInitiatives={true}
