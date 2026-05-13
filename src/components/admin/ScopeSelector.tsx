@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Filter } from 'lucide-react';
 import { AdminDataRow } from '@/lib/adminDataManager';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -83,6 +84,11 @@ const ScopeSelector = ({
 }: ScopeSelectorProps) => {
   const [unitOpen, setUnitOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
+  const [teamQuery, setTeamQuery] = useState('');
+
+  useEffect(() => {
+    if (!teamOpen) setTeamQuery('');
+  }, [teamOpen]);
 
   const applyFilters = useCallback(
     (nextU: string[], nextT: string[]) => {
@@ -240,6 +246,16 @@ const ScopeSelector = ({
     }));
   }, [teams, allData, selectedUnits]);
 
+  const filteredTeamRows = useMemo(() => {
+    const q = teamQuery.trim().toLowerCase();
+    if (!q) return teamRows;
+    return teamRows.filter(({ team, subtitle }) => {
+      if (team.toLowerCase().includes(q)) return true;
+      if (subtitle?.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [teamRows, teamQuery]);
+
   return (
     <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       <span className="inline-flex items-center gap-1 text-muted-foreground" aria-hidden>
@@ -344,12 +360,27 @@ const ScopeSelector = ({
                 onClear: selectionMode === 'multi' ? () => onTeamsChange([]) : undefined,
                 clearTooltip: 'Показать все команды выбранных юнитов',
               })}
+              {teams.length > 0 ? (
+                <div className="border-b border-border px-2 py-2">
+                  <Input
+                    value={teamQuery}
+                    onChange={(e) => setTeamQuery(e.target.value)}
+                    placeholder="Поиск"
+                    autoComplete="off"
+                    autoFocus
+                    className="h-8 text-sm"
+                    aria-label="Поиск команды"
+                  />
+                </div>
+              ) : null}
               <ScrollArea className="h-[min(50vh,280px)]">
                 <div className="p-1">
                   {teams.length === 0 ? (
                     <p className="px-2 py-3 text-sm text-muted-foreground">Сначала выберите юнит.</p>
+                  ) : filteredTeamRows.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-muted-foreground">Нет совпадений</p>
                   ) : (
-                    teamRows.map(({ team: t, subtitle }) => (
+                    filteredTeamRows.map(({ team: t, subtitle }) => (
                       <div
                         key={t}
                         role="button"
