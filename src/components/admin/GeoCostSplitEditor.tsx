@@ -383,6 +383,48 @@ export function GeoCostSplitEditor({
     []
   );
 
+  const globalRevenuePresetPressed = useMemo(() => {
+    if (!revenueDriverDef || value?.driverKey !== revenueDriverDef.key) {
+      return { plusDrinkit: false, pizzaOnly: false };
+    }
+    const entries = split.entries;
+    if (entries.length === 0 || !entries.every((e) => e.kind === 'country')) {
+      return { plusDrinkit: false, pizzaOnly: false };
+    }
+    const currentIds = new Set(
+      entries.filter((e): e is Extract<GeoCostSplitEntry, { kind: 'country' }> => e.kind === 'country').map(
+        (e) => e.countryId
+      )
+    );
+
+    const sortActive = (list: MarketCountryRow[]) =>
+      [...list].sort(
+        (a, b) =>
+          (a.sort_order ?? 100000) - (b.sort_order ?? 100000) || a.label_ru.localeCompare(b.label_ru, 'ru')
+      );
+
+    const withDrinkit = sortActive(countries.filter((c) => c.is_active));
+    const pizzaOnly = sortActive(countries.filter((c) => c.is_active && c.cluster_key !== 'Drinkit'));
+
+    const idsEqual = (preset: MarketCountryRow[]) => {
+      const ps = new Set(preset.map((c) => c.id));
+      if (currentIds.size !== ps.size) return false;
+      for (const id of ps) {
+        if (!currentIds.has(id)) return false;
+      }
+      return true;
+    };
+
+    const matchesPlus = idsEqual(withDrinkit);
+    const matchesOnly = idsEqual(pizzaOnly);
+    const presetsDiffer = withDrinkit.length !== pizzaOnly.length;
+
+    return {
+      plusDrinkit: matchesPlus,
+      pizzaOnly: matchesOnly && presetsDiffer,
+    };
+  }, [countries, revenueDriverDef, split.entries, value?.driverKey]);
+
   const driverQuantityColClass = useMemo(() => {
     if (!activeDriverDef) return 'w-[3.75rem] shrink-0';
     return activeDriverDef.quantityKind === 'money'
@@ -599,8 +641,12 @@ export function GeoCostSplitEditor({
         <Button
           type="button"
           size="sm"
-          variant="outline"
+          variant={globalRevenuePresetPressed.plusDrinkit ? 'secondary' : 'outline'}
+          className={cn(
+            globalRevenuePresetPressed.plusDrinkit && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
+          )}
           disabled={disabled || !revenueDriverDef}
+          aria-pressed={globalRevenuePresetPressed.plusDrinkit}
           onClick={() => applyGlobalRevenuePreset(true)}
         >
           Global: Pizza + Drinkit
@@ -608,8 +654,12 @@ export function GeoCostSplitEditor({
         <Button
           type="button"
           size="sm"
-          variant="outline"
+          variant={globalRevenuePresetPressed.pizzaOnly ? 'secondary' : 'outline'}
+          className={cn(
+            globalRevenuePresetPressed.pizzaOnly && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
+          )}
           disabled={disabled || !revenueDriverDef}
+          aria-pressed={globalRevenuePresetPressed.pizzaOnly}
           onClick={() => applyGlobalRevenuePreset(false)}
         >
           Global: Pizza only
