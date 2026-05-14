@@ -283,7 +283,7 @@ const GanttView = ({
       y: e.clientY,
       pinned: true
     });
-    setExpandedSections({});
+    setExpandedSections({ plan: true, fact: true, comment: true });
   };
 
   const toggleSection = (section: string) => {
@@ -535,12 +535,6 @@ const GanttView = ({
               <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
               Редактировать квартал
             </Button>
-          </div>
-        )}
-
-        {!pinned && !adminOnEditQuarter && (
-          <div className="gantt-name-popup-hint">
-            Кликните для детального просмотра
           </div>
         )}
       </div>
