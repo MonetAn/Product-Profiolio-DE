@@ -63,6 +63,9 @@ interface StakeholdersTreemapProps {
   contentKey?: string;
   showPreliminaryWarnings?: boolean;
   skipExitAnimation?: boolean;
+  emptyStateTitle?: string;
+  emptyStateSubtitle?: string;
+  emptyStateShowResetButton?: boolean;
 }
 
 const StakeholdersTreemap = ({
@@ -89,6 +92,9 @@ const StakeholdersTreemap = ({
   contentKey,
   showPreliminaryWarnings = false,
   skipExitAnimation = false,
+  emptyStateTitle = 'Нет инициатив по выбранным фильтрам',
+  emptyStateSubtitle = 'Попробуйте изменить параметры фильтрации или сбросить фильтры',
+  emptyStateShowResetButton = true,
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -106,8 +112,9 @@ const StakeholdersTreemap = ({
       selectedUnitsCount={selectedUnitsCount}
       clickedNodeName={clickedNodeName}
       getColor={getStakeholderColor}
-      emptyStateTitle="Нет инициатив по выбранным фильтрам"
-      emptyStateSubtitle="Попробуйте изменить параметры фильтрации или сбросить фильтры"
+      emptyStateTitle={emptyStateTitle}
+      emptyStateSubtitle={emptyStateSubtitle}
+      emptyStateShowResetButton={emptyStateShowResetButton}
       showUploadButton={false}
       extraDepth={1}
       onAutoEnableTeams={onAutoEnableTeams}

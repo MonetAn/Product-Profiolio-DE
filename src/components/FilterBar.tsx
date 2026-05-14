@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { RawDataRow, calculateBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type PreliminaryQuarterBudgetMap, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -36,7 +36,6 @@ interface FilterBarProps {
   
   // Totals
   rawData: RawDataRow[];
-  preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
   
   // Nesting toggles
   showTeams: boolean;
@@ -67,11 +66,7 @@ interface FilterBarProps {
   onShowSensitiveTreemapChange?: (val: boolean) => void;
   /** Показывать блок с галочкой Sensitive */
   sensitiveTreemapToggleVisible?: boolean;
-  /** Только super_admin: переключение на проверенный финансовый слой */
-  showFinancialDataToggleVisible?: boolean;
-  showFinancialData?: boolean;
-  onShowFinancialDataChange?: (val: boolean) => void;
-  
+
   // Reset filters
   onResetFilters?: () => void;
   hasActiveFilters?: boolean;
@@ -88,6 +83,9 @@ interface FilterBarProps {
   // Zoom breadcrumb (visual only, no data effect)
   zoomPath?: string[];
   zoomActiveTab?: 'budget' | 'stakeholders';
+
+  /** «Кластеры»: один кластер; «Бюджет» / «Таймлайн»: мультивыбор */
+  stakeholderFilterMode?: 'multi' | 'single';
 }
 
 /** Доли 0–100 для трёх ведёр; сумма всегда 100 при total > 0 (метод наибольших дробных частей). */
@@ -127,7 +125,6 @@ const FilterBar = ({
   selectedQuarters,
   onQuartersChange,
   rawData,
-  preliminaryQuarterBudgetMap,
   showTeams,
   showInitiatives,
   onShowTeamsChange,
@@ -155,9 +152,7 @@ const FilterBar = ({
   showSensitiveTreemap = false,
   onShowSensitiveTreemapChange,
   sensitiveTreemapToggleVisible = false,
-  showFinancialDataToggleVisible = false,
-  showFinancialData = false,
-  onShowFinancialDataChange,
+  stakeholderFilterMode = 'multi',
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -254,8 +249,8 @@ const FilterBar = ({
       (acc, row) => {
         const periodBudget = calculateBudget(row, selectedQuarters, {
           includeNonPnlBudgets: !showOnlyPnlIt,
-          includePreliminaryData: !showFinancialData,
-          preliminaryQuarterBudgetMap,
+          includePreliminaryData: false,
+          preliminaryQuarterBudgetMap: undefined,
         });
         if (periodBudget === 0) return acc;
 
@@ -282,9 +277,16 @@ const FilterBar = ({
             if (row.unit !== zoomPath[0]) return acc;
             if (zoomPath.length >= 2 && row.team !== zoomPath[1]) return acc;
           } else {
-            if (getStakeholderSetKey(row.stakeholders || '') !== zoomPath[0]) return acc;
-            if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
-            if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
+            const rowParts = parseStakeholderParts(row.stakeholders || '');
+            if (stakeholderFilterMode === 'single' && selectedStakeholders.length === 1) {
+              if (zoomPath.length >= 1 && !rowParts.includes(zoomPath[0])) return acc;
+              if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
+              if (zoomPath.length >= 3 && (row.team || 'Без команды') !== zoomPath[2]) return acc;
+            } else {
+              if (getStakeholderSetKey(row.stakeholders || '') !== zoomPath[0]) return acc;
+              if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
+              if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
+            }
           }
         }
 
@@ -297,8 +299,8 @@ const FilterBar = ({
                     sum +
                     calculateBudget(row, [quarter], {
                       includeNonPnlBudgets: !showOnlyPnlIt,
-                      includePreliminaryData: !showFinancialData,
-                      preliminaryQuarterBudgetMap,
+                      includePreliminaryData: false,
+                      preliminaryQuarterBudgetMap: undefined,
                     })
                   );
                 }, 0);
@@ -313,8 +315,8 @@ const FilterBar = ({
         selectedQuarters.forEach((q) => {
           const quarterBudget = calculateBudget(row, [q], {
             includeNonPnlBudgets: !showOnlyPnlIt,
-            includePreliminaryData: !showFinancialData,
-            preliminaryQuarterBudgetMap,
+            includePreliminaryData: false,
+            preliminaryQuarterBudgetMap: undefined,
           });
           if (quarterBudget <= 0) return;
 
@@ -351,8 +353,7 @@ const FilterBar = ({
     costFilterMax,
     costType,
     showOnlyPnlIt,
-    showFinancialData,
-    preliminaryQuarterBudgetMap,
+    stakeholderFilterMode,
   ]);
 
   const splitGrand =
@@ -403,7 +404,7 @@ const FilterBar = ({
     if (selectedStakeholders.length === 0) {
       const zoomName = getZoomStakeholderName();
       if (zoomName) return zoomName.length > 10 ? zoomName.slice(0, 10) + '…' : zoomName;
-      return 'Стейкх.';
+      return stakeholderFilterMode === 'single' ? 'Кластер' : 'Стейкх.';
     }
     if (selectedStakeholders.length === 1) {
       const s = selectedStakeholders[0];
@@ -518,6 +519,10 @@ const FilterBar = ({
   };
 
   const toggleStakeholder = (s: string) => {
+    if (stakeholderFilterMode === 'single') {
+      onStakeholdersChange(selectedStakeholders[0] === s ? [] : [s]);
+      return;
+    }
     if (selectedStakeholders.includes(s)) {
       onStakeholdersChange(selectedStakeholders.filter(x => x !== s));
     } else {
@@ -640,7 +645,11 @@ const FilterBar = ({
             {stakeholderMenuOpen && (
               <div className="absolute top-full mt-1 left-0 min-w-[240px] max-h-[280px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
                 <div className="flex justify-between p-2 border-b border-border">
-                  <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([...allStakeholders])}>Все</button>
+                  {stakeholderFilterMode === 'multi' ? (
+                    <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([...allStakeholders])}>Все</button>
+                  ) : (
+                    <span />
+                  )}
                   <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([])}>Сброс</button>
                 </div>
                 <div className="max-h-[220px] overflow-y-auto p-1">
@@ -672,8 +681,16 @@ const FilterBar = ({
                           onClick={() => toggleStakeholder(s)}
                           className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs hover:bg-secondary rounded ${selectedStakeholders.includes(s) ? 'bg-primary/10' : ''} ${!isRelevant ? 'opacity-40' : ''}`}
                         >
-                          <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                            {selectedStakeholders.includes(s) && <Check size={10} />}
+                          <span
+                            className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center border border-border ${
+                              stakeholderFilterMode === 'single' ? 'rounded-full' : 'rounded'
+                            } ${selectedStakeholders.includes(s) ? 'border-primary bg-primary text-primary-foreground' : ''}`}
+                          >
+                            {stakeholderFilterMode === 'single' ? (
+                              selectedStakeholders[0] === s ? <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" /> : null
+                            ) : selectedStakeholders.includes(s) ? (
+                              <Check size={10} />
+                            ) : null}
                           </span>
                           <span className="truncate">{s}</span>
                         </div>
@@ -1002,20 +1019,6 @@ const FilterBar = ({
                     {showSensitiveTreemap && <Check size={10} />}
                   </span>
                   <span>Sensitive</span>
-                </label>
-              )}
-              {showFinancialDataToggleVisible && currentView === 'budget' && onShowFinancialDataChange && (
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                  <input
-                    type="checkbox"
-                    checked={showFinancialData}
-                    onChange={(e) => onShowFinancialDataChange(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showFinancialData ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                    {showFinancialData && <Check size={10} />}
-                  </span>
-                  <span>Проверенные финансы</span>
                 </label>
               )}
             </>

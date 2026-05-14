@@ -22,7 +22,6 @@ import {
   TreeNode,
   formatBudget,
   calculateBudget,
-  buildPreliminaryQuarterBudgetMap,
   isInitiativeOffTrack,
   type SupportFilter,
 } from '@/lib/dataManager';
@@ -79,7 +78,6 @@ const Index = () => {
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
   const [showOnlyPnlIt, setShowOnlyPnlIt] = useState(true);
-  const [showFinancialDataForSuperAdmin, setShowFinancialDataForSuperAdmin] = useState(false);
   const [showMoney, setShowMoney] = useState(true);
   /** Super admin: по умолчанию скрываем sensitive на клиенте (полные строки уже приходят из API) */
   const [showSensitiveTreemap, setShowSensitiveTreemap] = useState(false);
@@ -111,14 +109,6 @@ const Index = () => {
 
   // Tree is "ready" only after rebuildTree has run for current rawData (avoids one-frame flash of "no initiatives" empty state)
   const [treeReady, setTreeReady] = useState(false);
-  const showFinancialVerifiedData = isSuperAdmin && showFinancialDataForSuperAdmin;
-  const preliminaryModeEnabled = !showFinancialVerifiedData;
-  useEffect(() => {
-    if (!isSuperAdmin && showFinancialDataForSuperAdmin) {
-      setShowFinancialDataForSuperAdmin(false);
-    }
-  }, [isSuperAdmin, showFinancialDataForSuperAdmin]);
-
   useEffect(() => {
     if (!isSuperAdmin && showSensitiveTreemap) {
       setShowSensitiveTreemap(false);
@@ -166,16 +156,6 @@ const Index = () => {
   ]);
 
   const treemapSkipExitAnimation = needsSensitiveMask && !revealSensitiveTreemap;
-
-  const preliminaryQuarterBudgetMap = useMemo(
-    () =>
-      preliminaryModeEnabled
-        ? buildPreliminaryQuarterBudgetMap(displayData, selectedQuarters, {
-            includeNonPnlBudgets: !showOnlyPnlIt,
-          })
-        : undefined,
-    [preliminaryModeEnabled, displayData, selectedQuarters, showOnlyPnlIt]
-  );
 
   /** Пока считаем маску sensitive, лоадер поверх тримапа. */
   const sensitiveTreemapBlock =
@@ -230,7 +210,6 @@ const Index = () => {
     setShowTeams(false);
     setShowInitiatives(false);
     setShowOnlyPnlIt(true);
-    setShowFinancialDataForSuperAdmin(false);
     setShowMoney(true);
     setShowSensitiveTreemap(false);
     setHighlightedInitiative(null);
@@ -279,8 +258,8 @@ const Index = () => {
       showTeams,
       showInitiatives,
       includeNonPnlBudgets: !showOnlyPnlIt,
-      includePreliminaryData: preliminaryModeEnabled,
-      preliminaryQuarterBudgetMap,
+      includePreliminaryData: false,
+      preliminaryQuarterBudgetMap: undefined,
     };
 
     const tree = buildBudgetTree(displayData, options);
@@ -290,7 +269,7 @@ const Index = () => {
     setStakeholdersData(stakeholdersTree);
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [displayData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showOnlyPnlIt, preliminaryModeEnabled, preliminaryQuarterBudgetMap]);
+  }, [displayData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showOnlyPnlIt]);
 
   useEffect(() => {
     rebuildTree();
@@ -513,6 +492,9 @@ const Index = () => {
 
   // View switching
   const handleViewChange = (view: ViewType) => {
+    if (view === 'stakeholders' && selectedStakeholders.length > 1) {
+      setSelectedStakeholders([selectedStakeholders[0]]);
+    }
     setCurrentView(view);
     setNavigationStack([]);
     setCurrentRoot(view === 'stakeholders' ? stakeholdersData : portfolioData);
@@ -621,8 +603,8 @@ const Index = () => {
   const offtrackItems = displayData.filter(row => {
     const budget = calculateBudget(row, selectedQuarters, {
       includeNonPnlBudgets: !showOnlyPnlIt,
-      includePreliminaryData: preliminaryModeEnabled,
-      preliminaryQuarterBudgetMap,
+      includePreliminaryData: false,
+      preliminaryQuarterBudgetMap: undefined,
     });
     return budget > 0 && isInitiativeOffTrack(row, selectedQuarters);
   });
@@ -638,7 +620,7 @@ const Index = () => {
         showOnlyOfftrack ? 'offtrack:1' : 'offtrack:0',
         hideStubs ? 'stubs:0' : 'stubs:1',
         showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
-        preliminaryModeEnabled ? 'prelim:1' : 'prelim:0',
+        'prelim:0',
         revealSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
         showTeams ? 'teams:1' : 'teams:0',
         showInitiatives ? 'initiatives:1' : 'initiatives:0',
@@ -653,7 +635,6 @@ const Index = () => {
       showOnlyOfftrack,
       hideStubs,
       showOnlyPnlIt,
-      preliminaryModeEnabled,
       revealSensitiveTreemap,
       showTeams,
       showInitiatives,
@@ -673,7 +654,7 @@ const Index = () => {
         showOnlyOfftrack ? 'offtrack:1' : 'offtrack:0',
         hideStubs ? 'stubs:0' : 'stubs:1',
         showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
-        preliminaryModeEnabled ? 'prelim:1' : 'prelim:0',
+        'prelim:0',
         revealSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
         showTeams ? 'teams:1' : 'teams:0',
         showInitiatives ? 'initiatives:1' : 'initiatives:0',
@@ -688,7 +669,6 @@ const Index = () => {
       showOnlyOfftrack,
       hideStubs,
       showOnlyPnlIt,
-      preliminaryModeEnabled,
       revealSensitiveTreemap,
       showTeams,
       showInitiatives,
@@ -808,13 +788,9 @@ const Index = () => {
         selectedQuarters={selectedQuarters}
         onQuartersChange={setSelectedQuarters}
         rawData={displayData}
-        preliminaryQuarterBudgetMap={preliminaryQuarterBudgetMap}
         sensitiveTreemapToggleVisible={isSuperAdmin}
         showSensitiveTreemap={revealSensitiveTreemap}
         onShowSensitiveTreemapChange={setShowSensitiveTreemap}
-        showFinancialDataToggleVisible={isSuperAdmin}
-        showFinancialData={showFinancialVerifiedData}
-        onShowFinancialDataChange={setShowFinancialDataForSuperAdmin}
         showTeams={showTeams}
         showInitiatives={showInitiatives}
         onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
@@ -845,6 +821,7 @@ const Index = () => {
         zoomPath={currentView !== 'timeline' ? zoomPath : []}
         zoomActiveTab={currentView === 'stakeholders' ? 'stakeholders' : 'budget'}
         currentView={currentView}
+        stakeholderFilterMode={currentView === 'stakeholders' ? 'single' : 'multi'}
       />
 
       {/* Main: хедер + FilterBar (~9.75rem) */}
@@ -910,7 +887,7 @@ const Index = () => {
             resetZoomTrigger={resetZoomTrigger}
             initialFocusedPath={zoomPath}
             showMoney={effectiveShowMoney}
-            showPreliminaryWarnings={preliminaryModeEnabled}
+            showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}
           />
         )}
@@ -920,6 +897,15 @@ const Index = () => {
             viewKey="stakeholders"
             contentKey={stakeholdersTreemapContentKey}
             data={stakeholdersData}
+            emptyStateTitle={
+              selectedStakeholders.length !== 1 ? 'Выберите кластер' : 'Нет инициатив по выбранным фильтрам'
+            }
+            emptyStateSubtitle={
+              selectedStakeholders.length !== 1
+                ? ''
+                : 'Попробуйте изменить параметры фильтрации или сбросить фильтры'
+            }
+            emptyStateShowResetButton={selectedStakeholders.length === 1}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
             selectedQuarters={selectedQuarters}
@@ -940,7 +926,7 @@ const Index = () => {
             showInitiatives={showInitiatives}
             initialFocusedPath={zoomPath}
             showMoney={effectiveShowMoney}
-            showPreliminaryWarnings={preliminaryModeEnabled}
+            showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}
           />
         )}
@@ -959,8 +945,7 @@ const Index = () => {
             highlightedInitiative={highlightedInitiative}
             onResetFilters={resetFilters}
             showMoney={effectiveShowMoney}
-            includePreliminaryData={preliminaryModeEnabled}
-            preliminaryQuarterBudgetMap={preliminaryQuarterBudgetMap}
+            includePreliminaryData={false}
             costSortOrder={costSortOrder}
             costFilterMin={costFilterMin}
             costFilterMax={costFilterMax}
@@ -981,8 +966,7 @@ const Index = () => {
         row={initiativePeekRow}
         selectedQuarters={selectedQuarters}
         showMoney={effectiveShowMoney}
-        includePreliminaryData={preliminaryModeEnabled}
-        preliminaryQuarterBudgetMap={preliminaryQuarterBudgetMap}
+        includePreliminaryData={false}
         onGoToTimeline={(initiativeName) => {
           setHighlightedInitiative(initiativeName);
           setCurrentView('timeline');

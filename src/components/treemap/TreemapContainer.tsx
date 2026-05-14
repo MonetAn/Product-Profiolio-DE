@@ -31,6 +31,8 @@ interface TreemapContainerProps {
   getColor?: ColorGetter;
   emptyStateTitle?: string;
   emptyStateSubtitle?: string;
+  /** false — не показывать кнопку «Сбросить фильтры» в заглушке при hasData (например старт «Кластеры») */
+  emptyStateShowResetButton?: boolean;
   showUploadButton?: boolean;
   onUploadClick?: () => void;
   onFileDrop?: (file: File) => void;
@@ -81,6 +83,7 @@ const TreemapContainer = ({
   getColor,
   emptyStateTitle = 'Нет инициатив по выбранным фильтрам',
   emptyStateSubtitle = 'Попробуйте изменить параметры фильтрации или сбросить фильтры',
+  emptyStateShowResetButton = true,
   showUploadButton = false,
   onUploadClick,
   onFileDrop,
@@ -636,7 +639,7 @@ const TreemapContainer = ({
           </div>
           <h1 className="welcome-title">{emptyStateTitle}</h1>
           <p className="welcome-subtitle">{emptyStateSubtitle}</p>
-          {onResetFilters && (
+          {emptyStateShowResetButton && onResetFilters && (
             <button 
               onClick={onResetFilters}
               className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
