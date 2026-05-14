@@ -14,6 +14,7 @@ import AdminAccess from "./pages/AdminAccess";
 import AdminActivity from "./pages/AdminActivity";
 import AdminSensitive from "./pages/AdminSensitive";
 import AdminPeopleEffortFill from "./pages/AdminPeopleEffortFill";
+import AdminFillAnalytics from "./pages/AdminFillAnalytics";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import PeoplePlatformAllocationsMock from "./pages/PeoplePlatformAllocationsMock";
@@ -81,6 +82,13 @@ const App = () => (
               <ProtectedRoute>
                 <AdminRoute>
                   <AdminSensitive />
+                </AdminRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/fill-analytics" element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <AdminFillAnalytics />
                 </AdminRoute>
               </ProtectedRoute>
             } />

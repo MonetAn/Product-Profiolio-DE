@@ -1,6 +1,7 @@
 import {
   Users,
   ClipboardList,
+  BarChart3,
   Shield,
   Activity,
   LayoutDashboard,
@@ -14,7 +15,14 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
-export type ViewMode = 'initiatives' | 'people' | 'markets' | 'access' | 'activity' | 'sensitive';
+export type ViewMode =
+  | 'initiatives'
+  | 'fillAnalytics'
+  | 'people'
+  | 'markets'
+  | 'access'
+  | 'activity'
+  | 'sensitive';
 
 interface AdminHeaderProps {
   currentView: ViewMode;
@@ -59,6 +67,10 @@ const AdminHeader = ({
     const queryString = searchParams.toString();
     return queryString ? `/admin/people?${queryString}` : '/admin/people';
   }, [searchParams]);
+  const fillAnalyticsUrl = useMemo(() => {
+    const queryString = searchParams.toString();
+    return queryString ? `/admin/fill-analytics?${queryString}` : '/admin/fill-analytics';
+  }, [searchParams]);
 
   const dashboardUrl = useMemo(() => {
     const queryString = searchParams.toString();
@@ -96,6 +108,17 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Заполнение</span>
             </ToggleGroupItem>
           </Link>
+          {isSuperAdmin && (
+            <Link to={fillAnalyticsUrl}>
+              <ToggleGroupItem
+                value="fillAnalytics"
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline">Аналитика заполнения</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
           <Link to={peopleUrl}>
             <ToggleGroupItem 
               value="people" 
