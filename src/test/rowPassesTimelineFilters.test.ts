@@ -68,4 +68,17 @@ describe('rowPassesTimelineFilters', () => {
       )
     ).toBe(true);
   });
+
+  it('fails when only effort is set for the period (no visible budget)', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          quarterlyData: {
+            '2026-Q1': { budget: 0, effortCoefficient: 25 },
+          },
+        }),
+        baseOptions
+      )
+    ).toBe(false);
+  });
 });

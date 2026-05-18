@@ -617,6 +617,21 @@ export function timelineVisiblePeriodCost(
   return sumQuarterlyDataBudgetForQuarters(row, selectedQuarters);
 }
 
+/** Есть ли на таймлайне ненулевой бюджет за выбранные кварталы (как в ячейках). */
+export function hasTimelineVisibleBudgetInPeriod(
+  row: RawDataRow,
+  selectedQuarters: string[],
+  options?: {
+    includePreliminaryData?: boolean;
+    preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  }
+): boolean {
+  const cost = timelineVisiblePeriodCost(row, selectedQuarters, options);
+  if (cost <= 0) return false;
+  if (row.isTimelineStub && isNegligibleTimelineBudgetRub(cost)) return false;
+  return true;
+}
+
 // Get all quarters where initiative has budget
 export function getInitiativeQuarters(row: RawDataRow): string[] {
   return Object.keys(row.quarterlyData).filter(q => row.quarterlyData[q].budget > 0);
@@ -700,16 +715,11 @@ export function rowPassesTimelineFilters(row: RawDataRow, options: TimelineRowFi
     costType = 'period',
   } = options;
 
-  const periodBudget = calculateBudget(row, selectedQuarters, {
-    includePreliminaryData,
-    preliminaryQuarterBudgetMap,
-  });
-  const periodEffort = periodEffortSum(row, selectedQuarters);
-  if (periodBudget === 0 && periodEffort <= 0) return false;
   if (
-    row.isTimelineStub &&
-    periodEffort <= 0 &&
-    isNegligibleTimelineBudgetRub(periodBudget)
+    !hasTimelineVisibleBudgetInPeriod(row, selectedQuarters, {
+      includePreliminaryData,
+      preliminaryQuarterBudgetMap,
+    })
   ) {
     return false;
   }

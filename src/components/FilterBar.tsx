@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { RawDataRow, calculateBudget, formatBudget, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, formatBudget, hasTimelineVisibleBudgetInPeriod, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import {
   Tooltip,
   TooltipContent,
@@ -252,7 +252,11 @@ const FilterBar = ({
           includePreliminaryData: false,
           preliminaryQuarterBudgetMap: undefined,
         });
-        if (periodBudget === 0) return acc;
+        if (currentView === 'timeline') {
+          if (!hasTimelineVisibleBudgetInPeriod(row, selectedQuarters)) return acc;
+        } else if (periodBudget === 0) {
+          return acc;
+        }
 
         const isSupport = isInitiativeSupport(row, selectedQuarters);
         const isOffTrack = isInitiativeOffTrack(row, selectedQuarters);
