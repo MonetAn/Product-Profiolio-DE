@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { AdminDataRow, AdminQuarterData, GeoCostSplit } from '@/lib/adminDataManager';
+import { stakeholdersStringFromList } from '@/lib/adminDataManager';
 import { effortMatrixColumnChipState, hasInitiativeEffortOrCostInYear } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange, getCurrentQuarter, getPreviousQuarter } from '@/lib/quarterUtils';
@@ -76,7 +77,8 @@ function hubHelpContent(block: PortfolioHubBlock, previousQuarterShort: string):
     return {
       title: 'Описание и документация',
       body: [
-        'Заполните описания по всем инициативам. Если все уже заполнено - проверьте актуальность и нажмите «Сохранить и подтвердить».',
+        'Заполните описания по всем инициативам. По клику на инициативу укажите кластеры и при необходимости распределение по рынкам — эти данные используются на дашборде «Кластеры».',
+        'Если все уже заполнено — проверьте актуальность и нажмите «Сохранить и подтвердить».',
       ],
     };
   }
@@ -460,6 +462,9 @@ export function AdminPortfolioHubPanels({
       const key = map[field];
       if (!key) return;
       onInitiativeFieldChange(id, key, value as never);
+      if (field === 'stakeholdersList' && Array.isArray(value)) {
+        onInitiativeFieldChange(id, 'stakeholders', stakeholdersStringFromList(value));
+      }
     },
     [onInitiativeFieldChange]
   );
@@ -628,6 +633,8 @@ export function AdminPortfolioHubPanels({
                 quartersCatalog={matrixCatalogQuarters}
                 visibleQuarters={matrixVisibleQuarters}
                 onInitiativeDraftChange={onReviewDraftChange}
+                onGeoCostSplitDraftChange={onGeoChange}
+                marketCountries={marketCountries}
                 compactChrome
               />
             </div>

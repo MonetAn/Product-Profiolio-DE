@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { Check, ExternalLink } from 'lucide-react';
+import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { TreemapContainer } from '@/components/treemap';
 import {
   AlertDialog,
@@ -21,9 +22,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAccess } from '@/hooks/useAccess';
 import {
   type AdminDataRow,
+  type GeoCostSplit,
+  STAKEHOLDERS_LIST,
+  geoCostSplitPercentsTotal,
   getQuickFlowDescriptionDocIssuesForQuarters,
   getMissingDescriptionDocFields,
+  quickFlowPaidQuartersForRow,
 } from '@/lib/adminDataManager';
+import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
   buildEffortTreemapPreviewModel,
   resolveEffortPreviewQuarters,
@@ -44,6 +50,9 @@ type Props = {
   quartersCatalog: string[];
   visibleQuarters: string[];
   onInitiativeDraftChange?: (id: string, field: DraftField, value: string | string[] | boolean) => void;
+  /** Черновик geo split (хаб / quick flow). */
+  onGeoCostSplitDraftChange?: (initiativeId: string, split: GeoCostSplit | undefined) => void;
+  marketCountries?: MarketCountryRow[];
   /** Убрать заголовки и пояснения сценария (режим блоков полной таблицы). */
   compactChrome?: boolean;
 };
@@ -98,6 +107,8 @@ export function AdminQuickFlowReviewTreemapStep({
   quartersCatalog,
   visibleQuarters,
   onInitiativeDraftChange,
+  onGeoCostSplitDraftChange,
+  marketCountries = [],
   compactChrome = false,
 }: Props) {
   const { isSuperAdmin } = useAccess();
@@ -137,6 +148,8 @@ export function AdminQuickFlowReviewTreemapStep({
   const [localName, setLocalName] = useState('');
   const [localDescription, setLocalDescription] = useState('');
   const [localDocLink, setLocalDocLink] = useState('');
+  const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
+  const [localGeoSplit, setLocalGeoSplit] = useState<GeoCostSplit | undefined>(undefined);
   const [localStub, setLocalStub] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
@@ -150,20 +163,38 @@ export function AdminQuickFlowReviewTreemapStep({
     setLocalName(row.initiative || '');
     setLocalDescription(row.description || '');
     setLocalDocLink(row.documentationLink || '');
+    setLocalStakeholders(row.stakeholdersList || []);
+    setLocalGeoSplit(row.initiativeGeoCostSplit);
     setLocalStub(row.isTimelineStub === true);
     // Только при открытии по id — не привязываемся к rows, иначе сбросим ввод при каждом ререндере родителя
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogRowId]);
 
+  const dialogGeoCost = useMemo(() => {
+    if (!dialogRow) return 0;
+    const paidQs = quickFlowPaidQuartersForRow(dialogRow, fillQuarters);
+    return paidQs.reduce((s, q) => s + (dialogRow.quarterlyData[q]?.cost ?? 0), 0);
+  }, [dialogRow, fillQuarters]);
+
+  const geoPctTotal = geoCostSplitPercentsTotal(localGeoSplit?.entries ?? []);
+
   const isDirty = useMemo(() => {
     if (!dialogRow) return false;
+    const baselineStakeholders = dialogRow.stakeholdersList || [];
+    const stakeholdersChanged =
+      localStakeholders.length !== baselineStakeholders.length ||
+      localStakeholders.some((s) => !baselineStakeholders.includes(s));
+    const geoChanged =
+      JSON.stringify(localGeoSplit ?? null) !== JSON.stringify(dialogRow.initiativeGeoCostSplit ?? null);
     return (
       localName !== (dialogRow.initiative || '') ||
       localDescription !== (dialogRow.description || '') ||
       localDocLink !== (dialogRow.documentationLink || '') ||
+      stakeholdersChanged ||
+      geoChanged ||
       localStub !== (dialogRow.isTimelineStub === true)
     );
-  }, [dialogRow, localName, localDescription, localDocLink, localStub]);
+  }, [dialogRow, localName, localDescription, localDocLink, localStakeholders, localGeoSplit, localStub]);
 
   const closeDialog = useCallback(() => {
     setDialogRowId(null);
@@ -183,11 +214,40 @@ export function AdminQuickFlowReviewTreemapStep({
     draft(dialogRow.id, 'initiative', localName);
     draft(dialogRow.id, 'description', localDescription);
     draft(dialogRow.id, 'documentationLink', localDocLink);
+    const baselineStakeholders = dialogRow.stakeholdersList || [];
+    const stakeholdersChanged =
+      localStakeholders.length !== baselineStakeholders.length ||
+      localStakeholders.some((s) => !baselineStakeholders.includes(s));
+    if (stakeholdersChanged) {
+      draft(dialogRow.id, 'stakeholdersList', localStakeholders);
+    }
+    const geoChanged =
+      JSON.stringify(localGeoSplit ?? null) !== JSON.stringify(dialogRow.initiativeGeoCostSplit ?? null);
+    if (geoChanged && onGeoCostSplitDraftChange) {
+      onGeoCostSplitDraftChange(dialogRow.id, localGeoSplit);
+    }
     if (localStub !== (dialogRow.isTimelineStub === true)) {
       draft(dialogRow.id, 'isTimelineStub', localStub);
     }
     closeDialog();
-  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName, localStub]);
+  }, [
+    closeDialog,
+    dialogRow,
+    draft,
+    localDescription,
+    localDocLink,
+    localGeoSplit,
+    localName,
+    localStakeholders,
+    localStub,
+    onGeoCostSplitDraftChange,
+  ]);
+
+  const handleStakeholderToggle = useCallback((stakeholder: string, checked: boolean) => {
+    setLocalStakeholders((prev) =>
+      checked ? [...prev, stakeholder] : prev.filter((s) => s !== stakeholder)
+    );
+  }, []);
 
   const treemapViewKey = `quick-flow-review-${resolvedPreviewQuarters.join(',')}-${model.contentKey.slice(0, 80)}`;
 
@@ -279,7 +339,7 @@ export function AdminQuickFlowReviewTreemapStep({
           {dialogRow && draft ? (
             <>
               <DialogTitle className="sr-only">
-                {dialogRow.initiative?.trim() || 'Инициатива'}: название, описание и документация
+                {dialogRow.initiative?.trim() || 'Инициатива'}: описание, кластеры и рынки
               </DialogTitle>
               <div className="flex max-h-[calc(92dvh-7rem)] flex-col gap-5 overflow-y-auto px-6 py-6">
                 <div className="space-y-2">
@@ -292,6 +352,36 @@ export function AdminQuickFlowReviewTreemapStep({
                     onChange={(e) => setLocalName(e.target.value)}
                     className="text-base font-medium"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Кластеры (стейкхолдеры)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Отметьте кластеры, в которых участвует инициатива — они используются на дашборде «Кластеры».
+                  </p>
+                  <div
+                    className={`flex flex-wrap gap-2 rounded-md p-2 transition-all ${
+                      localStakeholders.length === 0 ? 'bg-primary/[0.08] ring-2 ring-primary/55' : ''
+                    }`}
+                  >
+                    {STAKEHOLDERS_LIST.map((stakeholder) => {
+                      const isSelected = localStakeholders.includes(stakeholder);
+                      return (
+                        <button
+                          key={stakeholder}
+                          type="button"
+                          onClick={() => handleStakeholderToggle(stakeholder, !isSelected)}
+                          className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-all ${
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                              : 'border-border bg-background hover:bg-muted'
+                          }`}
+                        >
+                          {isSelected ? <Check size={14} className="shrink-0" aria-hidden /> : null}
+                          {stakeholder}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`review-desc-${dialogRow.id}`} className="text-sm font-medium">
@@ -334,6 +424,31 @@ export function AdminQuickFlowReviewTreemapStep({
                     ) : null}
                   </div>
                 </div>
+                {onGeoCostSplitDraftChange && marketCountries.length > 0 && dialogGeoCost > 0 ? (
+                  <div className="space-y-2 border-t border-border/60 pt-4">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <Label className="text-sm font-medium">Распределение по рынкам</Label>
+                      <span
+                        className={`text-sm font-semibold tabular-nums ${
+                          geoPctTotal === 100
+                            ? 'text-emerald-600 dark:text-emerald-500'
+                            : 'text-red-600 dark:text-red-500'
+                        }`}
+                      >
+                        {geoPctTotal}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Доли по странам и кластерам для управленческой отчётности и PnL рынков.
+                    </p>
+                    <GeoCostSplitEditor
+                      cost={Math.round(dialogGeoCost)}
+                      value={localGeoSplit}
+                      countries={marketCountries}
+                      onChange={setLocalGeoSplit}
+                    />
+                  </div>
+                ) : null}
                 {isSuperAdmin ? (
                   <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                     <Label htmlFor={`review-stub-${dialogRow.id}`} className="text-sm font-medium">

@@ -29,6 +29,7 @@ import {
   quarterRequiresPlanFact,
   quarterRequiresMetricFact,
   type GeoCostSplit,
+  stakeholdersStringFromList,
   getInitiativeDisplayName,
   getStubResidualLabel,
 } from '@/lib/adminDataManager';
@@ -755,6 +756,7 @@ const InitiativeDetailDialog = ({
       : localStakeholders.filter(s => s !== stakeholder);
     setLocalStakeholders(newList);
     onDataChange(initiative.id, 'stakeholdersList', newList);
+    onDataChange(initiative.id, 'stakeholders', stakeholdersStringFromList(newList));
   };
 
   return (

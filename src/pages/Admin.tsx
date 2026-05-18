@@ -41,6 +41,7 @@ import {
   AdminQuarterData,
   type GeoCostSplit,
   stakeholdersListFromGeoSplit,
+  stakeholdersStringFromList,
 } from '@/lib/adminDataManager';
 import {
   readQuickTeamQueue,
@@ -314,6 +315,7 @@ const Admin = () => {
       AdminDataRow,
       | 'initiative'
       | 'stakeholdersList'
+      | 'stakeholders'
       | 'description'
       | 'documentationLink'
       | 'isTimelineStub'
@@ -744,6 +746,7 @@ const Admin = () => {
       const allowed: (keyof HubRowFieldPatch)[] = [
         'initiative',
         'stakeholdersList',
+        'stakeholders',
         'description',
         'documentationLink',
         'isTimelineStub',
@@ -752,7 +755,14 @@ const Admin = () => {
       setHubRowPatches((prev) => {
         const next = new Map(prev);
         const cur = next.get(id) ?? {};
-        next.set(id, { ...cur, [field]: value } as HubRowFieldPatch);
+        let patch: HubRowFieldPatch = { ...cur, [field]: value } as HubRowFieldPatch;
+        if (field === 'stakeholdersList' && Array.isArray(value)) {
+          patch = {
+            ...patch,
+            stakeholders: stakeholdersStringFromList(value),
+          };
+        }
+        next.set(id, patch);
         return next;
       });
     },
@@ -788,12 +798,14 @@ const Admin = () => {
           initiativeGeoCostSplit: geo,
         };
         if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
           patch = {
             ...patch,
-            stakeholdersList: stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey),
+            stakeholdersList: sh,
+            stakeholders: stakeholdersStringFromList(sh),
           };
         } else {
-          const { stakeholdersList: _d, ...rest } = patch;
+          const { stakeholdersList: _sl, stakeholders: _s, ...rest } = patch;
           patch = rest as HubRowFieldPatch;
         }
         if (Object.keys(patch).length > 0) next.set(id, patch);
@@ -930,6 +942,7 @@ const Admin = () => {
       const scalarKeys: (keyof HubRowFieldPatch)[] = [
         'initiative',
         'stakeholdersList',
+        'stakeholders',
         'description',
         'documentationLink',
         'isTimelineStub',
@@ -1263,7 +1276,14 @@ const Admin = () => {
       setQuickRowPatches((prev) => {
         const next = new Map(prev);
         const cur = next.get(id) ?? {};
-        next.set(id, { ...cur, [field]: value } as QuickFlowRowPatch);
+        let patch: QuickFlowRowPatch = { ...cur, [field]: value } as QuickFlowRowPatch;
+        if (field === 'stakeholdersList' && Array.isArray(value)) {
+          patch = {
+            ...patch,
+            stakeholders: stakeholdersStringFromList(value),
+          };
+        }
+        next.set(id, patch);
         return next;
       });
     },
@@ -1379,12 +1399,14 @@ const Admin = () => {
           initiativeGeoCostSplit: geo,
         };
         if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
           patch = {
             ...patch,
-            stakeholdersList: stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey),
+            stakeholdersList: sh,
+            stakeholders: stakeholdersStringFromList(sh),
           };
         } else {
-          const { stakeholdersList: _d, ...rest } = patch;
+          const { stakeholdersList: _sl, stakeholders: _s, ...rest } = patch;
           patch = rest as QuickFlowRowPatch;
         }
         if (Object.keys(patch).length > 0) next.set(id, patch);
@@ -1726,6 +1748,7 @@ const Admin = () => {
       if (split?.entries?.length) {
         const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
         updateInitiative(id, 'stakeholdersList', sh, 0);
+        updateInitiative(id, 'stakeholders', stakeholdersStringFromList(sh), 0);
       }
     },
     [updateInitiativeGeoCostSplit, updateInitiative, countryIdToClusterKey]

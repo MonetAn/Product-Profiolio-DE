@@ -1658,6 +1658,8 @@ export default function AdminQuickFlow({
                 quartersCatalog={matrixCatalogQuarters}
                 visibleQuarters={matrixVisibleQuarters}
                 onInitiativeDraftChange={onInitiativeDraftChange}
+                onGeoCostSplitDraftChange={onGeoCostSplitDraftChange}
+                marketCountries={marketCountries}
               />
             ) : null}
             {step === stepTimeline ? (
