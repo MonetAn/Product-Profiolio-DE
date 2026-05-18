@@ -44,4 +44,28 @@ describe('rowPassesTimelineFilters', () => {
       })
     ).toBe(false);
   });
+
+  it('fails for timeline stub with negligible rounding budget and no effort', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          isTimelineStub: true,
+          quarterlyData: { '2026-Q1': { budget: 1 } },
+        }),
+        baseOptions
+      )
+    ).toBe(false);
+  });
+
+  it('passes for timeline stub with meaningful budget', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          isTimelineStub: true,
+          quarterlyData: { '2026-Q1': { budget: 5000 } },
+        }),
+        baseOptions
+      )
+    ).toBe(true);
+  });
 });
