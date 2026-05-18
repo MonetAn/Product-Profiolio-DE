@@ -1,5 +1,5 @@
-import { useMemo, useEffect, useRef, useState } from 'react';
-import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, Pencil } from 'lucide-react';
+import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
+import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, Pencil, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   RawDataRow,
@@ -32,6 +32,11 @@ interface NamePopupData {
   x: number;
   y: number;
   pinned: boolean;
+}
+
+interface DetailPanelData {
+  row: RawDataRow;
+  focusQuarter?: string;
 }
 
 interface GanttViewProps {
@@ -100,10 +105,22 @@ const GanttView = ({
   const namePopupRef = useRef<HTMLDivElement>(null);
   const [namePopupSize, setNamePopupSize] = useState<{ width: number; height: number } | null>(null);
 
+  const [detailPanel, setDetailPanel] = useState<DetailPanelData | null>(null);
+  const detailPanelScrollRef = useRef<HTMLDivElement>(null);
+  const focusQuarterRef = useRef<HTMLDivElement>(null);
+
   const timelineQuarterWarningsForRow = (row: RawDataRow, quarter: string): string[] => {
     if (!adminTimelineQuarterWarnings || !row.adminInitiativeRowId) return [];
     return adminTimelineQuarterWarnings(row.adminInitiativeRowId, quarter);
   };
+
+  const ganttRowKey = (row: RawDataRow) =>
+    row.adminInitiativeRowId ?? `${row.unit}|${row.team}|${row.initiative}`;
+
+  const isSameGanttRow = (a: RawDataRow, b: RawDataRow) => ganttRowKey(a) === ganttRowKey(b);
+
+  const isDetailPanelOpenForRow = (row: RawDataRow) =>
+    detailPanel != null && isSameGanttRow(detailPanel.row, row);
 
   // Measure tooltip sizes after render
   useEffect(() => {
@@ -192,29 +209,31 @@ const GanttView = ({
     }
   }, [highlightedInitiative, filteredData]);
 
-  // Close popups on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      // Close quarter popup
-      if (quarterPopup?.pinned && popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setQuarterPopup(null);
-        setExpandedSections({});
-      }
-      // Close name popup
-      if (namePopup?.pinned && namePopupRef.current && !namePopupRef.current.contains(e.target as Node)) {
-        setNamePopup(null);
-        setNameExpandedSections({});
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [quarterPopup, namePopup]);
-
   const quarterWidth = 160;
+
+  const openDetailPanel = useCallback((row: RawDataRow, focusQuarter?: string) => {
+    setDetailPanel({ row, focusQuarter });
+    setQuarterPopup(null);
+    setNamePopup(null);
+    setExpandedSections({});
+    setNameExpandedSections({});
+  }, []);
+
+  const closeDetailPanel = useCallback(() => {
+    setDetailPanel(null);
+  }, []);
+
+  useEffect(() => {
+    if (!detailPanel?.focusQuarter || !focusQuarterRef.current || !detailPanelScrollRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      focusQuarterRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [detailPanel?.row, detailPanel?.focusQuarter]);
 
   // Name popup handlers
   const handleNameMouseEnter = (e: React.MouseEvent, row: RawDataRow) => {
-    if (namePopup?.pinned) return;
+    if (isDetailPanelOpenForRow(row)) return;
     setNamePopup({
       row,
       x: e.clientX,
@@ -224,24 +243,20 @@ const GanttView = ({
   };
 
   const handleNameMouseMove = (e: React.MouseEvent) => {
-    if (namePopup?.pinned) return;
     setNamePopup(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
   };
 
   const handleNameMouseLeave = () => {
-    if (namePopup?.pinned) return;
     setNamePopup(null);
   };
 
   const handleNameClick = (e: React.MouseEvent, row: RawDataRow) => {
     e.stopPropagation();
-    setNamePopup({
-      row,
-      x: e.clientX,
-      y: e.clientY,
-      pinned: true
-    });
-    setNameExpandedSections({});
+    if (detailPanel && isSameGanttRow(detailPanel.row, row) && !detailPanel.focusQuarter) {
+      closeDetailPanel();
+      return;
+    }
+    openDetailPanel(row);
   };
 
   const toggleNameSection = (section: string) => {
@@ -249,7 +264,7 @@ const GanttView = ({
   };
 
   const handleSegmentMouseEnter = (e: React.MouseEvent, row: RawDataRow, quarter: string) => {
-    if (quarterPopup?.pinned) return;
+    if (isDetailPanelOpenForRow(row)) return;
     setQuarterPopup({
       row,
       quarter,
@@ -260,12 +275,10 @@ const GanttView = ({
   };
 
   const handleSegmentMouseMove = (e: React.MouseEvent) => {
-    if (quarterPopup?.pinned) return;
     setQuarterPopup((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : null));
   };
 
   const handleSegmentMouseLeave = () => {
-    if (quarterPopup?.pinned) return;
     setQuarterPopup(null);
   };
 
@@ -276,14 +289,12 @@ const GanttView = ({
       setQuarterPopup(null);
       return;
     }
-    setQuarterPopup({
-      row,
-      quarter,
-      x: e.clientX,
-      y: e.clientY,
-      pinned: true
-    });
-    setExpandedSections({ plan: true, fact: true, comment: true });
+    openDetailPanel(row, quarter);
+  };
+
+  const handleQuarterDetailClick = (e: React.MouseEvent, row: RawDataRow, quarter: string) => {
+    e.stopPropagation();
+    openDetailPanel(row, quarter);
   };
 
   const toggleSection = (section: string) => {
@@ -293,7 +304,7 @@ const GanttView = ({
   // Empty state
   if (rawData.length === 0) {
     return (
-      <div className="gantt-container">
+      <div className={cn('gantt-container', detailPanel && 'gantt-container-with-panel')}>
         <div className="gantt-empty-state">
           <div className="gantt-empty-icon">
             <FileText size={32} />
@@ -520,23 +531,6 @@ const GanttView = ({
           </div>
         )}
 
-        {pinned && adminOnEditQuarter && row.adminInitiativeRowId && (
-          <div className="mt-3 border-t border-border pt-3">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="h-8 w-full gap-1.5 text-xs"
-              onClick={() => {
-                adminOnEditQuarter(row.adminInitiativeRowId!, quarter);
-                setQuarterPopup(null);
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Редактировать квартал
-            </Button>
-          </div>
-        )}
       </div>
     );
   };
@@ -644,37 +638,196 @@ const GanttView = ({
           </div>
         )}
 
-        {pinned && adminOnEditInitiativeCard && row.adminInitiativeRowId && (
-          <div className="mt-3 border-t border-border pt-3">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="h-8 w-full gap-1.5 text-xs"
-              onClick={() => {
-                adminOnEditInitiativeCard(row.adminInitiativeRowId!);
-                setNamePopup(null);
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Редактировать карточку
-            </Button>
-          </div>
-        )}
 
-        {!pinned && (
-          <div className="gantt-name-popup-hint">
-            Кликните для детального просмотра
-          </div>
-        )}
       </div>
+    );
+  };
+
+
+  const renderDetailPanel = () => {
+    if (!detailPanel) return null;
+
+    const { row, focusQuarter } = detailPanel;
+    const totalCost = calculateTotalBudget(row);
+    const periodCost = calculateBudget(row, selectedQuarters, {
+      includePreliminaryData,
+      preliminaryQuarterBudgetMap,
+    });
+    const allQuarters = getInitiativeQuarters(row);
+    const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
+
+    const quartersWithData = selectedQuarters.filter((q) => {
+      const qData = row.quarterlyData[q];
+      if (!qData) return false;
+      if (qData.budget > 0) return true;
+      return Boolean(
+        qData.metricPlan?.trim() ||
+          qData.metricFact?.trim() ||
+          qData.comment?.trim()
+      );
+    });
+
+    return (
+      <aside className="gantt-detail-panel" aria-label="Детали инициативы">
+        <div className="gantt-detail-panel-header">
+          <h2 className="gantt-detail-panel-title">{row.initiative}</h2>
+          <button
+            type="button"
+            className="gantt-detail-panel-close"
+            onClick={closeDetailPanel}
+            aria-label="Закрыть панель"
+          >
+            <X size={16} aria-hidden />
+          </button>
+        </div>
+
+        <div ref={detailPanelScrollRef} className="gantt-detail-panel-body">
+          <div className="gantt-detail-panel-meta">
+            {row.unit} › {row.team || 'Без команды'}
+          </div>
+
+          {showMoney && (
+            <div className="gantt-detail-panel-costs">
+              <span>Всего: {formatBudget(totalCost)}</span>
+              {showPeriodCost && <span className="period-cost">За период: {formatBudget(periodCost)}</span>}
+            </div>
+          )}
+
+          {row.description ? (
+            <div className="gantt-detail-panel-section">
+              <div className="gantt-detail-panel-label">Описание</div>
+              <div className="gantt-detail-panel-text gantt-detail-panel-description">
+                <DescriptionMarkdown content={row.description} />
+              </div>
+            </div>
+          ) : null}
+
+          {row.stakeholders ? (
+            <div className="gantt-detail-panel-section">
+              <div className="gantt-detail-panel-label">Стейкхолдеры</div>
+              <div className="gantt-detail-panel-tags">
+                <span className="gantt-detail-panel-tag">{row.stakeholders}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {!row.isTimelineStub && row.documentationLink?.trim() ? (
+            <a
+              href={row.documentationLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="gantt-detail-panel-doc-link"
+            >
+              <ExternalLink size={14} aria-hidden />
+              Документация
+            </a>
+          ) : null}
+
+          {quartersWithData.length > 0 ? (
+            <div className="gantt-detail-panel-quarters">
+              <div className="gantt-detail-panel-label">Кварталы</div>
+              {quartersWithData.map((q) => {
+                const qData = row.quarterlyData[q]!;
+                const isSupport = qData.support;
+                const isOffTrack = !qData.onTrack;
+                const quarterWarnings = timelineQuarterWarningsForRow(row, q);
+                const isFocused = focusQuarter === q;
+
+                return (
+                  <div
+                    key={q}
+                    ref={isFocused ? focusQuarterRef : undefined}
+                    className={cn('gantt-detail-quarter', isFocused && 'gantt-detail-quarter-focused')}
+                  >
+                    <div className="gantt-detail-quarter-head">
+                      <span className="gantt-detail-quarter-name">{q.replace('-', ' ')}</span>
+                      <div className="gantt-detail-quarter-badges">
+                        <span className={`gantt-quarter-popup-badge ${isSupport ? 'support' : 'development'}`}>
+                          {isSupport ? 'Support' : 'Development'}
+                        </span>
+                        {isOffTrack ? (
+                          <span className="gantt-quarter-popup-badge off-track">Off-track</span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {quarterWarnings.length > 0 ? (
+                      <div className="gantt-quarter-popup-admin-warnings" role="status">
+                        {quarterWarnings.map((t, i) => (
+                          <div key={`${i}-${t}`} className="gantt-quarter-popup-admin-warning-line">
+                            {t}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {showMoney && qData.budget > 0 ? (
+                      <div className="gantt-detail-quarter-budget">Бюджет: {formatBudget(qData.budget)}</div>
+                    ) : null}
+
+                    {qData.metricPlan?.trim() ? (
+                      <div className="gantt-detail-panel-section">
+                        <div className="gantt-detail-panel-sublabel">План</div>
+                        <div className="gantt-detail-panel-text">{qData.metricPlan}</div>
+                      </div>
+                    ) : null}
+
+                    {qData.metricFact?.trim() ? (
+                      <div className="gantt-detail-panel-section">
+                        <div className="gantt-detail-panel-sublabel">Факт</div>
+                        <div className="gantt-detail-panel-text">{qData.metricFact}</div>
+                      </div>
+                    ) : null}
+
+                    {qData.comment?.trim() ? (
+                      <div className="gantt-detail-panel-section">
+                        <div className="gantt-detail-panel-sublabel">Комментарий</div>
+                        <div className="gantt-detail-panel-text">{qData.comment}</div>
+                      </div>
+                    ) : null}
+
+                    {adminOnEditQuarter && row.adminInitiativeRowId ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="mt-2 h-8 w-full gap-1.5 text-xs"
+                        onClick={() => adminOnEditQuarter(row.adminInitiativeRowId!, q)}
+                      >
+                        <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        Редактировать квартал
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {adminOnEditInitiativeCard && row.adminInitiativeRowId ? (
+            <div className="gantt-detail-panel-footer">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-8 w-full gap-1.5 text-xs"
+                onClick={() => adminOnEditInitiativeCard(row.adminInitiativeRowId!)}
+              >
+                <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Редактировать карточку
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </aside>
     );
   };
 
   const sheetMinWidth = 320 + selectedQuarters.length * quarterWidth;
 
   return (
-    <div className="gantt-container">
+    <div className={cn('gantt-container', detailPanel && 'gantt-container-with-panel')}>
+      <div className="gantt-main">
       <div className="gantt-unified-scroll" ref={unifiedScrollRef}>
         <div
           className="gantt-sheet"
@@ -706,20 +859,31 @@ const GanttView = ({
           const allQuarters = getInitiativeQuarters(row);
           const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
           const isHighlighted = highlightedInitiative === row.initiative;
+          const isDetailSelected = isDetailPanelOpenForRow(row);
 
           return (
             <div 
               key={row.adminInitiativeRowId ?? `${row.unit}|${row.team}|${row.initiative}|${idx}`} 
               ref={isHighlighted ? highlightedRef : null}
-              className={`gantt-row ${isHighlighted ? 'highlighted' : ''} ${row.isTimelineStub ? 'gantt-row-is-stub' : ''}`}
+              className={cn('gantt-row', isHighlighted && 'highlighted', row.isTimelineStub && 'gantt-row-is-stub', isDetailSelected && 'gantt-row-detail-selected')}
             >
-              <div className="gantt-row-label">
+              <div
+                className="gantt-row-label gantt-row-label-clickable"
+                onClick={(e) => handleNameClick(e, row)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleNameClick(e as unknown as React.MouseEvent, row);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
                 <div 
                   className="gantt-row-name"
                   onMouseEnter={(e) => handleNameMouseEnter(e, row)}
                   onMouseMove={handleNameMouseMove}
                   onMouseLeave={handleNameMouseLeave}
-                  onClick={(e) => handleNameClick(e, row)}
                 >
                   {row.initiative}
                 </div>
@@ -800,7 +964,20 @@ const GanttView = ({
                     }
 
                     return (
-                      <div key={q} className="gantt-quarter-detail" style={{ minWidth: quarterWidth }}>
+                      <div
+                        key={q}
+                        role="button"
+                        tabIndex={0}
+                        className="gantt-quarter-detail gantt-quarter-detail-clickable"
+                        style={{ minWidth: quarterWidth }}
+                        onClick={(e) => handleQuarterDetailClick(e, row, q)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleQuarterDetailClick(e as unknown as React.MouseEvent, row, q);
+                          }
+                        }}
+                      >
                         <div className="gantt-quarter-detail-content">
                           {hasPlan && (
                             <span className="detail-value" title={qData.metricPlan}>
@@ -830,12 +1007,11 @@ const GanttView = ({
         </div>
       </div>
 
-      {/* Name popup */}
       {renderNamePopup()}
-
-      {/* Quarter detail popup */}
       {renderQuarterPopup()}
+      </div>
 
+      {renderDetailPanel()}
     </div>
   );
 };
