@@ -8,6 +8,7 @@ import {
   createEmptyQuarterData,
   geoCostSplitToJson,
   parseGeoCostSplit,
+  stakeholdersStringFromList,
   type GeoCostSplit,
 } from '@/lib/adminDataManager';
 import {
@@ -282,7 +283,18 @@ export function useInitiativeMutations() {
 
       queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
         if (old === undefined) return undefined;
-        return old.map((row) => (row.id !== id ? row : { ...row, [field]: value }));
+        return old.map((row) => {
+          if (row.id !== id) return row;
+          if (field === 'stakeholdersList') {
+            const list = value as string[];
+            return {
+              ...row,
+              stakeholdersList: list,
+              stakeholders: stakeholdersStringFromList(list),
+            };
+          }
+          return { ...row, [field]: value };
+        });
       });
 
       setSyncStatus('saving');
@@ -302,10 +314,21 @@ export function useInitiativeMutations() {
           setPendingCount(debounceTimers.current.size);
           return;
         }
-        updateMutation.mutate({
-          id,
-          patch: { [dbColumn]: latestValue },
-        });
+        if (field === 'stakeholdersList') {
+          const list = latestValue as string[];
+          updateMutation.mutate({
+            id,
+            patch: {
+              stakeholders_list: list,
+              stakeholders: stakeholdersStringFromList(list),
+            },
+          });
+        } else {
+          updateMutation.mutate({
+            id,
+            patch: { [dbColumn]: latestValue },
+          });
+        }
         debounceTimers.current.delete(key);
         setPendingCount(debounceTimers.current.size);
       }, delay);
@@ -529,6 +552,17 @@ export function useInitiativeMutations() {
           patch: {
             geo_cost_split:
               split?.entries?.length ? (geoCostSplitToJson(split) as Json) : null,
+          },
+        });
+        return;
+      }
+      if (field === 'stakeholdersList') {
+        const list = value as string[];
+        await updateMutation.mutateAsync({
+          id,
+          patch: {
+            stakeholders_list: list,
+            stakeholders: stakeholdersStringFromList(list),
           },
         });
         return;

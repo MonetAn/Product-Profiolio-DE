@@ -73,6 +73,11 @@ export function sortStakeholderLabels(labels: string[]): string[] {
   });
 }
 
+/** Legacy `initiatives.stakeholders` для вкладки «Кластеры» на дашборде. */
+export function stakeholdersStringFromList(labels: string[]): string {
+  return sortStakeholderLabels(labels).join(', ');
+}
+
 /** JSON для колонки `initiatives.geo_cost_split` и API (без пустых note). */
 export function geoCostSplitToJson(split: GeoCostSplit): {
   entries: Record<string, unknown>[];

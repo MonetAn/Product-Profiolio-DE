@@ -16,6 +16,7 @@ export type HubRowFieldPatch = Partial<
     AdminDataRow,
     | 'initiative'
     | 'stakeholdersList'
+    | 'stakeholders'
     | 'description'
     | 'documentationLink'
     | 'initiativeGeoCostSplit'

@@ -41,6 +41,7 @@ import {
   AdminQuarterData,
   type GeoCostSplit,
   stakeholdersListFromGeoSplit,
+  stakeholdersStringFromList,
 } from '@/lib/adminDataManager';
 import {
   readQuickTeamQueue,
@@ -314,6 +315,7 @@ const Admin = () => {
       AdminDataRow,
       | 'initiative'
       | 'stakeholdersList'
+      | 'stakeholders'
       | 'description'
       | 'documentationLink'
       | 'initiativeGeoCostSplit'
@@ -750,7 +752,16 @@ const Admin = () => {
       setHubRowPatches((prev) => {
         const next = new Map(prev);
         const cur = next.get(id) ?? {};
-        next.set(id, { ...cur, [field]: value } as HubRowFieldPatch);
+        if (field === 'stakeholdersList') {
+          const list = value as string[];
+          next.set(id, {
+            ...cur,
+            stakeholdersList: list,
+            stakeholders: stakeholdersStringFromList(list),
+          });
+        } else {
+          next.set(id, { ...cur, [field]: value } as HubRowFieldPatch);
+        }
         return next;
       });
     },
@@ -786,12 +797,14 @@ const Admin = () => {
           initiativeGeoCostSplit: geo,
         };
         if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
           patch = {
             ...patch,
-            stakeholdersList: stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey),
+            stakeholdersList: sh,
+            stakeholders: stakeholdersStringFromList(sh),
           };
         } else {
-          const { stakeholdersList: _d, ...rest } = patch;
+          const { stakeholdersList: _d, stakeholders: _s, ...rest } = patch;
           patch = rest as HubRowFieldPatch;
         }
         if (Object.keys(patch).length > 0) next.set(id, patch);
@@ -909,7 +922,9 @@ const Admin = () => {
           stakeholdersList: rest.stakeholdersList,
           description: rest.description,
           documentationLink: rest.documentationLink,
-          stakeholders: rest.stakeholders,
+          stakeholders:
+            rest.stakeholders?.trim() ||
+            stakeholdersStringFromList(rest.stakeholdersList ?? []),
           isTimelineStub: false,
           quarterlyData: previewById?.get(merged.id) ?? rest.quarterlyData,
           initiativeGeoCostSplit: rest.initiativeGeoCostSplit,
@@ -954,6 +969,7 @@ const Admin = () => {
         }
 
         for (const k of scalarKeys) {
+          if (k === 'stakeholders') continue;
           if (baseline[k] !== merged[k]) {
             await updateInitiativeFieldAsync(merged.id, k as string, merged[k] as never);
           }
@@ -1260,7 +1276,16 @@ const Admin = () => {
       setQuickRowPatches((prev) => {
         const next = new Map(prev);
         const cur = next.get(id) ?? {};
-        next.set(id, { ...cur, [field]: value } as QuickFlowRowPatch);
+        if (field === 'stakeholdersList') {
+          const list = value as string[];
+          next.set(id, {
+            ...cur,
+            stakeholdersList: list,
+            stakeholders: stakeholdersStringFromList(list),
+          });
+        } else {
+          next.set(id, { ...cur, [field]: value } as QuickFlowRowPatch);
+        }
         return next;
       });
     },
@@ -1376,12 +1401,14 @@ const Admin = () => {
           initiativeGeoCostSplit: geo,
         };
         if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
           patch = {
             ...patch,
-            stakeholdersList: stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey),
+            stakeholdersList: sh,
+            stakeholders: stakeholdersStringFromList(sh),
           };
         } else {
-          const { stakeholdersList: _d, ...rest } = patch;
+          const { stakeholdersList: _d, stakeholders: _s, ...rest } = patch;
           patch = rest as QuickFlowRowPatch;
         }
         if (Object.keys(patch).length > 0) next.set(id, patch);
@@ -1454,6 +1481,7 @@ const Admin = () => {
 
       for (const [id, patch] of quickRowPatches) {
         for (const key of Object.keys(patch) as (keyof QuickFlowRowPatch)[]) {
+          if (key === 'stakeholders') continue;
           const value = patch[key];
           if (value === undefined) continue;
           await updateInitiativeFieldAsync(id, key as string, value);

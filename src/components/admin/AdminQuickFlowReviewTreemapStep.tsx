@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { Check, ExternalLink } from 'lucide-react';
 import { TreemapContainer } from '@/components/treemap';
 import {
   AlertDialog,
@@ -18,10 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  STAKEHOLDERS_LIST,
   type AdminDataRow,
   getQuickFlowDescriptionDocIssuesForQuarters,
   getMissingDescriptionDocFields,
 } from '@/lib/adminDataManager';
+import { cn } from '@/lib/utils';
 import {
   buildEffortTreemapPreviewModel,
   resolveEffortPreviewQuarters,
@@ -131,6 +133,7 @@ export function AdminQuickFlowReviewTreemapStep({
   );
 
   const [localName, setLocalName] = useState('');
+  const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
   const [localDescription, setLocalDescription] = useState('');
   const [localDocLink, setLocalDocLink] = useState('');
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
@@ -143,20 +146,36 @@ export function AdminQuickFlowReviewTreemapStep({
       return;
     }
     setLocalName(row.initiative || '');
+    setLocalStakeholders(row.stakeholdersList || []);
     setLocalDescription(row.description || '');
     setLocalDocLink(row.documentationLink || '');
     // Только при открытии по id — не привязываемся к rows, иначе сбросим ввод при каждом ререндере родителя
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogRowId]);
 
+  const stakeholdersEqual = useCallback((a: string[], b: string[]) => {
+    if (a.length !== b.length) return false;
+    const sa = [...a].sort();
+    const sb = [...b].sort();
+    return sa.every((v, i) => v === sb[i]);
+  }, []);
+
   const isDirty = useMemo(() => {
     if (!dialogRow) return false;
     return (
       localName !== (dialogRow.initiative || '') ||
+      !stakeholdersEqual(localStakeholders, dialogRow.stakeholdersList || []) ||
       localDescription !== (dialogRow.description || '') ||
       localDocLink !== (dialogRow.documentationLink || '')
     );
-  }, [dialogRow, localName, localDescription, localDocLink]);
+  }, [
+    dialogRow,
+    localName,
+    localStakeholders,
+    localDescription,
+    localDocLink,
+    stakeholdersEqual,
+  ]);
 
   const closeDialog = useCallback(() => {
     setDialogRowId(null);
@@ -171,13 +190,20 @@ export function AdminQuickFlowReviewTreemapStep({
     }
   }, [closeDialog, isDirty]);
 
+  const toggleCluster = useCallback((cluster: string) => {
+    setLocalStakeholders((prev) =>
+      prev.includes(cluster) ? prev.filter((c) => c !== cluster) : [...prev, cluster]
+    );
+  }, []);
+
   const saveAndClose = useCallback(() => {
     if (!dialogRow || !draft) return;
     draft(dialogRow.id, 'initiative', localName);
+    draft(dialogRow.id, 'stakeholdersList', localStakeholders);
     draft(dialogRow.id, 'description', localDescription);
     draft(dialogRow.id, 'documentationLink', localDocLink);
     closeDialog();
-  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName]);
+  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName, localStakeholders]);
 
   const treemapViewKey = `quick-flow-review-${resolvedPreviewQuarters.join(',')}-${model.contentKey.slice(0, 80)}`;
 
@@ -269,9 +295,38 @@ export function AdminQuickFlowReviewTreemapStep({
           {dialogRow && draft ? (
             <>
               <DialogTitle className="sr-only">
-                {dialogRow.initiative?.trim() || 'Инициатива'}: название, описание и документация
+                {dialogRow.initiative?.trim() || 'Инициатива'}: кластеры, название, описание и документация
               </DialogTitle>
               <div className="flex max-h-[calc(92dvh-7rem)] flex-col gap-5 overflow-y-auto px-6 py-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Кластеры</Label>
+                  <div
+                    className={cn(
+                      'flex flex-wrap gap-2 rounded-md p-2',
+                      localStakeholders.length === 0 && 'bg-primary/[0.08] ring-2 ring-primary/55'
+                    )}
+                  >
+                    {STAKEHOLDERS_LIST.map((cluster) => {
+                      const isSelected = localStakeholders.includes(cluster);
+                      return (
+                        <button
+                          key={cluster}
+                          type="button"
+                          onClick={() => toggleCluster(cluster)}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-all',
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                              : 'border-border bg-background hover:bg-muted'
+                          )}
+                        >
+                          {isSelected ? <Check size={14} className="shrink-0" aria-hidden /> : null}
+                          {cluster}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor={`review-name-${dialogRow.id}`} className="text-sm font-medium">
                     Название инициативы
