@@ -20,7 +20,8 @@ VALUES ('App&Web', 'X-men(u)');
 -- =============================================================================
 -- PREVIEW
 -- =============================================================================
-SELECT c.merge_unit, c.merge_team, 'config' AS section;
+SELECT merge_unit, merge_team, 'config' AS section
+FROM merge_stub_cfg;
 
 SELECT
   i.id,
