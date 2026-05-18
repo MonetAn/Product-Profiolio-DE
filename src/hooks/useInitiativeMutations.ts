@@ -17,6 +17,8 @@ import {
 } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
+import { transferInitiativeBudgetToTeamStub } from '@/lib/transferInitiativeBudgetToTeamStub';
+import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
 
 const FIELD_TO_COLUMN: Record<string, string> = {
@@ -225,6 +227,7 @@ export function useInitiativeMutations() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      await transferInitiativeBudgetToTeamStub(id);
       const { error } = await supabase
         .from('initiatives')
         .update({ deleted_at: new Date().toISOString() })
@@ -260,6 +263,7 @@ export function useInitiativeMutations() {
     onSuccess: () => {
       setSyncStatus('synced');
       scheduleInitiativesInvalidate();
+      queryClient.invalidateQueries({ queryKey: BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY });
     },
   });
 
