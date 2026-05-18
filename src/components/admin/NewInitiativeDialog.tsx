@@ -26,8 +26,6 @@ import {
 import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { STAKEHOLDERS_LIST } from '@/lib/adminDataManager';
-import { useAccess } from '@/hooks/useAccess';
-
 export type NewInitiativeSubmitData = {
   unit: string;
   team: string;
@@ -35,7 +33,6 @@ export type NewInitiativeSubmitData = {
   stakeholdersList: string[];
   description: string;
   documentationLink: string;
-  isTimelineStub?: boolean;
 };
 
 interface NewInitiativeDialogProps {
@@ -57,14 +54,12 @@ const NewInitiativeDialog = ({
   defaultTeam = '',
   onSubmit
 }: NewInitiativeDialogProps) => {
-  const { isSuperAdmin } = useAccess();
   const [unit, setUnit] = useState(defaultUnit);
   const [team, setTeam] = useState(defaultTeam);
   const [initiative, setInitiative] = useState('');
   const [stakeholdersList, setStakeholdersList] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
-  const [isTimelineStub, setIsTimelineStub] = useState(false);
 
   // Sync with filter selection when dialog opens
   useEffect(() => {
@@ -83,7 +78,6 @@ const NewInitiativeDialog = ({
       stakeholdersList,
       description,
       documentationLink,
-      isTimelineStub,
     };
     onSubmit(payload);
     // Reset form
@@ -91,7 +85,6 @@ const NewInitiativeDialog = ({
     setStakeholdersList([]);
     setDescription('');
     setDocumentationLink('');
-    setIsTimelineStub(false);
     onOpenChange(false);
   };
 
@@ -176,9 +169,6 @@ const NewInitiativeDialog = ({
             setDescription={setDescription}
             documentationLink={documentationLink}
             setDocumentationLink={setDocumentationLink}
-            isTimelineStub={isTimelineStub}
-            setIsTimelineStub={setIsTimelineStub}
-            showTimelineStubToggle={isSuperAdmin}
           />
         </div>
         </div>
@@ -203,9 +193,6 @@ type OptionalFieldsProps = {
   setDescription: (v: string) => void;
   documentationLink: string;
   setDocumentationLink: (v: string) => void;
-  isTimelineStub: boolean;
-  setIsTimelineStub: (v: boolean) => void;
-  showTimelineStubToggle: boolean;
 };
 
 function OptionalInitiativeFields({
@@ -215,9 +202,6 @@ function OptionalInitiativeFields({
   setDescription,
   documentationLink,
   setDocumentationLink,
-  isTimelineStub,
-  setIsTimelineStub,
-  showTimelineStubToggle,
 }: OptionalFieldsProps) {
   return (
     <>
@@ -269,20 +253,6 @@ function OptionalInitiativeFields({
           placeholder="https://..."
         />
       </div>
-
-      {showTimelineStubToggle ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-          <div className="min-w-0">
-            <Label className="text-sm font-medium">Заглушка в таймлайне</Label>
-            <p className="mt-0.5 text-xs text-muted-foreground">Показывать внизу таймлайна</p>
-          </div>
-          <Checkbox
-            checked={isTimelineStub}
-            onCheckedChange={(checked) => setIsTimelineStub(checked === true)}
-            className="shrink-0"
-          />
-        </div>
-      ) : null}
     </>
   );
 }

@@ -16,9 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { useAccess } from '@/hooks/useAccess';
 import {
   type AdminDataRow,
   getQuickFlowDescriptionDocIssuesForQuarters,
@@ -35,8 +33,7 @@ export type DraftField =
   | 'initiative'
   | 'stakeholdersList'
   | 'description'
-  | 'documentationLink'
-  | 'isTimelineStub';
+  | 'documentationLink';
 
 type Props = {
   rows: AdminDataRow[];
@@ -100,7 +97,6 @@ export function AdminQuickFlowReviewTreemapStep({
   onInitiativeDraftChange,
   compactChrome = false,
 }: Props) {
-  const { isSuperAdmin } = useAccess();
   const draft = onInitiativeDraftChange;
 
   /** Кварталы периода в порядке каталога (как у матрицы коэффициентов). */
@@ -137,7 +133,6 @@ export function AdminQuickFlowReviewTreemapStep({
   const [localName, setLocalName] = useState('');
   const [localDescription, setLocalDescription] = useState('');
   const [localDocLink, setLocalDocLink] = useState('');
-  const [localStub, setLocalStub] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -150,7 +145,6 @@ export function AdminQuickFlowReviewTreemapStep({
     setLocalName(row.initiative || '');
     setLocalDescription(row.description || '');
     setLocalDocLink(row.documentationLink || '');
-    setLocalStub(row.isTimelineStub === true);
     // Только при открытии по id — не привязываемся к rows, иначе сбросим ввод при каждом ререндере родителя
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogRowId]);
@@ -160,10 +154,9 @@ export function AdminQuickFlowReviewTreemapStep({
     return (
       localName !== (dialogRow.initiative || '') ||
       localDescription !== (dialogRow.description || '') ||
-      localDocLink !== (dialogRow.documentationLink || '') ||
-      localStub !== (dialogRow.isTimelineStub === true)
+      localDocLink !== (dialogRow.documentationLink || '')
     );
-  }, [dialogRow, localName, localDescription, localDocLink, localStub]);
+  }, [dialogRow, localName, localDescription, localDocLink]);
 
   const closeDialog = useCallback(() => {
     setDialogRowId(null);
@@ -183,11 +176,8 @@ export function AdminQuickFlowReviewTreemapStep({
     draft(dialogRow.id, 'initiative', localName);
     draft(dialogRow.id, 'description', localDescription);
     draft(dialogRow.id, 'documentationLink', localDocLink);
-    if (localStub !== (dialogRow.isTimelineStub === true)) {
-      draft(dialogRow.id, 'isTimelineStub', localStub);
-    }
     closeDialog();
-  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName, localStub]);
+  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName]);
 
   const treemapViewKey = `quick-flow-review-${resolvedPreviewQuarters.join(',')}-${model.contentKey.slice(0, 80)}`;
 
@@ -334,18 +324,6 @@ export function AdminQuickFlowReviewTreemapStep({
                     ) : null}
                   </div>
                 </div>
-                {isSuperAdmin ? (
-                  <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                    <Label htmlFor={`review-stub-${dialogRow.id}`} className="text-sm font-medium">
-                      Заглушка
-                    </Label>
-                    <Switch
-                      id={`review-stub-${dialogRow.id}`}
-                      checked={localStub}
-                      onCheckedChange={(v) => setLocalStub(Boolean(v))}
-                    />
-                  </div>
-                ) : null}
               </div>
               <DialogFooter className="flex-col gap-3 border-t border-border bg-muted/20 px-6 py-4 sm:justify-end">
                 <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">

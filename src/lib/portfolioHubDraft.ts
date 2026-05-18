@@ -18,7 +18,6 @@ export type HubRowFieldPatch = Partial<
     | 'stakeholdersList'
     | 'description'
     | 'documentationLink'
-    | 'isTimelineStub'
     | 'initiativeGeoCostSplit'
   >
 >;

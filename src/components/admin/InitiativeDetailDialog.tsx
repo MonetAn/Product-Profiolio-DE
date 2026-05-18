@@ -33,7 +33,6 @@ import {
   getStubResidualLabel,
 } from '@/lib/adminDataManager';
 import { useMarketCountries } from '@/hooks/useMarketCountries';
-import { useAccess } from '@/hooks/useAccess';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { compareQuarters, isCalendarPastQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
@@ -724,7 +723,6 @@ const InitiativeDetailDialog = ({
   onInitiativeGeoCostSplitChange,
   showQuarterSection = true,
 }: InitiativeDetailDialogProps) => {
-  const { isSuperAdmin } = useAccess();
   const { data: marketCountriesGeo = [] } = useMarketCountries({ includeInactive: false });
   const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
 
@@ -856,21 +854,6 @@ const InitiativeDetailDialog = ({
             </div>
           </div>
 
-          {/* Timeline stub (show at bottom in timeline) */}
-          {isSuperAdmin ? (
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div>
-                <Label className="text-sm font-medium">Заглушка в таймлайне</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Показывать внизу таймлайна (кварталы без расписанных инициатив или цели без инициатив)
-                </p>
-              </div>
-              <Switch
-                checked={initiative.isTimelineStub === true}
-                onCheckedChange={(checked) => onDataChange(initiative.id, 'isTimelineStub', checked)}
-              />
-            </div>
-          ) : null}
 
           {onInitiativeGeoCostSplitChange && totalQuarterCost > 0 && marketCountriesGeo.length > 0 ? (
             <div className="space-y-2 border-t border-border/60 pt-4">

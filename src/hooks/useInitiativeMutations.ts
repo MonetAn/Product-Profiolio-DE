@@ -17,6 +17,8 @@ import {
 } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
+import { transferInitiativeBudgetToTeamStub } from '@/lib/transferInitiativeBudgetToTeamStub';
+import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
 
 const FIELD_TO_COLUMN: Record<string, string> = {
@@ -225,6 +227,7 @@ export function useInitiativeMutations() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      await transferInitiativeBudgetToTeamStub(id);
       const { error } = await supabase
         .from('initiatives')
         .update({ deleted_at: new Date().toISOString() })
@@ -260,11 +263,13 @@ export function useInitiativeMutations() {
     onSuccess: () => {
       setSyncStatus('synced');
       scheduleInitiativesInvalidate();
+      queryClient.invalidateQueries({ queryKey: BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY });
     },
   });
 
   const debouncedUpdate = useCallback(
     (id: string, field: string, value: unknown, delay = 1000) => {
+      if (field === 'isTimelineStub') return;
       const key = `${id}-${field}`;
       const existing = debounceTimers.current.get(key);
       if (existing) clearTimeout(existing);
@@ -485,6 +490,7 @@ export function useInitiativeMutations() {
 
   const immediateUpdate = useCallback(
     (id: string, field: string, value: unknown) => {
+      if (field === 'isTimelineStub') return;
       if (!findRowInInitiativeCaches(queryClient, id)) return;
       const dbColumn = FIELD_TO_COLUMN[field] || field;
       queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
@@ -515,6 +521,7 @@ export function useInitiativeMutations() {
 
   const updateInitiativeFieldAsync = useCallback(
     async (id: string, field: string, value: unknown) => {
+      if (field === 'isTimelineStub') return;
       if (field === 'initiativeGeoCostSplit') {
         const split = value as GeoCostSplit | undefined;
         await updateMutation.mutateAsync({

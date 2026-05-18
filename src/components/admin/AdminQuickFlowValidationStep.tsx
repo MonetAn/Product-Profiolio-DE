@@ -27,7 +27,6 @@ type DraftField =
   | 'initiative'
   | 'description'
   | 'documentationLink'
-  | 'isTimelineStub';
 
 type Props = {
   rows: AdminDataRow[];
