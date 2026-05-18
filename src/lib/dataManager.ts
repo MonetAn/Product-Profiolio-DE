@@ -592,6 +592,31 @@ export function calculateTotalBudget(row: RawDataRow): number {
   return total;
 }
 
+/** Сумма `quarterlyData[q].budget` по кварталам — совпадает с сегментами таймлайна (в отличие от `calculateBudget` для 2026 без split). */
+export function sumQuarterlyDataBudgetForQuarters(row: RawDataRow, quarters: string[]): number {
+  return quarters.reduce((sum, q) => sum + (row.quarterlyData[q]?.budget ?? 0), 0);
+}
+
+/** Бюджет за период для сортировки/фильтра стоимости на таймлайне (как видно в ячейках). */
+export function timelineVisiblePeriodCost(
+  row: RawDataRow,
+  selectedQuarters: string[],
+  options?: {
+    includePreliminaryData?: boolean;
+    preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  }
+): number {
+  const includePreliminaryData = options?.includePreliminaryData ?? false;
+  const preliminaryQuarterBudgetMap = options?.preliminaryQuarterBudgetMap;
+  if (includePreliminaryData && preliminaryQuarterBudgetMap && preliminaryQuarterBudgetMap.size > 0) {
+    return calculateBudget(row, selectedQuarters, {
+      includePreliminaryData,
+      preliminaryQuarterBudgetMap,
+    });
+  }
+  return sumQuarterlyDataBudgetForQuarters(row, selectedQuarters);
+}
+
 // Get all quarters where initiative has budget
 export function getInitiativeQuarters(row: RawDataRow): string[] {
   return Object.keys(row.quarterlyData).filter(q => row.quarterlyData[q].budget > 0);
@@ -701,7 +726,13 @@ export function rowPassesTimelineFilters(row: RawDataRow, options: TimelineRowFi
     if (!rowParts.some((p) => selectedStakeholders.includes(p))) return false;
   }
 
-  const costValue = costType === 'period' ? periodBudget : calculateTotalBudget(row);
+  const costValue =
+    costType === 'period'
+      ? timelineVisiblePeriodCost(row, selectedQuarters, {
+          includePreliminaryData,
+          preliminaryQuarterBudgetMap,
+        })
+      : calculateTotalBudget(row);
   if (costFilterMin !== null && costValue < costFilterMin) return false;
   if (costFilterMax !== null && costValue > costFilterMax) return false;
 
