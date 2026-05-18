@@ -14,6 +14,7 @@ import { useAccess } from '@/hooks/useAccess';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
+import { AdminBuildStamp } from './AdminBuildStamp';
 
 export type ViewMode =
   | 'initiatives'
@@ -171,6 +172,7 @@ const AdminHeader = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
+        {isSuperAdmin ? <AdminBuildStamp /> : null}
         {currentView === 'initiatives' && (
           <UnifiedSettingsMenu
             onImportInitiatives={onImportClick}

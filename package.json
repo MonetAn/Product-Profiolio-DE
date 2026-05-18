@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "sync:prod": "node scripts/sync-local-with-prod.mjs",
+    "dev:sync": "npm run sync:prod && npm run dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

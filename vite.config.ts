@@ -3,10 +3,22 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { execSync } from "node:child_process";
 import tailwindcss from "tailwindcss";
 import autoprefixer from "autoprefixer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveBuildSha(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", {
+      cwd: __dirname,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "dev";
+  }
+}
 
 const DEBUG_LOG = path.join(__dirname, ".cursor", "debug-e6c1ae.log");
 function debugLog(msg: string, data: Record<string, unknown>) {
@@ -19,6 +31,11 @@ function debugLog(msg: string, data: Record<string, unknown>) {
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   base: mode === "production" ? "/Product-Profiolio-DE/" : "/",
+  define: {
+    "import.meta.env.VITE_BUILD_SHA": JSON.stringify(
+      process.env.VITE_BUILD_SHA ?? resolveBuildSha()
+    ),
+  },
   server: {
     host: true,
     port: 8080,
