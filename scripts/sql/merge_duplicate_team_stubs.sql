@@ -1,13 +1,12 @@
 -- Объединить несколько заглушек (is_timeline_stub) одной команды в одну «Не распределено».
--- Совместимо с Supabase SQL Editor (без psql-команд \set / \echo).
+-- Supabase SQL Editor: выполните ВЕСЬ файл одним запуском (Run).
 --
--- 1) Измените merge_unit и merge_team в блоке «НАСТРОЙКА» ниже.
--- 2) Сначала выполните PREVIEW (SELECT).
--- 3) Для записи выполните блок «ПРИМЕНЕНИЕ» и замените ROLLBACK на COMMIT в конце.
+-- 1) Измените merge_unit и merge_team в INSERT ниже (внутри BEGIN).
+-- 2) По умолчанию ROLLBACK — только просмотр. Для записи замените ROLLBACK на COMMIT.
 
--- =============================================================================
--- НАСТРОЙКА (измените при необходимости)
--- =============================================================================
+BEGIN;
+
+-- ========== НАСТРОЙКА (измените unit / team) ==========
 DROP TABLE IF EXISTS merge_stub_cfg;
 CREATE TEMP TABLE merge_stub_cfg (
   merge_unit text NOT NULL,
@@ -17,9 +16,7 @@ CREATE TEMP TABLE merge_stub_cfg (
 INSERT INTO merge_stub_cfg (merge_unit, merge_team)
 VALUES ('App&Web', 'X-men(u)');
 
--- =============================================================================
--- PREVIEW
--- =============================================================================
+-- ========== PREVIEW (до изменений) ==========
 SELECT merge_unit, merge_team, 'config' AS section
 FROM merge_stub_cfg;
 
@@ -46,7 +43,7 @@ WHERE i.unit = c.merge_unit
   AND i.deleted_at IS NULL
 ORDER BY i.created_at, i.initiative;
 
-SELECT COUNT(*) AS stub_count
+SELECT COUNT(*) AS stub_count_before
 FROM public.initiatives i
 CROSS JOIN merge_stub_cfg c
 WHERE i.unit = c.merge_unit
@@ -54,11 +51,7 @@ WHERE i.unit = c.merge_unit
   AND i.is_timeline_stub = true
   AND i.deleted_at IS NULL;
 
--- =============================================================================
--- ПРИМЕНЕНИЕ (замените ROLLBACK на COMMIT для записи в БД)
--- =============================================================================
-BEGIN;
-
+-- ========== ПРИМЕНЕНИЕ ==========
 DROP TABLE IF EXISTS _tmp_team_stubs;
 CREATE TEMP TABLE _tmp_team_stubs ON COMMIT DROP AS
 SELECT i.id, i.initiative, i.created_at
@@ -68,6 +61,20 @@ WHERE i.unit = c.merge_unit
   AND i.team = c.merge_team
   AND i.is_timeline_stub = true
   AND i.deleted_at IS NULL;
+
+DO $$
+DECLARE
+  n int;
+  u text;
+  t text;
+BEGIN
+  SELECT COUNT(*) INTO n FROM _tmp_team_stubs;
+  IF n < 2 THEN
+    SELECT merge_unit, merge_team INTO u, t FROM merge_stub_cfg LIMIT 1;
+    RAISE EXCEPTION 'Нужно минимум 2 заглушки в % / % (найдено %). Проверьте unit/team в INSERT.',
+      u, t, n;
+  END IF;
+END $$;
 
 DROP TABLE IF EXISTS _tmp_keeper;
 CREATE TEMP TABLE _tmp_keeper (id uuid PRIMARY KEY, initiative text) ON COMMIT DROP;
@@ -91,6 +98,13 @@ CREATE TEMP TABLE _tmp_losers (id uuid PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _tmp_losers (id)
 SELECT id FROM _tmp_team_stubs
 WHERE id NOT IN (SELECT id FROM _tmp_keeper);
+
+SELECT k.id AS keeper_id, k.initiative AS keeper_initiative
+FROM _tmp_keeper k;
+
+SELECT s.id AS loser_id, s.initiative AS loser_initiative
+FROM public.initiatives s
+JOIN _tmp_losers l ON l.id = s.id;
 
 DROP TABLE IF EXISTS _tmp_loser_budget;
 CREATE TEMP TABLE _tmp_loser_budget ON COMMIT DROP AS
@@ -166,7 +180,7 @@ SET is_timeline_stub = false,
     updated_at = timezone('utc'::text, now())
 WHERE i.id IN (SELECT id FROM _tmp_losers);
 
--- AFTER (внутри транзакции)
+-- ========== AFTER (внутри той же транзакции) ==========
 SELECT
   i.id,
   i.initiative,
