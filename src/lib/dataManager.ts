@@ -681,6 +681,13 @@ export function rowPassesTimelineFilters(row: RawDataRow, options: TimelineRowFi
   });
   const periodEffort = periodEffortSum(row, selectedQuarters);
   if (periodBudget === 0 && periodEffort <= 0) return false;
+  if (
+    row.isTimelineStub &&
+    periodEffort <= 0 &&
+    isNegligibleTimelineBudgetRub(periodBudget)
+  ) {
+    return false;
+  }
 
   const isSupport = isInitiativeSupport(row, selectedQuarters);
   if (supportFilter === 'exclude' && isSupport) return false;
@@ -960,6 +967,13 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
   return { name: 'Все Unit', children, isRoot: true };
 }
 
+/** Суммы ниже порога на таймлайне — обычно остаток целочисленного округления у заглушек, не показываем. */
+export const TIMELINE_NEGLIGIBLE_BUDGET_RUB = 1000;
+
+export function isNegligibleTimelineBudgetRub(value: number): boolean {
+  return value > 0 && value < TIMELINE_NEGLIGIBLE_BUDGET_RUB;
+}
+
 // ===== FORMATTING =====
 export function formatBudget(value: number): string {
   if (value >= 1000000) {
@@ -976,7 +990,8 @@ export function formatBudgetShort(value: number): string {
   } else if (value >= 1000) {
     return (value / 1000).toFixed(0) + 'K';
   }
-  return value.toString();
+  if (value <= 0) return '0';
+  return `${Math.round(value)}₽`;
 }
 
 export function escapeHtml(text: string): string {

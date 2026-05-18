@@ -9,6 +9,7 @@ import {
   formatBudgetShort,
   formatBudget,
   rowPassesTimelineFilters,
+  isNegligibleTimelineBudgetRub,
   type PreliminaryQuarterBudgetMap,
   type SupportFilter
 } from '@/lib/dataManager';
@@ -750,7 +751,13 @@ const GanttView = ({
                 <div className="gantt-segment-row">
                   {selectedQuarters.map((q, qIdx) => {
                     const qData = row.quarterlyData[q];
-                    if (!qData || qData.budget === 0) return null;
+                    if (
+                      !qData ||
+                      qData.budget === 0 ||
+                      (row.isTimelineStub && isNegligibleTimelineBudgetRub(qData.budget))
+                    ) {
+                      return null;
+                    }
 
                     const isSupport = qData.support;
                     const isOffTrack = !qData.onTrack;
