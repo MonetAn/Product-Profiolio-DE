@@ -643,6 +643,64 @@ export const PRELIMINARY_COST_USER_MESSAGE =
 // ===== DATA TREE BUILDING =====
 export type SupportFilter = 'all' | 'exclude' | 'only';
 
+/** Filters applied on the timeline tab (and when checking search result visibility). */
+export interface TimelineRowFilterOptions {
+  selectedQuarters: string[];
+  supportFilter: SupportFilter;
+  showOnlyOfftrack: boolean;
+  hideStubs: boolean;
+  selectedUnits: string[];
+  selectedTeams: string[];
+  selectedStakeholders: string[];
+  includePreliminaryData?: boolean;
+  preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  costFilterMin?: number | null;
+  costFilterMax?: number | null;
+  costType?: 'period' | 'total';
+}
+
+export function rowPassesTimelineFilters(row: RawDataRow, options: TimelineRowFilterOptions): boolean {
+  const {
+    selectedQuarters,
+    supportFilter,
+    showOnlyOfftrack,
+    hideStubs,
+    selectedUnits,
+    selectedTeams,
+    selectedStakeholders,
+    includePreliminaryData = false,
+    preliminaryQuarterBudgetMap,
+    costFilterMin = null,
+    costFilterMax = null,
+    costType = 'period',
+  } = options;
+
+  const periodBudget = calculateBudget(row, selectedQuarters, {
+    includePreliminaryData,
+    preliminaryQuarterBudgetMap,
+  });
+  const periodEffort = periodEffortSum(row, selectedQuarters);
+  if (periodBudget === 0 && periodEffort <= 0) return false;
+
+  const isSupport = isInitiativeSupport(row, selectedQuarters);
+  if (supportFilter === 'exclude' && isSupport) return false;
+  if (supportFilter === 'only' && !isSupport) return false;
+  if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
+  if (hideStubs && row.isTimelineStub) return false;
+  if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return false;
+  if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
+  if (selectedStakeholders.length > 0) {
+    const rowParts = parseStakeholderParts(row.stakeholders);
+    if (!rowParts.some((p) => selectedStakeholders.includes(p))) return false;
+  }
+
+  const costValue = costType === 'period' ? periodBudget : calculateTotalBudget(row);
+  if (costFilterMin !== null && costValue < costFilterMin) return false;
+  if (costFilterMax !== null && costValue > costFilterMax) return false;
+
+  return true;
+}
+
 export interface BuildTreeOptions {
   selectedQuarters: string[];
   supportFilter: SupportFilter;

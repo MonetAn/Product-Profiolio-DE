@@ -23,6 +23,7 @@ import {
   formatBudget,
   calculateBudget,
   isInitiativeOffTrack,
+  rowPassesTimelineFilters,
   type SupportFilter,
 } from '@/lib/dataManager';
 import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
@@ -479,6 +480,48 @@ const Index = () => {
     }
   }, [selectedQuarters.length, availableQuarters, setFilters]);
 
+  const timelineFilterOptions = useMemo(
+    () => ({
+      selectedQuarters,
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      includePreliminaryData: false as const,
+      preliminaryQuarterBudgetMap: undefined,
+      costFilterMin,
+      costFilterMax,
+      costType,
+    }),
+    [
+      selectedQuarters,
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      costFilterMin,
+      costFilterMax,
+      costType,
+    ]
+  );
+
+  const handleSearchResultClick = useCallback(
+    (row: RawDataRow) => {
+      if (!rowPassesTimelineFilters(row, timelineFilterOptions)) {
+        resetFilters();
+      }
+      setShowSearch(false);
+      setSearchQuery('');
+      setHighlightedInitiative(row.initiative);
+      setCurrentView('timeline');
+    },
+    [timelineFilterOptions, resetFilters]
+  );
+
   // Check if any filter is active
   const hasActiveFilters = selectedUnits.length > 0 || 
                            selectedTeams.length > 0 || 
@@ -591,7 +634,7 @@ const Index = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters, showTeams, showInitiatives]);
 
-  // Search filtered results
+  // Search across all rows (not scoped to active dashboard filters)
   const searchResults = displayData.filter(row => {
     const q = searchQuery.toLowerCase();
     return row.initiative.toLowerCase().includes(q) ||
@@ -1008,12 +1051,7 @@ const Index = () => {
                   <div
                     key={idx}
                     className="flex items-center gap-3 p-3 cursor-pointer hover:bg-secondary"
-                    onClick={() => {
-                      setShowSearch(false);
-                      setSearchQuery('');
-                      setHighlightedInitiative(row.initiative);
-                      setCurrentView('timeline');
-                    }}
+                    onClick={() => handleSearchResultClick(row)}
                   >
                     <div className="w-8 h-8 bg-secondary rounded-md flex items-center justify-center text-sm font-medium flex-shrink-0">
                       {row.initiative.charAt(0)}

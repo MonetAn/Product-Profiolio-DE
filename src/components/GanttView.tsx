@@ -6,12 +6,9 @@ import {
   calculateBudget,
   calculateTotalBudget,
   getInitiativeQuarters,
-  isInitiativeSupport,
-  isInitiativeOffTrack,
   formatBudgetShort,
   formatBudget,
-  parseStakeholderParts,
-  periodEffortSum,
+  rowPassesTimelineFilters,
   type PreliminaryQuarterBudgetMap,
   type SupportFilter
 } from '@/lib/dataManager';
@@ -125,37 +122,39 @@ const GanttView = ({
   }, [namePopup, nameExpandedSections]);
 
   // Filter data based on current filters
+  const timelineFilterOptions = useMemo(
+    () => ({
+      selectedQuarters,
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs: hideStubs ?? false,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      includePreliminaryData,
+      preliminaryQuarterBudgetMap,
+      costFilterMin,
+      costFilterMax,
+      costType,
+    }),
+    [
+      selectedQuarters,
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      includePreliminaryData,
+      preliminaryQuarterBudgetMap,
+      costFilterMin,
+      costFilterMax,
+      costType,
+    ]
+  );
+
   const filteredData = useMemo(() => {
-    let result = rawData.filter(row => {
-      const periodBudget = calculateBudget(row, selectedQuarters, {
-        includePreliminaryData,
-        preliminaryQuarterBudgetMap,
-      });
-      const periodEffort = periodEffortSum(row, selectedQuarters);
-      if (periodBudget === 0 && periodEffort <= 0) return false;
-
-      const isSupport = isInitiativeSupport(row, selectedQuarters);
-      if (supportFilter === 'exclude' && isSupport) return false;
-      if (supportFilter === 'only' && !isSupport) return false;
-      if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
-      if (hideStubs && row.isTimelineStub) return false;
-      if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return false;
-      if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
-      if (selectedStakeholders.length > 0) {
-        const rowParts = parseStakeholderParts(row.stakeholders);
-        if (!rowParts.some(p => selectedStakeholders.includes(p))) return false;
-      }
-
-      // Cost filter
-      const costValue = costType === 'period' 
-        ? periodBudget 
-        : calculateTotalBudget(row);
-      
-      if (costFilterMin !== null && costValue < costFilterMin) return false;
-      if (costFilterMax !== null && costValue > costFilterMax) return false;
-
-      return true;
-    });
+    let result = rawData.filter((row) => rowPassesTimelineFilters(row, timelineFilterOptions));
 
     // Sort by cost if enabled
     if (costSortOrder !== 'none') {
@@ -183,7 +182,7 @@ const GanttView = ({
     result = [...nonStubs, ...stubs];
 
     return result;
-  }, [rawData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType, includePreliminaryData, preliminaryQuarterBudgetMap]);
+  }, [rawData, timelineFilterOptions, costSortOrder, costType, selectedQuarters, includePreliminaryData, preliminaryQuarterBudgetMap]);
 
   // Scroll to highlighted initiative
   useEffect(() => {
