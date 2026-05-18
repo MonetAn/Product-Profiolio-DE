@@ -188,7 +188,7 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
       if (node.isTimelineStub) {
         html += `<div class="tooltip-type-line">Заглушка — нераспределённая стоимость команды</div>`;
       } else if (node.support) {
-        html += `<div class="tooltip-type-line">Инициатива в поддержке в выбранном периоде</div>`;
+        html += `<div class="tooltip-type-line">Инициатива в поддержке в текущем квартале</div>`;
       }
       if (showPreliminaryWarnings && node.hasPreliminaryQuarterInPeriod) {
         html += `<div class="tooltip-type-line tooltip-type-line-subtle">${escapeHtml(PRELIMINARY_COST_USER_MESSAGE)}</div>`;

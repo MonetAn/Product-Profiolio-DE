@@ -1110,7 +1110,7 @@ const FilterBar = ({
                       </p>
                       <p className="text-muted-foreground">
                         Поддержка (без заглушек): {formatBudget(totals.supportQuarterly)} ({supportPct}%) — серые полосы
-                        на таймлайне; на тримапе тот же цвет группы, смешанный с серым.
+                        на таймлайне; на тримапе — смешанный с серым, если поддержка в текущем квартале.
                       </p>
                       <p className="text-muted-foreground">
                         Заглушки (кварталы): {formatBudget(totals.stubsQuarterly)} ({stubPct}%) — бюджет по кварталам у

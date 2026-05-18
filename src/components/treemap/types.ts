@@ -25,7 +25,7 @@ export interface TreemapLayoutNode {
   value: number;
   // Background color
   color: string;
-  /** Опционально: акцент слева (сейчас не используется — поддержка кодируется приглушённым цветом группы) */
+  /** Опционально: акцент слева (сейчас не используется — поддержка в текущем квартале → приглушённый цвет группы) */
   unitStripeColor?: string;
   // Children nodes (if any)
   children?: TreemapLayoutNode[];

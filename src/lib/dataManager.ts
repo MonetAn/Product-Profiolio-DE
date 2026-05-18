@@ -1,4 +1,5 @@
 import { AdminDataRow, AdminQuarterData, isQuarterPeriodKey } from './adminDataManager';
+import { getCurrentQuarter } from './quarterUtils';
 
 // ===== DATA TYPES =====
 export interface QuarterData {
@@ -658,6 +659,16 @@ export function isInitiativeSupport(row: RawDataRow, selectedQuarters: string[])
   return selectedQuarters.some(q => row.quarterlyData[q]?.support === true);
 }
 
+/** True if the initiative has support in one quarter (e.g. treemap vs timeline segment). */
+export function isInitiativeSupportInQuarter(row: RawDataRow, quarter: string): boolean {
+  return row.quarterlyData[quarter]?.support === true;
+}
+
+/** Treemap на дашборде: приглушённый цвет, если поддержка в календарном текущем квартале. */
+export function isInitiativeSupportInCurrentQuarter(row: RawDataRow): boolean {
+  return isInitiativeSupportInQuarter(row, getCurrentQuarter());
+}
+
 export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]): boolean {
   if (selectedQuarters.length === 0) return false;
   // Off-track only if the LAST quarter in selected period was off-track
@@ -924,7 +935,7 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
   rawData.forEach(row => {
     if (!shouldIncludeRow(row, options)) return;
 
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+    const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
@@ -978,7 +989,7 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
   rawData.forEach(row => {
     if (!shouldIncludeRow(row, options)) return;
 
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+    const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
@@ -1309,7 +1320,7 @@ function buildClusterStakeholdersFullTree(
   rawData.forEach(row => {
     if (!shouldIncludeRow(row, options)) return;
 
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+    const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
@@ -1365,7 +1376,7 @@ function buildClusterStakeholdersUnitsInitiativesTree(
   rawData.forEach(row => {
     if (!shouldIncludeRow(row, options)) return;
 
-    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+    const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
     const leafValue = treemapLeafValue(row, options.selectedQuarters, {
       includeNonPnlBudgets: options.includeNonPnlBudgets,
