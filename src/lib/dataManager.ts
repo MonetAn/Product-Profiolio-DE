@@ -534,8 +534,21 @@ export function calculateBudget(
     }, 0);
   }
 
-  // If split allocations exist for this initiative, always use them.
-  // Otherwise PnL filter would silently fall back to quarterly_data and not hide false rows.
+  /**
+   * UI (дашборд, таймлайн, сводки): как админка — cost+other из quarterly_data.
+   * Finance split — только если в периоде quarterly пусто (импорт без заполнения в хабе).
+   */
+  const quarterlyPeriodSum = sumQuarterlyDataBudgetForQuarters(row, selectedQuarters);
+  if (quarterlyPeriodSum > 0) {
+    if (!includeNonPnlBudgets && allocations.length > 0) {
+      return selectedQuarters.reduce(
+        (sum, quarter) => sum + calculateQuarterBudgetBase(row, quarter, false),
+        0
+      );
+    }
+    return quarterlyPeriodSum;
+  }
+
   if (allocations.length > 0) {
     return allocations.reduce((sum, allocation) => {
       return (
@@ -547,15 +560,7 @@ export function calculateBudget(
     }, 0);
   }
 
-  /**
-   * 2026: источник истины по деньгам — finance split (initiative_budget_department_2026).
-   * Если по инициативе нет split-строк, не подмешиваем quarterly_data в totals для 2026,
-   * иначе ломаются контрольные суммы CSV.
-   */
-  return selectedQuarters.reduce((sum, quarter) => {
-    if (/^2026-Q[1-4]$/i.test(quarter)) return sum;
-    return sum + (row.quarterlyData[quarter]?.budget || 0);
-  }, 0);
+  return 0;
 }
 
 /** Сумма % усилий по выбранным кварталам (если стоимость в выгрузке ещё 0, инициатива всё равно «в периоде»). */
