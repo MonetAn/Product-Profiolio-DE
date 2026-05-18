@@ -143,7 +143,7 @@ interface AdminQuickFlowProps {
   /** Черновик полей карточки инициативы (quick flow), без записи в БД до «Сохранить». */
   onInitiativeDraftChange?: (
     id: string,
-    field: 'initiative' | 'stakeholdersList' | 'description' | 'documentationLink' | 'isTimelineStub',
+    field: 'initiative' | 'stakeholdersList' | 'description' | 'documentationLink',
     value: string | string[] | boolean
   ) => void;
   /** Резерв, если нет `onQuickAddInitiativeRow`. */

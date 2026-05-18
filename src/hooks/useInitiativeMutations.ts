@@ -269,6 +269,7 @@ export function useInitiativeMutations() {
 
   const debouncedUpdate = useCallback(
     (id: string, field: string, value: unknown, delay = 1000) => {
+      if (field === 'isTimelineStub') return;
       const key = `${id}-${field}`;
       const existing = debounceTimers.current.get(key);
       if (existing) clearTimeout(existing);
@@ -489,6 +490,7 @@ export function useInitiativeMutations() {
 
   const immediateUpdate = useCallback(
     (id: string, field: string, value: unknown) => {
+      if (field === 'isTimelineStub') return;
       if (!findRowInInitiativeCaches(queryClient, id)) return;
       const dbColumn = FIELD_TO_COLUMN[field] || field;
       queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
@@ -519,6 +521,7 @@ export function useInitiativeMutations() {
 
   const updateInitiativeFieldAsync = useCallback(
     async (id: string, field: string, value: unknown) => {
+      if (field === 'isTimelineStub') return;
       if (field === 'initiativeGeoCostSplit') {
         const split = value as GeoCostSplit | undefined;
         await updateMutation.mutateAsync({

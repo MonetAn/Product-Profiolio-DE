@@ -455,7 +455,6 @@ export function AdminPortfolioHubPanels({
         stakeholdersList: 'stakeholdersList',
         description: 'description',
         documentationLink: 'documentationLink',
-        isTimelineStub: 'isTimelineStub',
       };
       const key = map[field];
       if (!key) return;

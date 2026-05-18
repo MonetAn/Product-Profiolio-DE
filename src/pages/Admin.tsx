@@ -316,7 +316,6 @@ const Admin = () => {
       | 'stakeholdersList'
       | 'description'
       | 'documentationLink'
-      | 'isTimelineStub'
       | 'initiativeGeoCostSplit'
     >
   >;
@@ -746,7 +745,6 @@ const Admin = () => {
         'stakeholdersList',
         'description',
         'documentationLink',
-        'isTimelineStub',
       ];
       if (!allowed.includes(field as keyof HubRowFieldPatch)) return;
       setHubRowPatches((prev) => {
@@ -912,7 +910,7 @@ const Admin = () => {
           description: rest.description,
           documentationLink: rest.documentationLink,
           stakeholders: rest.stakeholders,
-          isTimelineStub: rest.isTimelineStub ?? false,
+          isTimelineStub: false,
           quarterlyData: previewById?.get(merged.id) ?? rest.quarterlyData,
           initiativeGeoCostSplit: rest.initiativeGeoCostSplit,
         };
@@ -932,7 +930,6 @@ const Admin = () => {
         'stakeholdersList',
         'description',
         'documentationLink',
-        'isTimelineStub',
       ];
 
       for (const merged of hubDisplayData) {
@@ -1764,7 +1761,7 @@ const Admin = () => {
         description: data.description,
         documentationLink: data.documentationLink,
         stakeholders: '',
-        isTimelineStub: data.isTimelineStub ?? false,
+        isTimelineStub: false,
         quarterlyData,
       });
       
