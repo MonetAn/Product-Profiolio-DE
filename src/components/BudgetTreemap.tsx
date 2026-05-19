@@ -1,6 +1,7 @@
 // BudgetTreemap - Framer Motion powered treemap visualization
 
 import { TreemapContainer } from './treemap';
+import StaticTreemapContainer from './treemap/StaticTreemapContainer';
 import { TreeNode, getUnitColor } from '@/lib/dataManager';
 
 interface BudgetTreemapProps {
@@ -37,6 +38,8 @@ interface BudgetTreemapProps {
   showPreliminaryWarnings?: boolean;
   /** Главная: при маске sensitive без exit-анимации — нет просвета старых листьев при перестроении */
   skipExitAnimation?: boolean;
+  /** Супер-админ: отдельный StaticTreemapContainer (динамический TreemapContainer без изменений) */
+  useStaticLayout?: boolean;
 }
 
 const BudgetTreemap = ({
@@ -66,40 +69,44 @@ const BudgetTreemap = ({
   showUploadButton = true,
   showPreliminaryWarnings = false,
   skipExitAnimation = false,
+  useStaticLayout = false,
 }: BudgetTreemapProps) => {
-  return (
-    <TreemapContainer
-      data={data}
-      contentKey={contentKey}
-      skipExitAnimation={skipExitAnimation}
-      showTeams={showTeams}
-      showInitiatives={showInitiatives}
-      showMoney={showMoney}
-      onNavigateBack={onNavigateBack}
-      canNavigateBack={canNavigateBack}
-      onInitiativeClick={onInitiativeClick}
-      selectedQuarters={selectedQuarters}
-      hasData={hasData}
-      onResetFilters={onResetFilters}
-      selectedUnitsCount={selectedUnitsCount}
-      clickedNodeName={clickedNodeName}
-      getColor={getUnitColor}
-      emptyStateTitle="Нет инициатив по выбранным фильтрам"
-      emptyStateSubtitle="Попробуйте изменить параметры фильтрации или сбросить фильтры"
-      showUploadButton={showUploadButton}
-      onUploadClick={showUploadButton ? onUploadClick : undefined}
-      onFileDrop={onFileDrop}
-      onAutoEnableTeams={onAutoEnableTeams}
-      onAutoEnableInitiatives={onAutoEnableInitiatives}
-      onAutoDisableTeams={onAutoDisableTeams}
-      onAutoDisableInitiatives={onAutoDisableInitiatives}
-      onFocusedPathChange={onFocusedPathChange}
-      resetZoomTrigger={resetZoomTrigger}
-      initialFocusedPath={initialFocusedPath}
-      viewKey={viewKey}
-      showPreliminaryWarnings={showPreliminaryWarnings}
-    />
-  );
+  const treemapProps = {
+    data,
+    contentKey,
+    showTeams,
+    showInitiatives,
+    showMoney,
+    onNavigateBack,
+    canNavigateBack,
+    onInitiativeClick,
+    selectedQuarters,
+    hasData,
+    onResetFilters,
+    selectedUnitsCount,
+    clickedNodeName,
+    getColor: getUnitColor,
+    emptyStateTitle: 'Нет инициатив по выбранным фильтрам',
+    emptyStateSubtitle: 'Попробуйте изменить параметры фильтрации или сбросить фильтры',
+    showUploadButton,
+    onUploadClick: showUploadButton ? onUploadClick : undefined,
+    onFileDrop,
+    onAutoEnableTeams,
+    onAutoEnableInitiatives,
+    onAutoDisableTeams,
+    onAutoDisableInitiatives,
+    onFocusedPathChange,
+    resetZoomTrigger,
+    initialFocusedPath,
+    viewKey,
+    showPreliminaryWarnings,
+  } as const;
+
+  if (useStaticLayout) {
+    return <StaticTreemapContainer {...treemapProps} />;
+  }
+
+  return <TreemapContainer {...treemapProps} skipExitAnimation={skipExitAnimation} />;
 };
 
 export default BudgetTreemap;

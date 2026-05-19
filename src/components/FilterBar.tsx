@@ -68,6 +68,11 @@ interface FilterBarProps {
   /** Показывать блок с галочкой Sensitive */
   sensitiveTreemapToggleVisible?: boolean;
 
+  /** Только super_admin: семантическая раскладка юнитов для слайдов */
+  staticTreemapLayout?: boolean;
+  onStaticTreemapLayoutChange?: (val: boolean) => void;
+  staticTreemapToggleVisible?: boolean;
+
   // Reset filters
   onResetFilters?: () => void;
   hasActiveFilters?: boolean;
@@ -155,6 +160,9 @@ const FilterBar = ({
   showSensitiveTreemap = false,
   onShowSensitiveTreemapChange,
   sensitiveTreemapToggleVisible = false,
+  staticTreemapLayout = false,
+  onStaticTreemapLayoutChange,
+  staticTreemapToggleVisible = false,
   stakeholderFilterMode = 'multi',
   baselineByTeam,
 }: FilterBarProps) => {
@@ -781,6 +789,23 @@ const FilterBar = ({
               </div>
             )}
           </div>
+
+          {staticTreemapToggleVisible && currentView === 'budget' && onStaticTreemapLayoutChange && (
+            <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary whitespace-nowrap">
+              <input
+                type="checkbox"
+                checked={staticTreemapLayout}
+                onChange={(e) => onStaticTreemapLayoutChange(e.target.checked)}
+                className="hidden"
+              />
+              <span
+                className={`w-3.5 h-3.5 border rounded flex items-center justify-center flex-shrink-0 ${staticTreemapLayout ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+              >
+                {staticTreemapLayout && <Check size={10} />}
+              </span>
+              <span>Статичный вью</span>
+            </label>
+          )}
 
           {/* Cost filter - only shown for Timeline when user can see money */}
           {hideNestingToggles && onCostSortOrderChange && showMoney && (

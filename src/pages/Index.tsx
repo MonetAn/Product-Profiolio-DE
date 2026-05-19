@@ -27,6 +27,7 @@ import {
   type SupportFilter,
 } from '@/lib/dataManager';
 import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
+import { prepareStaticTreemapTree } from '@/lib/staticTreemapData';
 import { useInitiatives } from '@/hooks/useInitiatives';
 import { useBudgetDepartmentAllocations } from '@/hooks/useBudgetDepartmentAllocations';
 import { useFilterParams } from '@/hooks/useFilterParams';
@@ -85,6 +86,8 @@ const Index = () => {
   const [showMoney, setShowMoney] = useState(true);
   /** Super admin: по умолчанию скрываем sensitive на клиенте (полные строки уже приходят из API) */
   const [showSensitiveTreemap, setShowSensitiveTreemap] = useState(false);
+  /** Super admin: семантическая раскладка юнитов (B2C/B2B/платформа) для слайдов */
+  const [staticTreemapLayout, setStaticTreemapLayout] = useState(false);
   const effectiveShowMoney = canViewMoney && showMoney;
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
   const [clickedNodeName, setClickedNodeName] = useState<string | null>(null);
@@ -119,7 +122,14 @@ const Index = () => {
     }
   }, [isSuperAdmin, showSensitiveTreemap]);
 
+  useEffect(() => {
+    if (!isSuperAdmin && staticTreemapLayout) {
+      setStaticTreemapLayout(false);
+    }
+  }, [isSuperAdmin, staticTreemapLayout]);
+
   const revealSensitiveTreemap = isSuperAdmin && showSensitiveTreemap;
+  const useStaticTreemapLayout = isSuperAdmin && staticTreemapLayout;
 
   const needsSensitiveMask = !revealSensitiveTreemap && (isSuperAdmin || isAdmin);
   const {
@@ -287,6 +297,12 @@ const Index = () => {
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
   }, [displayData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showOnlyPnlIt, budgetTruth2026?.baselineByTeam]);
+
+  /** Данные для статичного тримапа — отдельно от portfolioData, динамику не трогаем */
+  const staticBudgetTreeData = useMemo(
+    () => prepareStaticTreemapTree(portfolioData),
+    [portfolioData]
+  );
 
   useEffect(() => {
     rebuildTree();
@@ -682,6 +698,7 @@ const Index = () => {
         showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
         'prelim:0',
         revealSensitiveTreemap ? 'sensitive:1' : 'sensitive:0',
+        useStaticTreemapLayout ? 'layout:semantic' : 'layout:dynamic',
         showTeams ? 'teams:1' : 'teams:0',
         showInitiatives ? 'initiatives:1' : 'initiatives:0',
         `units:${sortedJoin(selectedUnits)}`,
@@ -696,6 +713,7 @@ const Index = () => {
       hideStubs,
       showOnlyPnlIt,
       revealSensitiveTreemap,
+      useStaticTreemapLayout,
       showTeams,
       showInitiatives,
       selectedUnits,
@@ -851,6 +869,9 @@ const Index = () => {
         sensitiveTreemapToggleVisible={isSuperAdmin}
         showSensitiveTreemap={revealSensitiveTreemap}
         onShowSensitiveTreemapChange={setShowSensitiveTreemap}
+        staticTreemapToggleVisible={isSuperAdmin}
+        staticTreemapLayout={useStaticTreemapLayout}
+        onStaticTreemapLayoutChange={setStaticTreemapLayout}
         showTeams={showTeams}
         showInitiatives={showInitiatives}
         onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
@@ -922,7 +943,7 @@ const Index = () => {
           <BudgetTreemap
             viewKey={currentView}
             contentKey={budgetTreemapContentKey}
-            data={currentRoot}
+            data={useStaticTreemapLayout ? staticBudgetTreeData : currentRoot}
             onDrillDown={drillDown}
             onNavigateUp={navigateUp}
             showBackButton={navigationStack.length > 0}
@@ -950,6 +971,7 @@ const Index = () => {
             showMoney={effectiveShowMoney}
             showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}
+            useStaticLayout={useStaticTreemapLayout}
           />
         )}
 
