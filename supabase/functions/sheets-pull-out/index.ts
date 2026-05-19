@@ -25,7 +25,7 @@ function applySheetCostsToQuarters(
   itog: Record<string, number>
 ): void {
   for (const [quarterKey, cost] of Object.entries(itog)) {
-    if (!/^202(5|6)-Q[1-4]$/.test(quarterKey)) continue;
+    if (!/^2026-Q[1-4]$/.test(quarterKey)) continue;
     const existing = qd[quarterKey];
     const base: Record<string, unknown> =
       existing && typeof existing === 'object' && !Array.isArray(existing)
@@ -200,6 +200,10 @@ Deno.serve(async (req) => {
           ? { ...(existing.quarterly_data as Record<string, unknown>) }
           : {};
 
+      for (const k of ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'] as const) {
+        delete qd[k];
+      }
+
       const prevItog =
         qd.sheet_out_itog_2025 &&
         typeof qd.sheet_out_itog_2025 === 'object' &&
@@ -207,6 +211,9 @@ Deno.serve(async (req) => {
           ? { ...(qd.sheet_out_itog_2025 as Record<string, unknown>) }
           : {};
       delete prevItog.synced_at;
+      for (const k of Object.keys(prevItog)) {
+        if (/^2025-Q[1-4]$/.test(k)) delete prevItog[k];
+      }
       qd.sheet_out_itog_2025 = {
         ...prevItog,
         ...itog,
@@ -268,7 +275,7 @@ Deno.serve(async (req) => {
       errors: errors.slice(0, 50),
       errorCount: errors.length,
       message:
-        'Итоги OUT O–R (2025) и Y–AB (2026) → sheet_out_itog_2025 и cost по кварталам (батч RPC).',
+        'Итоги OUT Y–AB (2026) → sheet_out_itog_2025 и cost по кварталам (батч RPC).',
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

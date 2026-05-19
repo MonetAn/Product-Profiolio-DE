@@ -1612,7 +1612,7 @@ const Admin = () => {
     await refetch();
     toast({
       title: 'Стоимости из OUT',
-      description: 'Записаны в базу (cost и sheet_out_itog_2025).',
+      description: 'Записаны cost 2026 и снимок OUT.',
     });
   }, [toast, refetch]);
 

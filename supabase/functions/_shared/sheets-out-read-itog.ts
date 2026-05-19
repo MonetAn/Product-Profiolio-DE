@@ -1,10 +1,7 @@
 import {
   ITOG_2026_QUARTER_KEYS,
-  ITOG_QUARTER_KEYS,
   OUT_COL_2026_ITOG_Q1,
   OUT_COL_2026_ITOG_Q4,
-  OUT_COL_ITOG_Q1,
-  OUT_COL_ITOG_Q4,
   OUT_DATA_START_ROW,
   OUT_READ_LAST_COL_INDEX,
   padRow,
@@ -24,11 +21,6 @@ export function parseOutGridToItogById(grid: unknown[][]): Map<string, Record<st
     if (!id || !looksLikeInitiativeUuid(id)) continue;
 
     const itog: Record<string, number> = {};
-    for (let c = OUT_COL_ITOG_Q1; c <= OUT_COL_ITOG_Q4; c++) {
-      const qk = ITOG_QUARTER_KEYS[c - OUT_COL_ITOG_Q1];
-      const n = parseSheetNumber(row[c]);
-      if (n !== null) itog[qk] = n;
-    }
     for (let c = OUT_COL_2026_ITOG_Q1; c <= OUT_COL_2026_ITOG_Q4; c++) {
       const qk = ITOG_2026_QUARTER_KEYS[c - OUT_COL_2026_ITOG_Q1];
       const n = parseSheetNumber(row[c]);

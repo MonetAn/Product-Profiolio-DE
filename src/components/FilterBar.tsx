@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
 import { RawDataRow, calculateBudget, formatBudget, hasTimelineVisibleBudgetInPeriod, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import {
   Tooltip,
   TooltipContent,
@@ -86,6 +87,8 @@ interface FilterBarProps {
 
   /** «Кластеры»: один кластер; «Бюджет» / «Таймлайн»: мультивыбор */
   stakeholderFilterMode?: 'multi' | 'single';
+
+  baselineByTeam?: Map<string, TeamBaselineRow>;
 }
 
 /** Доли 0–100 для трёх ведёр; сумма всегда 100 при total > 0 (метод наибольших дробных частей). */
@@ -153,6 +156,7 @@ const FilterBar = ({
   onShowSensitiveTreemapChange,
   sensitiveTreemapToggleVisible = false,
   stakeholderFilterMode = 'multi',
+  baselineByTeam,
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -251,6 +255,7 @@ const FilterBar = ({
           includeNonPnlBudgets: !showOnlyPnlIt,
           includePreliminaryData: false,
           preliminaryQuarterBudgetMap: undefined,
+          baselineByTeam,
         });
         if (currentView === 'timeline') {
           if (!hasTimelineVisibleBudgetInPeriod(row, selectedQuarters)) return acc;
@@ -321,6 +326,7 @@ const FilterBar = ({
             includeNonPnlBudgets: !showOnlyPnlIt,
             includePreliminaryData: false,
             preliminaryQuarterBudgetMap: undefined,
+            baselineByTeam,
           });
           if (quarterBudget <= 0) return;
 
@@ -358,10 +364,13 @@ const FilterBar = ({
     costType,
     showOnlyPnlIt,
     stakeholderFilterMode,
+    baselineByTeam,
   ]);
 
   const splitGrand =
     totals.developmentQuarterly + totals.supportQuarterly + totals.stubsQuarterly;
+  /** Сумма по видимым строкам и фильтрам (кварталы, PnL, sensitive, юниты…). */
+  const headerBudgetRub = totals.budget;
   const [devPct, supportPct, stubPct] = threeBucketPercentages(
     totals.developmentQuarterly,
     totals.supportQuarterly,
@@ -1068,9 +1077,9 @@ const FilterBar = ({
                     type="button"
                     className="flex items-center gap-0 px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap text-left hover:bg-secondary/80 transition-colors border border-transparent hover:border-border"
                   >
-                    {canViewMoney && showMoney && splitGrand > 0 && (
+                    {canViewMoney && showMoney && headerBudgetRub > 0 && (
                       <>
-                        <span className="font-bold tabular-nums shrink-0">{formatBudgetCompact(splitGrand)}</span>
+                        <span className="font-bold tabular-nums shrink-0">{formatBudgetCompact(headerBudgetRub)}</span>
                         <span
                           className="w-px h-3.5 shrink-0 bg-border/70 mx-1.5 self-center"
                           aria-hidden

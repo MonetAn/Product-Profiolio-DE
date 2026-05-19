@@ -32,6 +32,8 @@ import { useBudgetDepartmentAllocations } from '@/hooks/useBudgetDepartmentAlloc
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { useAccess } from '@/hooks/useAccess';
 import { useSensitiveDashboardMask } from '@/hooks/useSensitiveDashboardMask';
+import { useBudgetTruth2026 } from '@/hooks/useBudgetTruth2026';
+import { filterQuarters2026 } from '@/lib/budgetTruth2026';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
 import { toast } from 'sonner';
 
@@ -55,6 +57,7 @@ const Index = () => {
   // Fetch data from database
   const { data: dbData, isLoading, error, refetch } = useInitiatives();
   const { data: budgetDepartmentAllocations = [] } = useBudgetDepartmentAllocations();
+  const { data: budgetTruth2026 } = useBudgetTruth2026();
 
   // Data state (derived from DB or CSV fallback)
   const [rawData, setRawData] = useState<RawDataRow[]>([]);
@@ -190,13 +193,25 @@ const Index = () => {
       
       // Only set selectedQuarters on first load
       if (!quartersInitializedRef.current && result.availableQuarters.length > 0) {
-        setSelectedQuarters([...result.availableQuarters]);
+        const q2026 = filterQuarters2026(result.availableQuarters);
+        setSelectedQuarters(q2026.length > 0 ? q2026 : [...result.availableQuarters]);
         quartersInitializedRef.current = true;
       }
       
       console.log('Данные загружены из базы:', result.rawData.length, 'инициатив');
     }
   }, [dbData, isUsingCSV, budgetAllocationsByInitiativeId]);
+
+  /** Убрать 2025 из выбранного периода, если остался в state до purge в БД. */
+  useEffect(() => {
+    setSelectedQuarters((prev) => {
+      const next = filterQuarters2026(prev);
+      if (next.length === prev.length && next.every((q, i) => q === prev[i])) return prev;
+      if (next.length > 0) return next;
+      const fallback = filterQuarters2026(availableQuarters);
+      return fallback.length > 0 ? fallback : prev;
+    });
+  }, [availableQuarters]);
 
   // По клику на логотип: полный сброс к начальному состоянию стартовой страницы
   useEffect(() => {
@@ -261,6 +276,7 @@ const Index = () => {
       includeNonPnlBudgets: !showOnlyPnlIt,
       includePreliminaryData: false,
       preliminaryQuarterBudgetMap: undefined,
+      baselineByTeam: budgetTruth2026?.baselineByTeam,
     };
 
     const tree = buildBudgetTree(displayData, options);
@@ -270,7 +286,7 @@ const Index = () => {
     setStakeholdersData(stakeholdersTree);
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [displayData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showOnlyPnlIt]);
+  }, [displayData, selectedQuarters, supportFilter, showOnlyOfftrack, hideStubs, selectedStakeholders, selectedUnits, selectedTeams, currentView, showTeams, showInitiatives, showOnlyPnlIt, budgetTruth2026?.baselineByTeam]);
 
   useEffect(() => {
     rebuildTree();
@@ -476,7 +492,8 @@ const Index = () => {
     
     // Если период пустой, восстанавливаем все кварталы
     if (selectedQuarters.length === 0) {
-      setSelectedQuarters([...availableQuarters]);
+      const q2026 = filterQuarters2026(availableQuarters);
+      setSelectedQuarters(q2026.length > 0 ? q2026 : [...availableQuarters]);
     }
   }, [selectedQuarters.length, availableQuarters, setFilters]);
 
@@ -865,6 +882,7 @@ const Index = () => {
         zoomActiveTab={currentView === 'stakeholders' ? 'stakeholders' : 'budget'}
         currentView={currentView}
         stakeholderFilterMode={currentView === 'stakeholders' ? 'single' : 'multi'}
+        baselineByTeam={budgetTruth2026?.baselineByTeam}
       />
 
       {/* Main: хедер + FilterBar (~9.75rem) */}

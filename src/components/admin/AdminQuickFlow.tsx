@@ -193,13 +193,12 @@ interface AdminQuickFlowProps {
   onFocusMatrixInitiativeConsumed?: () => void;
 }
 
-type CostPeriodPreset = 'next' | 'previous' | 'year_2025' | 'year_2026';
+type CostPeriodPreset = 'next' | 'previous' | 'year_2026';
 
-const YEAR_2025_KEYS = ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'] as const;
 const YEAR_2026_KEYS = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'] as const;
 
-/** Кварталы 2025–2026 из выгрузки — колонки сводной таблицы и мультиселект. */
-const MATRIX_TABLE_QUARTER_KEYS = new Set<string>([...YEAR_2025_KEYS, ...YEAR_2026_KEYS]);
+/** Кварталы 2026 — колонки сводной таблицы и мультиселект. */
+const MATRIX_TABLE_QUARTER_KEYS = new Set<string>([...YEAR_2026_KEYS]);
 
 function periodQuarterKeys(
   preset: CostPeriodPreset,
@@ -211,8 +210,6 @@ function periodQuarterKeys(
       return fillQuarters.length > 0 ? [...fillQuarters] : [];
     case 'previous':
       return [baselineQuarter];
-    case 'year_2025':
-      return [...YEAR_2025_KEYS];
     case 'year_2026':
       return [...YEAR_2026_KEYS];
     default:
@@ -1238,7 +1235,7 @@ export default function AdminQuickFlow({
         toast({
           title: 'Нет строк для команды',
           description:
-            'На листе OUT не найдено итогов по UUID инициатив этой команды. Проверьте колонки O–R (2025) и Y–AB (2026) и строку с данными.',
+            'На листе OUT не найдено итогов по UUID инициатив этой команды. Проверьте колонки Y–AB (2026) и строку с данными.',
           variant: 'destructive',
         });
       } else {
@@ -1534,7 +1531,7 @@ export default function AdminQuickFlow({
                 </p>
               ) : matrixCatalogQuarters.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  В выгрузке нет колонок кварталов 2025–2026 для таблицы. Проверьте импорт и загрузку выгрузки.
+                  В выгрузке нет колонок кварталов 2026 для таблицы. Проверьте импорт и загрузку выгрузки.
                 </p>
               ) : onQuickAddInitiativeRow || filteredData.length > 0 ? (
                 <div className="flex min-h-0 flex-1 flex-col gap-2 pt-1">
@@ -1775,7 +1772,7 @@ export default function AdminQuickFlow({
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Коэффициенты из этого шага (включая несохранённые в базе) отправляются на лист IN как оверрайды; после пересчёта формул читаются итоги с OUT: 2025 — O–R; 2026 — Y–AB.
+              Коэффициенты из этого шага (включая несохранённые в базе) отправляются на лист IN как оверрайды; после пересчёта формул читаются итоги с OUT (Y–AB, 2026).
               Для <span className="font-medium text-foreground">выбранного интервала</span>, если вы меняли % в сеансе, после «Рассчитать предварительно» в таблице показываются цифры с листа; иначе и для других периодов — суммы из базы (последнее сохранение).
               База не обновляется, пока вы не нажмёте «Записать стоимости из таблицы в базу».
             </p>
@@ -1800,7 +1797,6 @@ export default function AdminQuickFlow({
                       Выбранный интервал ({fillQuarters.join(' · ') || '—'})
                     </SelectItem>
                     <SelectItem value="previous">Базовый квартал ({baselineQuarter})</SelectItem>
-                    <SelectItem value="year_2025">Весь 2025 (Q1–Q4)</SelectItem>
                     <SelectItem value="year_2026">Весь 2026 (Q1–Q4)</SelectItem>
                   </SelectContent>
                 </Select>

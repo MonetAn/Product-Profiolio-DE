@@ -1,4 +1,10 @@
 import { AdminDataRow, AdminQuarterData, isQuarterPeriodKey } from './adminDataManager';
+import {
+  is2026Quarter,
+  isOnly2026Quarters,
+  sumInitiativeBudgetForQuarters,
+  type TeamBaselineRow,
+} from './budgetTruth2026';
 import { getCurrentQuarter } from './quarterUtils';
 
 // ===== DATA TYPES =====
@@ -125,7 +131,7 @@ export function convertFromDB(
 
   dbRows.forEach(row => {
     Object.keys(row.quarterlyData || {}).forEach(q => {
-      if (!isQuarterPeriodKey(q)) return;
+      if (!isQuarterPeriodKey(q) || !is2026Quarter(q)) return;
       quarterSet.add(q);
       const year = q.split('-')[0];
       if (year) yearSet.add(year);
@@ -146,7 +152,7 @@ export function convertFromDB(
     const quarterlyData: Record<string, QuarterData> = {};
     
     Object.entries(row.quarterlyData || {}).forEach(([quarter, qData]) => {
-      if (!isQuarterPeriodKey(quarter)) return;
+      if (!isQuarterPeriodKey(quarter) || !is2026Quarter(quarter)) return;
       const adminQData = qData as AdminQuarterData;
       const qBudget = (adminQData.cost || 0) + (adminQData.otherCosts || 0);
       quarterlyData[quarter] = {
@@ -491,6 +497,7 @@ export function calculateBudget(
     includeNonPnlBudgets?: boolean;
     includePreliminaryData?: boolean;
     preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+    baselineByTeam?: Map<string, TeamBaselineRow>;
   }
 ): number {
   const includeNonPnlBudgets = options?.includeNonPnlBudgets ?? false;
@@ -534,30 +541,20 @@ export function calculateBudget(
     }, 0);
   }
 
-  /**
-   * UI (дашборд, таймлайн, сводки): как админка — cost+other из quarterly_data.
-   * Finance split — только если в периоде quarterly пусто (импорт без заполнения в хабе).
-   */
-  const quarterlyPeriodSum = sumQuarterlyDataBudgetForQuarters(row, selectedQuarters);
-  if (quarterlyPeriodSum > 0) {
-    if (!includeNonPnlBudgets && allocations.length > 0) {
-      return selectedQuarters.reduce(
-        (sum, quarter) => sum + calculateQuarterBudgetBase(row, quarter, false),
-        0
-      );
-    }
-    return quarterlyPeriodSum;
+  /** 2026: только quarterly_data (эталон LIST1). Split не используем как деньги. */
+  if (isOnly2026Quarters(selectedQuarters)) {
+    return sumInitiativeBudgetForQuarters(row, selectedQuarters, {
+      includeNonPnlBudgets,
+      baselineByTeam: options?.baselineByTeam,
+    });
   }
 
-  if (allocations.length > 0) {
-    return allocations.reduce((sum, allocation) => {
-      return (
-        sum +
-        selectedQuarters.reduce((quarterSum, quarter) => {
-          return quarterSum + (allocation.quarterlyBudget[quarter] || 0);
-        }, 0)
-      );
-    }, 0);
+  const quarterlyPeriodSum = sumQuarterlyDataBudgetForQuarters(row, selectedQuarters);
+  if (quarterlyPeriodSum > 0) {
+    return sumInitiativeBudgetForQuarters(row, selectedQuarters, {
+      includeNonPnlBudgets,
+      baselineByTeam: options?.baselineByTeam,
+    });
   }
 
   return 0;
@@ -586,6 +583,7 @@ export function treemapLeafValue(
 ): number {
   const rub = calculateBudget(row, selectedQuarters, options);
   if (rub > 0) return rub;
+  if (isOnly2026Quarters(selectedQuarters)) return 0;
   return periodEffortSum(row, selectedQuarters);
 }
 
@@ -781,6 +779,16 @@ export interface BuildTreeOptions {
   includeNonPnlBudgets?: boolean;
   includePreliminaryData?: boolean;
   preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  baselineByTeam?: Map<string, TeamBaselineRow>;
+}
+
+function buildTreeBudgetOptions(options: BuildTreeOptions) {
+  return {
+    includeNonPnlBudgets: options.includeNonPnlBudgets,
+    includePreliminaryData: options.includePreliminaryData,
+    preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
+    baselineByTeam: options.baselineByTeam,
+  };
 }
 
 export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
@@ -810,11 +818,7 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions): boolean {
   const qs = options.selectedQuarters;
   const includeNonPnlBudgets = options.includeNonPnlBudgets ?? false;
   if (
-    calculateBudget(row, qs, {
-      includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    }) <= 0 &&
+    calculateBudget(row, qs, buildTreeBudgetOptions(options)) <= 0 &&
     periodEffortSum(row, qs) <= 0
   )
     return false;
@@ -844,11 +848,7 @@ function buildUnitsOnlyTree(rawData: RawDataRow[], options: BuildTreeOptions): T
   const unitMap: Record<string, { name: string; value: number; distributedValue: number; unallocatedValue: number; isUnit: boolean; children: TreeNode[] }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const budget = calculateBudget(row, options.selectedQuarters, buildTreeBudgetOptions(options));
     if (!shouldIncludeRow(row, options)) return;
 
     if (!unitMap[row.unit]) {
@@ -888,11 +888,7 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
   }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const budget = calculateBudget(row, options.selectedQuarters, buildTreeBudgetOptions(options));
     if (!shouldIncludeRow(row, options)) return;
 
     if (!unitMap[row.unit]) {
@@ -942,11 +938,7 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
 
     const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const leafValue = treemapLeafValue(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const leafValue = treemapLeafValue(row, options.selectedQuarters, buildTreeBudgetOptions(options));
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
@@ -996,11 +988,7 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
 
     const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const leafValue = treemapLeafValue(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const leafValue = treemapLeafValue(row, options.selectedQuarters, buildTreeBudgetOptions(options));
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], isUnit: true };
@@ -1241,11 +1229,7 @@ function buildClusterStakeholdersUnitsOnlyTree(
   const unitMap: Record<string, { name: string; value: number; isUnit: boolean }> = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const budget = calculateBudget(row, options.selectedQuarters, buildTreeBudgetOptions(options));
     if (!shouldIncludeRow(row, options)) return;
 
     if (!unitMap[row.unit]) {
@@ -1282,11 +1266,7 @@ function buildClusterStakeholdersUnitsTeamsTree(
   > = {};
 
   rawData.forEach(row => {
-    const budget = calculateBudget(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const budget = calculateBudget(row, options.selectedQuarters, buildTreeBudgetOptions(options));
     if (!shouldIncludeRow(row, options)) return;
 
     if (!unitMap[row.unit]) {
@@ -1327,11 +1307,7 @@ function buildClusterStakeholdersFullTree(
 
     const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const leafValue = treemapLeafValue(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const leafValue = treemapLeafValue(row, options.selectedQuarters, buildTreeBudgetOptions(options));
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
@@ -1383,11 +1359,7 @@ function buildClusterStakeholdersUnitsInitiativesTree(
 
     const isSupport = isInitiativeSupportInCurrentQuarter(row);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-    const leafValue = treemapLeafValue(row, options.selectedQuarters, {
-      includeNonPnlBudgets: options.includeNonPnlBudgets,
-      includePreliminaryData: options.includePreliminaryData,
-      preliminaryQuarterBudgetMap: options.preliminaryQuarterBudgetMap,
-    });
+    const leafValue = treemapLeafValue(row, options.selectedQuarters, buildTreeBudgetOptions(options));
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], isUnit: true };

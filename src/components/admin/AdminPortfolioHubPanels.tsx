@@ -27,9 +27,8 @@ import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange, getCurrentQuarter, getPreviousQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 
-const YEAR_2025_KEYS = ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'] as const;
 const YEAR_2026_KEYS = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'] as const;
-const MATRIX_TABLE_QUARTER_KEYS = new Set<string>([...YEAR_2025_KEYS, ...YEAR_2026_KEYS]);
+const MATRIX_TABLE_QUARTER_KEYS = new Set<string>([...YEAR_2026_KEYS]);
 
 export type PortfolioHubPanel =
   | 'roster'
