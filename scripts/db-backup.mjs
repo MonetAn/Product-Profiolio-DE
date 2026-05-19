@@ -184,6 +184,14 @@ async function main() {
   const url = withPassword(baseUrl, password);
   const direct = directUrl ? withPassword(directUrl, password) : "";
 
+  try {
+    const { stdout: dumpVer } = await execFileP(PG_DUMP, ["--version"], { env: process.env });
+    console.log(`[backup] PG_DUMP=${PG_DUMP} → ${String(dumpVer).trim()}`);
+  } catch (e) {
+    console.error(`[backup] cannot run PG_DUMP=${PG_DUMP}:`, e.message || e);
+    process.exit(2);
+  }
+
   const summary = { stamp, files: {}, errors: [] };
 
   // 1) Schema dump

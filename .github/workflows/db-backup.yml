@@ -13,7 +13,11 @@ name: db-backup
 on:
   schedule:
     - cron: "17 3 * * *"   # каждый день в 03:17 UTC
-  workflow_dispatch: {}
+  workflow_dispatch: {}      # новый run с main; Re-run старого job = старый workflow
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -38,7 +42,19 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -y
           sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
           /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Verify pg_dump is v17 (not ubuntu default v16)
+        run: |
+          set -euo pipefail
+          PG_BIN=/usr/lib/postgresql/17/bin
+          test -x "$PG_BIN/pg_dump"
+          "$PG_BIN/pg_dump" --version | tee /dev/stderr | grep -qE 'pg_dump \(PostgreSQL\) 17\.'
+          if command -v pg_dump >/dev/null; then
+            echo "Default pg_dump on PATH: $(command -v pg_dump)"
+            pg_dump --version || true
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -62,11 +78,14 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_DB_DIRECT_URL: ${{ secrets.SUPABASE_DB_DIRECT_URL }}
-          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
-          PG_DUMPALL: /usr/lib/postgresql/17/bin/pg_dumpall
           BACKUPS_DIR: backups
           BACKUPS_KEEP_LAST: "1"
-        run: node scripts/db-backup.mjs
+        run: |
+          set -euo pipefail
+          export PG_DUMP=/usr/lib/postgresql/17/bin/pg_dump
+          export PG_DUMPALL=/usr/lib/postgresql/17/bin/pg_dumpall
+          "$PG_DUMP" --version
+          node scripts/db-backup.mjs
 
       - name: Upload backup as artifact
         uses: actions/upload-artifact@v4
