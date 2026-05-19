@@ -25,22 +25,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Postgres client tools
+      # Supabase = Postgres 17; ubuntu postgresql-client = 16 → pg_dump version mismatch.
+      - name: Install PostgreSQL 17 client (pg_dump)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client-common postgresql-client
+          sudo apt-get install -y curl ca-certificates lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+
+      - name: Check required secrets
+        run: |
+          missing=""
+          [ -z "${{ secrets.SUPABASE_DB_URL }}" ] && missing="${missing} SUPABASE_DB_URL"
+          [ -z "${{ secrets.SUPABASE_DB_PASSWORD }}" ] && missing="${missing} SUPABASE_DB_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "Add them in Settings → Secrets → Actions."
+            echo "SUPABASE_DB_URL = postgres pooler URL from .env.local (NOT VITE_SUPABASE_URL)."
+            exit 1
+          fi
+          echo "Secrets OK (SUPABASE_DB_URL + SUPABASE_DB_PASSWORD)"
 
       - name: Run backup script
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_DB_DIRECT_URL: ${{ secrets.SUPABASE_DB_DIRECT_URL }}
-          PG_DUMP: pg_dump
-          PG_DUMPALL: pg_dumpall
+          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          PG_DUMPALL: /usr/lib/postgresql/17/bin/pg_dumpall
           BACKUPS_DIR: backups
           BACKUPS_KEEP_LAST: "1"
         run: node scripts/db-backup.mjs
