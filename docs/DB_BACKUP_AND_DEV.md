@@ -6,10 +6,11 @@
 
 1. Положи в `.env.local` два секрета (см. раздел «Секреты»).
 2. Запусти `npm run db:backup` — появится первый снапшот в `backups/`.
-3. Установи launchd-плист — он будет делать бэкап каждые 6 часов.
-4. Добавь те же секреты в GitHub → Actions secrets — это страховка раз в сутки.
-5. Поставь Docker Desktop и подними локальный Supabase для тестов.
-6. Когда что-то ломается на проде — `npm run db:restore-preview` поднимает последний бэкап в локалку.
+3. Установи launchd-плист — он будет делать бэкап каждые 6 часов (ротация: последние 20).
+4. Поставь Docker Desktop и подними локальный Supabase для тестов.
+5. Когда что-то ломается на проде — `npm run db:restore-preview` поднимает последний бэкап в локалку.
+
+Дампы **только локально** (`backups/`, в git не попадают). В GitHub Actions бэкапы отключены.
 
 ---
 
@@ -19,8 +20,7 @@
 |---|---|
 | `scripts/db-backup.mjs` | Делает три файла: schema, data, roles. Лежат в `backups/<timestamp>/`. Ротация — последние 20. |
 | `scripts/db-restore-preview.mjs` | Заливает выбранный бэкап в локальный Postgres. В прод не пишет — это запрещено в самом скрипте. |
-| `scripts/launchd/com.product-portfolio.db-backup.plist` | macOS-расписание: бэкап каждые 6 часов. |
-| `.github/workflows/db-backup.yml` | Резервное расписание в облаке: бэкап раз в сутки + хранение 90 дней. |
+| `scripts/launchd/com.product-portfolio.db-backup.plist` | macOS-расписание: бэкап каждые 6 часов, `BACKUPS_KEEP_LAST=20`. |
 | `package.json` → `db:backup`, `db:restore-preview`, `db:start`, `db:stop`, `db:reset`, `db:diff` | Команды одной строкой. |
 | `.gitignore` → `backups/` | Дампы не попадают в основной репо. |
 | `~/.cursor/mcp.json` → `supabase` | Подключён Supabase MCP — после прописывания токена я смогу читать схему и при необходимости править данные напрямую. |
@@ -60,15 +60,6 @@ SUPABASE_DB_PASSWORD=ВСТАВЬ_СЮДА
 ### d) Для MCP
 
 Открой `~/.cursor/mcp.json` и в блоке `supabase.env.SUPABASE_ACCESS_TOKEN` замени `REPLACE_ME_WITH_PERSONAL_ACCESS_TOKEN` на свой токен из шага (b). Перезапусти Cursor — MCP подцепится.
-
-### e) Для GitHub Actions
-
-В репозитории на GitHub → Settings → Secrets and variables → Actions → New repository secret:
-
-- `SUPABASE_DB_URL` = то же, что в `.env.local`
-- `SUPABASE_DB_PASSWORD` = то же
-
-После этого workflow `db-backup.yml` начнёт ходить раз в сутки.
 
 ## 2.1. Эталонный baseline перед первым заполнением админки
 
@@ -167,6 +158,6 @@ npm run db:reset    # дропает локальную базу и накаты
 
 ## 8. Чего сейчас не сделано (осознанно)
 
-- **PITR (point-in-time recovery)** — это фича Supabase Pro ($25/мес). Если нужен «откат на любую секунду в пределах 7 дней», без апгрейда не получится. Текущий план (раз в 6 ч + дневной артефакт) даёт «откат в пределах последних 6 часов» — это компромисс с free tier'ом.
+- **PITR (point-in-time recovery)** — это фича Supabase Pro ($25/мес). Если нужен «откат на любую секунду в пределах 7 дней», без апгрейда не получится. Текущий план (локально раз в 6 ч, 20 снапшотов) даёт «откат в пределах последних 6 часов» — компромисс с free tier'ом.
 - **Audit log триггеры** на ключевых таблицах (`initiatives`, `initiative_budget_department_2026`, `team_quarter_snapshots`). Полезно, чтобы быстро отвечать на «что я сейчас сломал». Делается отдельной миграцией — могу подготовить, если хочешь.
 - **Анонимизация** при заливке прод-дампа в локалку. Если в данных есть чувствительные имена/email — нужен скрипт `scripts/sanitize-dump.mjs`. Тоже могу написать, когда будет понятно, что считать чувствительным.
