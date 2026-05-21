@@ -37,7 +37,10 @@ export function AdminQuickFlowCountrySplitStep({
   compactChrome = false,
 }: Props) {
   const eligibleRows = useMemo(
-    () => rows.filter((r) => quickFlowPaidQuartersForRow(r, fillQuarters).length > 0),
+    () =>
+      rows.filter(
+        (r) => !r.isTimelineStub && quickFlowPaidQuartersForRow(r, fillQuarters).length > 0
+      ),
     [rows, fillQuarters]
   );
 

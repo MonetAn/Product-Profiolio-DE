@@ -18,8 +18,10 @@ import {
 import type { TooltipProps } from 'recharts';
 import type { AdminDataRow, GeoCostSplitEntry } from '@/lib/adminDataManager';
 import {
+  costForAllocationDisplay,
   geoCostSplitPercentsTotal,
   getInitiativeDisplayName,
+  isAllocationRoundingDustRub,
   marketClusterKeyLabel,
   rubleAmountsFromGeoPercents,
   sortStakeholderLabels,
@@ -128,8 +130,7 @@ function buildMonthlyRowsByCluster(
     if (mins.length === 0) continue;
     for (const row of rows) {
       const qd = row.quarterlyData[q];
-      const cost = qd?.cost ?? 0;
-      const c = Math.round(Number(cost) || 0);
+      const c = costForAllocationDisplay(qd?.cost ?? 0);
       if (c <= 0) continue;
       const byCluster = new Map<string, number>();
       const unallocatedAcc = { rub: 0 };
@@ -180,7 +181,7 @@ function addQuarterGeoToMaps(
   byCluster: Map<string, number>,
   unallocatedAcc: { rub: number }
 ): void {
-  const c = Math.round(Number(cost) || 0);
+  const c = costForAllocationDisplay(cost);
   if (c <= 0) return;
   if (!entries?.length) {
     unallocatedAcc.rub += c;
@@ -268,8 +269,7 @@ function initiativeStackData(
     let totalCostRub = 0;
     for (const q of quarterKeys) {
       const qd = row.quarterlyData[q];
-      const cost = qd?.cost ?? 0;
-      const c = Math.round(Number(cost) || 0);
+      const c = costForAllocationDisplay(qd?.cost ?? 0);
       if (c <= 0) continue;
       totalCostRub += c;
       addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byC, unallocatedAcc);
@@ -305,8 +305,7 @@ function collectInitiativeRublesRows(
     let totalRub = 0;
     for (const q of quarterKeys) {
       const qd = row.quarterlyData[q];
-      const cost = qd?.cost ?? 0;
-      const c = Math.round(Number(cost) || 0);
+      const c = costForAllocationDisplay(qd?.cost ?? 0);
       if (c <= 0) continue;
       totalRub += c;
       addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
@@ -590,11 +589,13 @@ export function AdminQuickFlowCountryAllocationsSummary({
     const pieSlices = clusterLabels
       .map((name) => ({ name, value: byCluster.get(name) ?? 0 }))
       .filter((d) => d.value > 0);
-    if (unallocatedRub > 0) {
+    if (!isAllocationRoundingDustRub(unallocatedRub)) {
       pieSlices.push({ name: UNALLOCATED_LABEL, value: unallocatedRub });
     }
     const pieTotalRub = pieSlices.reduce((s, d) => s + d.value, 0);
-    const stackKeys = unallocatedRub > 0 ? [...clusterLabels, UNALLOCATED_LABEL] : clusterLabels;
+    const stackKeys = !isAllocationRoundingDustRub(unallocatedRub)
+      ? [...clusterLabels, UNALLOCATED_LABEL]
+      : clusterLabels;
     return { unallocatedRub, pieSlices, pieTotalRub, stackKeys };
   }, [rows, quartersForCharts, countryIdToClusterKey]);
 
@@ -627,7 +628,7 @@ export function AdminQuickFlowCountryAllocationsSummary({
     return { name: pieFocusKey, rub, pct };
   }, [pieFocusKey, pieData, pieTotalRub]);
 
-  const includeUnallocatedInStack = allocationSummary.unallocatedRub > 0;
+  const includeUnallocatedInStack = !isAllocationRoundingDustRub(allocationSummary.unallocatedRub);
   const initiativeRublesRows = useMemo(
     () =>
       collectInitiativeRublesRows(

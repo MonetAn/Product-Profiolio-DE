@@ -1,5 +1,9 @@
 import type { AdminDataRow } from '@/lib/adminDataManager';
-import { createEmptyQuarterData, getStubResidualLabel } from '@/lib/adminDataManager';
+import {
+  createEmptyQuarterData,
+  getStubResidualLabel,
+  isAllocationRoundingDustRub,
+} from '@/lib/adminDataManager';
 import type { TreeNode } from '@/lib/dataManager';
 import { getUnitColor, mixHexWithNeutralGray } from '@/lib/dataManager';
 import { compareQuarters } from '@/lib/quarterUtils';
@@ -352,7 +356,7 @@ export function buildEffortTreemapPreviewModel(
   const leaves: EffortTreemapLeaf[] = [];
 
   const pushLeaf = (name: string, rowId: string, value: number, effort: number, stub: boolean) => {
-    if (value <= 1e-6) return;
+    if (value <= 1e-6 || (stub && isAllocationRoundingDustRub(value))) return;
     if (stub) stubNames.add(name);
     treeChildren.push({
       name,
@@ -383,7 +387,7 @@ export function buildEffortTreemapPreviewModel(
     }
   }
 
-  if (unalloc > 1e-2) {
+  if (unalloc > 1e-2 && !isAllocationRoundingDustRub(unalloc)) {
     treeChildren.push({
       name: virtualUnallocLabel,
       value: unalloc,

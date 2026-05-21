@@ -64,6 +64,7 @@ import {
   getQuickFlowValidationIssuesForQuarters,
   effortMatrixColumnChipState,
   getInitiativeDisplayName,
+  costForAllocationDisplay,
   getStubResidualLabel,
   nonStubQuarterEffortSum,
 } from '@/lib/adminDataManager';
@@ -232,21 +233,24 @@ type CostRowModel = {
 };
 
 function buildDbCostRows(rows: AdminDataRow[], keys: string[]): CostRowModel[] {
-  return rows.map((r) => {
-    const byQ: Record<string, number> = {};
-    let total = 0;
-    for (const k of keys) {
-      const c = Number(r.quarterlyData[k]?.cost ?? 0) || 0;
-      byQ[k] = c;
-      total += c;
-    }
-    return {
-      initiativeId: r.id,
-      initiativeName: r.isTimelineStub ? getStubResidualLabel(r.team) : r.initiative || '—',
-      byQ,
-      total,
-    };
-  });
+  return rows
+    .map((r) => {
+      const byQ: Record<string, number> = {};
+      let total = 0;
+      for (const k of keys) {
+        const raw = Number(r.quarterlyData[k]?.cost ?? 0) || 0;
+        const c = r.isTimelineStub ? costForAllocationDisplay(raw) : Math.round(raw);
+        byQ[k] = c;
+        total += c;
+      }
+      return {
+        initiativeId: r.id,
+        initiativeName: r.isTimelineStub ? getStubResidualLabel(r.team) : r.initiative || '—',
+        byQ,
+        total,
+      };
+    })
+    .filter((row) => row.total > 0);
 }
 
 function buildSheetCostRows(previewRows: SheetsPreviewRow[], quarterKeys: string[]): CostRowModel[] {

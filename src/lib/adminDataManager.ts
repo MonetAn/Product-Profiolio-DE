@@ -174,10 +174,26 @@ export function isGeoCostSplitCompleteForCost(cost: number, split: GeoCostSplit 
   return geoCostSplitPercentsTotal(split.entries) === 100;
 }
 
+/**
+ * Остаток целочисленного распределения cost (заглушка, LRM по странам) — не показываем в админке.
+ * На таймлайне отдельный порог: `TIMELINE_NEGLIGIBLE_BUDGET_RUB` в `dataManager.ts`.
+ */
+export const ALLOCATION_ROUNDING_DUST_RUB = 100;
+
+export function isAllocationRoundingDustRub(value: number): boolean {
+  const v = Math.round(Number(value) || 0);
+  return v > 0 && v < ALLOCATION_ROUNDING_DUST_RUB;
+}
+
+/** Сумма для UI аллокаций: «пыль» округления → 0. */
+export function costForAllocationDisplay(value: number): number {
+  return isAllocationRoundingDustRub(value) ? 0 : Math.round(Number(value) || 0);
+}
+
 /** Кварталы интервала quick flow с cost &gt; 0 по инициативе (по возрастанию). */
 export function quickFlowPaidQuartersForRow(row: AdminDataRow, fillQuarters: string[]): string[] {
   const sortedFill = [...fillQuarters].filter(Boolean).sort(compareQuarters);
-  return sortedFill.filter((q) => (row.quarterlyData[q]?.cost ?? 0) > 0);
+  return sortedFill.filter((q) => !isAllocationRoundingDustRub(row.quarterlyData[q]?.cost ?? 0));
 }
 
 /** По всем кварталам интервала с затратами — geo split на 100%. Иначе false; нет затрат в интервале — false. */

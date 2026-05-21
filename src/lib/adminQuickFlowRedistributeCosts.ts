@@ -1,5 +1,5 @@
 import type { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
-import { createEmptyQuarterData } from '@/lib/adminDataManager';
+import { createEmptyQuarterData, isAllocationRoundingDustRub } from '@/lib/adminDataManager';
 import { columnEffortSum, teamPeriodCostSum, teamQuarterCostSum } from '@/lib/adminEffortTreemapPreviewModel';
 import { compareQuarters } from '@/lib/quarterUtils';
 
@@ -138,9 +138,10 @@ export function buildQuarterlyDataFromPreview(
       const perStub = distributeResidualToStubs(stubIds, stubCostHintById, stubCostTotal);
       for (const id of stubIds) {
         const cur = out.get(id)![q] ?? createEmptyQuarterData();
+        const stubCost = perStub.get(id) ?? 0;
         out.get(id)![q] = {
           ...cur,
-          cost: perStub.get(id) ?? 0,
+          cost: isAllocationRoundingDustRub(stubCost) ? 0 : stubCost,
           // Заглушка — контейнер остатка, её собственный effortCoefficient не имеет смысла.
           // Затираем при записи, чтобы убрать легаси-значения, которые могли висеть из старых импортов.
           effortCoefficient: 0,

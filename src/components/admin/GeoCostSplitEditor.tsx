@@ -23,6 +23,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   type GeoCostSplit,
   type GeoCostSplitEntry,
+  costForAllocationDisplay,
   geoCostSplitPercentsTotal,
   rubleAmountsForGeoSplit,
   marketClusterKeyLabel,
@@ -931,7 +932,11 @@ export function GeoCostSplitEditor({
                     </div>
                     <div className="flex h-8 w-[5.5rem] shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
                       <span className="min-w-0 truncate text-right text-sm">
-                        {rubles[index] != null ? rubles[index].toLocaleString('ru-RU') : '—'}
+                        {(() => {
+                          const rub =
+                            rubles[index] != null ? costForAllocationDisplay(rubles[index]) : 0;
+                          return rub > 0 ? rub.toLocaleString('ru-RU') : '—';
+                        })()}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">₽</span>
                     </div>
