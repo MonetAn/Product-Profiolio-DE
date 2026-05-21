@@ -134,7 +134,7 @@ function buildMonthlyRowsByCluster(
       if (c <= 0) continue;
       const byCluster = new Map<string, number>();
       const unallocatedAcc = { rub: 0 };
-      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+      addQuarterGeoToMaps(c, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
 
       const pushThird = (label: string, rub: number) => {
         if (rub <= 0) return;
@@ -272,7 +272,7 @@ function initiativeStackData(
       const c = costForAllocationDisplay(qd?.cost ?? 0);
       if (c <= 0) continue;
       totalCostRub += c;
-      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byC, unallocatedAcc);
+      addQuarterGeoToMaps(c, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byC, unallocatedAcc);
     }
     if (totalCostRub <= 0) continue;
     const rec: StackDatum = {
@@ -308,7 +308,7 @@ function collectInitiativeRublesRows(
       const c = costForAllocationDisplay(qd?.cost ?? 0);
       if (c <= 0) continue;
       totalRub += c;
-      addQuarterGeoToMaps(cost, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
+      addQuarterGeoToMaps(c, row.initiativeGeoCostSplit?.entries, countryIdToClusterKey, byCluster, unallocatedAcc);
     }
     if (totalRub <= 0) continue;
     if (includeUnallocated && unallocatedAcc.rub > 0) {
