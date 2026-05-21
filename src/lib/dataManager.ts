@@ -632,7 +632,7 @@ export function hasTimelineVisibleBudgetInPeriod(
 ): boolean {
   const cost = timelineVisiblePeriodCost(row, selectedQuarters, options);
   if (cost <= 0) return false;
-  if (row.isTimelineStub && isNegligibleTimelineBudgetRub(cost)) return false;
+  if (isNegligibleTimelineBudgetRub(cost)) return false;
   return true;
 }
 
@@ -1012,7 +1012,7 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
   return { name: 'Все Unit', children, isRoot: true };
 }
 
-/** Суммы ниже порога на таймлайне — обычно остаток целочисленного округления у заглушек, не показываем. */
+/** Суммы ниже порога на таймлайне — пыль округления (заглушки и отдельные кварталы), не показываем. */
 export const TIMELINE_NEGLIGIBLE_BUDGET_RUB = 1000;
 
 export function isNegligibleTimelineBudgetRub(value: number): boolean {

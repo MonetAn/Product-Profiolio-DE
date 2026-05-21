@@ -657,7 +657,7 @@ const GanttView = ({
     const quartersWithData = selectedQuarters.filter((q) => {
       const qData = row.quarterlyData[q];
       if (!qData) return false;
-      if (qData.budget > 0) return true;
+      if (qData.budget > 0 && !isNegligibleTimelineBudgetRub(qData.budget)) return true;
       return Boolean(
         qData.metricPlan?.trim() ||
           qData.metricFact?.trim() ||
@@ -759,7 +759,7 @@ const GanttView = ({
                       </div>
                     ) : null}
 
-                    {showMoney && qData.budget > 0 ? (
+                    {showMoney && qData.budget > 0 && !isNegligibleTimelineBudgetRub(qData.budget) ? (
                       <div className="gantt-detail-quarter-budget">Бюджет: {formatBudget(qData.budget)}</div>
                     ) : null}
 
@@ -916,7 +916,7 @@ const GanttView = ({
                     if (
                       !qData ||
                       qData.budget === 0 ||
-                      (row.isTimelineStub && isNegligibleTimelineBudgetRub(qData.budget))
+                      isNegligibleTimelineBudgetRub(qData.budget)
                     ) {
                       return null;
                     }
