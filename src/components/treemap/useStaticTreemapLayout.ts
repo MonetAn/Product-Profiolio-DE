@@ -6,6 +6,7 @@ import { getUnitColor } from '@/lib/dataManager';
 import type { ColorGetter, ContainerDimensions, TreemapLayoutNode } from './types';
 import { layoutSemanticUnits } from '@/lib/treemapSemanticLayout';
 import { findTreeNodeByPath, layoutD3SubtreeInRect } from '@/lib/treemapD3Layout';
+import { encodeTreemapPathSegment } from '@/lib/treemapPathCodec';
 
 /** Отступ снизу при зуме (как визуальный зазор в динамическом вью) */
 const ZOOM_LAYOUT_BOTTOM_PAD = 12;
@@ -53,6 +54,7 @@ export function useStaticTreemapLayout({
       if (focusedTree) {
         const layoutHeight = Math.max(0, dimensions.height - ZOOM_LAYOUT_BOTTOM_PAD);
         const colorAnchor = validPath[0];
+        const nodePath = validPath.map(encodeTreemapPathSegment).join('/');
         return [
           layoutD3SubtreeInRect(
             focusedTree,
@@ -63,7 +65,8 @@ export function useStaticTreemapLayout({
             getColor,
             renderDepth,
             colorAnchor,
-            0
+            0,
+            nodePath
           ),
         ];
       }

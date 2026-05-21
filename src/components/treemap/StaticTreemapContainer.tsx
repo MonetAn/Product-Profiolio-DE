@@ -127,15 +127,25 @@ const StaticTreemapContainer = ({
     return !treemapQuarterCatalog.every((q) => sel.has(q));
   }, [selectedQuarters, treemapQuarterCatalog]);
 
-  // Reset focusedPath only when root data actually changes
-  const dataIdRef = useRef(data.name + '|' + (data.children?.length || 0));
+  // Сброс зума только при смене корня дерева (не при Sensitive / фильтре строк)
+  const dataRootRef = useRef(data.name);
   useEffect(() => {
-    const newId = data.name + '|' + (data.children?.length || 0);
-    if (dataIdRef.current !== newId) {
-      dataIdRef.current = newId;
+    if (dataRootRef.current !== data.name) {
+      dataRootRef.current = data.name;
       setFocusedPath([]);
+      onFocusedPathChange?.([]);
     }
-  }, [data]);
+  }, [data.name, onFocusedPathChange]);
+
+  const prevInitialFocusedRef = useRef(initialFocusedPath);
+  useEffect(() => {
+    const ext = initialFocusedPath ?? [];
+    const prev = prevInitialFocusedRef.current ?? [];
+    if (ext.join('/') !== prev.join('/')) {
+      prevInitialFocusedRef.current = ext;
+      setFocusedPath(ext);
+    }
+  }, [initialFocusedPath]);
   
   // Reset focusedPath when manual filters trigger a reset
   const prevResetTriggerRef = useRef(resetZoomTrigger);
@@ -201,10 +211,7 @@ const StaticTreemapContainer = ({
     return () => resizeObserver.disconnect();
   }, [viewKey]);
 
-  const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
-  useEffect(() => {
-    setRenderDepth(targetRenderDepth);
-  }, [targetRenderDepth]);
+  const renderDepth = targetRenderDepth;
 
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
     // Quick flow review: полный обзор по строке админ-таблицы
@@ -394,6 +401,7 @@ const StaticTreemapContainer = ({
       
       {!isEmpty && dimensions.width > 0 && (
         <div
+          key={`${contentKey ?? 'treemap'}|${focusedPath.join('/')}|d${renderDepth}`}
           style={{
             position: 'relative',
             width: '100%',
@@ -405,7 +413,7 @@ const StaticTreemapContainer = ({
         >
           {layoutNodes.map((node) => (
             <StaticTreemapNode
-              key={node.key}
+              key={`${node.key}|d${renderDepth}`}
               node={node}
               focusedPath={focusedPath}
               onClick={handleNodeClick}

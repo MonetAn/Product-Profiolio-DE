@@ -19,6 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { normalizeTeamName } from '@/lib/sensitiveScopes';
 import { Navigate } from 'react-router-dom';
+import { AdminTreemapLayoutSettings } from '@/components/admin/AdminTreemapLayoutSettings';
 
 type SensitiveRow = Database['public']['Tables']['sensitive_scopes']['Row'];
 
@@ -178,9 +179,9 @@ export default function AdminSensitive() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <AdminHeader currentView="sensitive" hasData={false} />
-      <div className="flex-1 overflow-auto p-4 md:p-6 max-w-3xl mx-auto w-full space-y-6">
+      <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-6 max-w-3xl mx-auto w-full space-y-6 pb-8">
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-amber-600" aria-hidden />
@@ -281,7 +282,9 @@ export default function AdminSensitive() {
             </div>
           </>
         )}
-      </div>
+
+        <AdminTreemapLayoutSettings />
+      </main>
     </div>
   );
 }

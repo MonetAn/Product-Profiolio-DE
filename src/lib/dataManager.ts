@@ -1063,6 +1063,7 @@ const colorPalette = [
 const explicitUnitColors: Record<string, string> = {
   'Drinkit':          '#4A7DD7',  // Насыщенный синий (закреплён)
   'Tech Platform':    '#7B5FA8',  // Глубокий фиолетовый
+  'Design':           '#9E4A7A',  // Пыльная роза (не путать с Tech Platform)
   'Data Office':      '#D4852C',  // Янтарь
   'FAP':              '#E67A3D',  // Тыквенный оранж
   'Client Platform':  '#2D9B6A',  // Тёмный изумруд

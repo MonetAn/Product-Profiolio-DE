@@ -177,7 +177,8 @@ function layoutDirectChildrenInRect(
       getColor,
       maxDepth,
       colorAnchor,
-      childDepth
+      childDepth,
+      laid.path
     );
     return { ...laid, children: nested.children };
   });
@@ -195,21 +196,23 @@ export function layoutD3SubtreeInRect(
   getColor: ColorGetter,
   maxDepth: number,
   colorAnchor?: string,
-  depth = 0
+  depth = 0,
+  nodePath?: string
 ): TreemapLayoutNode {
   const anchor = colorAnchor ?? rootNode.name;
-  const enc = encodeTreemapPathSegment(rootNode.name);
+  const segment = encodeTreemapPathSegment(rootNode.name);
+  const fullPath = nodePath ?? segment;
   const shell = buildNodeShell(rootNode, x0, y0, x1, y1, getColor, anchor, depth);
 
   if (maxDepth <= depth + 1 || !(rootNode.children?.length ?? 0)) {
-    return shell;
+    return { ...shell, path: fullPath };
   }
 
   const header = headerPxForNode(rootNode);
   const innerY0 = y0 + header;
   const children = layoutDirectChildrenInRect(
     rootNode,
-    enc,
+    fullPath,
     x0,
     innerY0,
     x1,
@@ -220,7 +223,7 @@ export function layoutD3SubtreeInRect(
     maxDepth
   );
 
-  return { ...shell, children };
+  return { ...shell, path: fullPath, children };
 }
 
 export function findTreeNodeByPath(root: TreeNode, path: string[]): TreeNode | null {

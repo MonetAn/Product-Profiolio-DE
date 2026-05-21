@@ -163,15 +163,24 @@ const TreemapContainer = ({
     return !treemapQuarterCatalog.every((q) => sel.has(q));
   }, [selectedQuarters, treemapQuarterCatalog]);
 
-  // Reset focusedPath only when root data actually changes
-  const dataIdRef = useRef(data.name + '|' + (data.children?.length || 0));
+  const dataRootRef = useRef(data.name);
   useEffect(() => {
-    const newId = data.name + '|' + (data.children?.length || 0);
-    if (dataIdRef.current !== newId) {
-      dataIdRef.current = newId;
+    if (dataRootRef.current !== data.name) {
+      dataRootRef.current = data.name;
       setFocusedPath([]);
+      onFocusedPathChange?.([]);
     }
-  }, [data]);
+  }, [data.name, onFocusedPathChange]);
+
+  const prevInitialFocusedRef = useRef(initialFocusedPath);
+  useEffect(() => {
+    const ext = initialFocusedPath ?? [];
+    const prev = prevInitialFocusedRef.current ?? [];
+    if (ext.join('/') !== prev.join('/')) {
+      prevInitialFocusedRef.current = ext;
+      setFocusedPath(ext);
+    }
+  }, [initialFocusedPath]);
   
   // Reset focusedPath when manual filters trigger a reset
   const prevResetTriggerRef = useRef(resetZoomTrigger);

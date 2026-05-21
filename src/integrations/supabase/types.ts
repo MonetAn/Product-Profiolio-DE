@@ -554,6 +554,24 @@ export type Database = {
         }
         Relationships: []
       }
+      dashboard_treemap_layout_config: {
+        Row: {
+          id: number
+          dynamic_for_all: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          dynamic_for_all?: boolean
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          dynamic_for_all?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sensitive_scopes: {
         Row: {
           id: string

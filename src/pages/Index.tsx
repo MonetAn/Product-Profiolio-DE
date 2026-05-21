@@ -28,6 +28,11 @@ import {
 } from '@/lib/dataManager';
 import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import { prepareStaticTreemapTree } from '@/lib/staticTreemapData';
+import { useTreemapLayoutConfig } from '@/hooks/useTreemapLayoutConfig';
+import {
+  readPersonalDynamicTreemap,
+  TREEMAP_PERSONAL_PREF_EVENT,
+} from '@/lib/treemapViewPreference';
 import { useInitiatives } from '@/hooks/useInitiatives';
 import { useBudgetDepartmentAllocations } from '@/hooks/useBudgetDepartmentAllocations';
 import { useFilterParams } from '@/hooks/useFilterParams';
@@ -86,8 +91,8 @@ const Index = () => {
   const [showMoney, setShowMoney] = useState(true);
   /** Super admin: по умолчанию скрываем sensitive на клиенте (полные строки уже приходят из API) */
   const [showSensitiveTreemap, setShowSensitiveTreemap] = useState(false);
-  /** Super admin: семантическая раскладка юнитов (B2C/B2B/платформа) для слайдов */
-  const [staticTreemapLayout, setStaticTreemapLayout] = useState(false);
+  const { dynamicForAll } = useTreemapLayoutConfig();
+  const [personalDynamicTreemap, setPersonalDynamicTreemap] = useState(readPersonalDynamicTreemap);
   const effectiveShowMoney = canViewMoney && showMoney;
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
   const [clickedNodeName, setClickedNodeName] = useState<string | null>(null);
@@ -123,13 +128,15 @@ const Index = () => {
   }, [isSuperAdmin, showSensitiveTreemap]);
 
   useEffect(() => {
-    if (!isSuperAdmin && staticTreemapLayout) {
-      setStaticTreemapLayout(false);
-    }
-  }, [isSuperAdmin, staticTreemapLayout]);
+    const sync = () => setPersonalDynamicTreemap(readPersonalDynamicTreemap());
+    window.addEventListener(TREEMAP_PERSONAL_PREF_EVENT, sync);
+    return () => window.removeEventListener(TREEMAP_PERSONAL_PREF_EVENT, sync);
+  }, []);
 
   const revealSensitiveTreemap = isSuperAdmin && showSensitiveTreemap;
-  const useStaticTreemapLayout = isSuperAdmin && staticTreemapLayout;
+  const useDynamicTreemapLayout =
+    dynamicForAll || (isSuperAdmin && personalDynamicTreemap);
+  const useStaticTreemapLayout = !useDynamicTreemapLayout;
 
   const needsSensitiveMask = !revealSensitiveTreemap && (isSuperAdmin || isAdmin);
   const {
@@ -588,8 +595,15 @@ const Index = () => {
     let unit = '';
     let team = '';
     let initiative = '';
-    if (parts.length === 2) {
-      // Budget: Unit/Initiative (no teams)
+    if (parts.length === 2 && currentView === 'budget') {
+      const noTeamRow = displayData.find(
+        (r) => r.unit === parts[0] && r.initiative === parts[1] && !(r.team || '').trim()
+      );
+      if (noTeamRow) return noTeamRow;
+      const teamInitMatches = displayData.filter(
+        (r) => r.initiative === parts[1] && (r.team || 'Без команды') === parts[0]
+      );
+      if (teamInitMatches.length === 1) return teamInitMatches[0];
       unit = parts[0];
       initiative = parts[1];
     } else if (parts.length === 3 && currentView === 'budget') {
@@ -869,9 +883,6 @@ const Index = () => {
         sensitiveTreemapToggleVisible={isSuperAdmin}
         showSensitiveTreemap={revealSensitiveTreemap}
         onShowSensitiveTreemapChange={setShowSensitiveTreemap}
-        staticTreemapToggleVisible={isSuperAdmin}
-        staticTreemapLayout={useStaticTreemapLayout}
-        onStaticTreemapLayoutChange={setStaticTreemapLayout}
         showTeams={showTeams}
         showInitiatives={showInitiatives}
         onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
