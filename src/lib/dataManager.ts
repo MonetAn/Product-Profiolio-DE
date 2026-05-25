@@ -1020,20 +1020,28 @@ export function isNegligibleTimelineBudgetRub(value: number): boolean {
 }
 
 // ===== FORMATTING =====
+/** Округление до тысяч даёт «1000» — показываем миллионы, не «1000 тыс» / «1000K». */
+function shouldFormatBudgetAsMillions(value: number): boolean {
+  const abs = Math.abs(value);
+  return abs >= 1_000_000 || (abs >= 1_000 && Math.round(abs / 1_000) >= 1_000);
+}
+
 export function formatBudget(value: number): string {
-  if (value >= 1000000) {
-    return (value / 1000000).toFixed(1) + ' млн ₽';
-  } else if (value >= 1000) {
-    return (value / 1000).toFixed(0) + ' тыс. ₽';
+  if (shouldFormatBudgetAsMillions(value)) {
+    return (value / 1_000_000).toFixed(1) + ' млн ₽';
+  }
+  if (Math.abs(value) >= 1_000) {
+    return Math.round(value / 1_000) + ' тыс. ₽';
   }
   return value + ' ₽';
 }
 
 export function formatBudgetShort(value: number): string {
-  if (value >= 1000000) {
-    return (value / 1000000).toFixed(1) + 'M';
-  } else if (value >= 1000) {
-    return (value / 1000).toFixed(0) + 'K';
+  if (shouldFormatBudgetAsMillions(value)) {
+    return (value / 1_000_000).toFixed(1) + 'M';
+  }
+  if (Math.abs(value) >= 1_000) {
+    return Math.round(value / 1_000) + 'K';
   }
   if (value <= 0) return '0';
   return `${Math.round(value)}₽`;

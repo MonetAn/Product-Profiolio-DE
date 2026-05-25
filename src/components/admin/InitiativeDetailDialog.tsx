@@ -32,6 +32,7 @@ import {
   getInitiativeDisplayName,
   getStubResidualLabel,
 } from '@/lib/adminDataManager';
+import { formatBudgetShort } from '@/lib/dataManager';
 import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { compareQuarters, isCalendarPastQuarter } from '@/lib/quarterUtils';
@@ -318,9 +319,10 @@ const QuarterFields = ({
   }, [useExplicit, explicitDirty, handleExplicitSave, clearSaveFeedbackTimer]);
 
   const formatCurrency = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
-    if (value >= 1000) return `${(value / 1000).toFixed(0)}K ₽`;
-    return `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+    if (Math.abs(value) < 1_000) {
+      return `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+    }
+    return `${formatBudgetShort(value)} ₽`;
   };
 
   const formatCurrencyFull = (value: number) =>

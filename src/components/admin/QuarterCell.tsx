@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { AdminQuarterData } from '@/lib/adminDataManager';
+import { formatBudgetShort } from '@/lib/dataManager';
 
 interface QuarterCellProps {
   quarter: string;
@@ -41,9 +42,8 @@ const QuarterCell = ({
   onSupportChange
 }: QuarterCellProps) => {
   const formatCurrency = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
-    return value.toString();
+    if (Math.abs(value) < 1_000) return value.toString();
+    return formatBudgetShort(value);
   };
 
   const totalCost = (data.cost ?? 0) + (data.otherCosts ?? 0);

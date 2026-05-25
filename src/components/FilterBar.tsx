@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { RawDataRow, calculateBudget, formatBudget, hasTimelineVisibleBudgetInPeriod, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, formatBudget, formatBudgetShort, hasTimelineVisibleBudgetInPeriod, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
 import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import {
   Tooltip,
@@ -543,16 +543,6 @@ const FilterBar = ({
     }
   };
 
-  // Format budget for compact display
-  const formatBudgetCompact = (value: number): string => {
-    if (value >= 1000000) {
-      return (value / 1000000).toFixed(1) + 'M';
-    } else if (value >= 1000) {
-      return Math.round(value / 1000) + 'K';
-    }
-    return value.toString();
-  };
-
   return (
     <div className="bg-header border-b border-border fixed top-14 left-0 right-0 z-40">
       <div className="px-4 py-2 flex flex-col gap-2">
@@ -1079,7 +1069,7 @@ const FilterBar = ({
                   >
                     {canViewMoney && showMoney && headerBudgetRub > 0 && (
                       <>
-                        <span className="font-bold tabular-nums shrink-0">{formatBudgetCompact(headerBudgetRub)}</span>
+                        <span className="font-bold tabular-nums shrink-0">{formatBudgetShort(headerBudgetRub)}</span>
                         <span
                           className="w-px h-3.5 shrink-0 bg-border/70 mx-1.5 self-center"
                           aria-hidden
