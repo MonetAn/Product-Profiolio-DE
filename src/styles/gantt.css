@@ -1101,12 +1101,12 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
 }
 
 .gantt-detail-panel-sublabel {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--foreground));
   text-transform: uppercase;
-  letter-spacing: 0.4px;
-  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
 }
 
 .gantt-detail-panel-text {
