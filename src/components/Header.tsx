@@ -15,7 +15,7 @@ interface HeaderProps {
   onViewChange: (view: ViewType) => void;
   onSearchClick: () => void;
   isAdmin?: boolean;
-  /** Сохраняет `?units=&teams=` при переходе в админку (как в useFilterParams). */
+  /** Сохраняет `?units=&teams=&stakeholders=` при переходе в админку (как в useFilterParams). */
   adminTo?: string;
 }
 

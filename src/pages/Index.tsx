@@ -41,6 +41,12 @@ import { useSensitiveDashboardMask } from '@/hooks/useSensitiveDashboardMask';
 import { useBudgetTruth2026 } from '@/hooks/useBudgetTruth2026';
 import { filterQuarters2026 } from '@/lib/budgetTruth2026';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
+import {
+  filtersToBudgetTreemapPath,
+  filtersToStakeholdersTreemapPath,
+  treemapPathToBudgetFilters,
+  treemapPathToStakeholdersFilters,
+} from '@/lib/treemapFilterSync';
 import { toast } from 'sonner';
 
 const EMPTY_SENSITIVE_KEY_SET = new Set<string>();
@@ -54,9 +60,12 @@ const Index = () => {
   const {
     selectedUnits,
     selectedTeams,
+    selectedStakeholders,
     setSelectedUnits,
     setSelectedTeams,
+    setSelectedStakeholders,
     setFilters,
+    setScopeFilters,
     buildFilteredUrl,
   } = useFilterParams();
   const adminEntryUrl = useMemo(() => buildFilteredUrl('/admin'), [buildFilteredUrl]);
@@ -80,11 +89,10 @@ const Index = () => {
   const [currentRoot, setCurrentRoot] = useState<TreeNode>({ name: 'Все Unit', children: [], isRoot: true });
   const [navigationStack, setNavigationStack] = useState<TreeNode[]>([]);
 
-  // Filter state — unit/team synced with URL (?units=&teams=) for round-trip with админкой
+  // Filter state — unit/team/stakeholder synced with URL for round-trip between views and админкой
   const [supportFilter, setSupportFilter] = useState<SupportFilter>('all');
   const [showOnlyOfftrack, setShowOnlyOfftrack] = useState(false);
   const [hideStubs, setHideStubs] = useState(false);
-  const [selectedStakeholders, setSelectedStakeholders] = useState<string[]>([]);
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
   const [showOnlyPnlIt, setShowOnlyPnlIt] = useState(true);
@@ -235,11 +243,10 @@ const Index = () => {
     if (location.state?.reset !== true) return;
     setCurrentView('budget');
     setNavigationStack([]);
-    setFilters([], []);
+    setScopeFilters({ units: [], teams: [], stakeholders: [] });
     setSupportFilter('all');
     setShowOnlyOfftrack(false);
     setHideStubs(false);
-    setSelectedStakeholders([]);
     setShowTeams(false);
     setShowInitiatives(false);
     setShowOnlyPnlIt(true);
@@ -256,11 +263,10 @@ const Index = () => {
     setShowOfftrackModal(false);
     setInitiativePeekPath(null);
     setSearchQuery('');
-    setZoomPath([]);
     setResetZoomTrigger(prev => prev + 1);
     autoEnabledRef.current = { teams: false, initiatives: false };
     navigate('.', { replace: true, state: {} });
-  }, [location.state?.reset, navigate, setFilters]);
+  }, [location.state?.reset, navigate, setScopeFilters]);
 
   // Build tree whenever filters change
   const rebuildTree = useCallback(() => {
@@ -346,13 +352,28 @@ const Index = () => {
     }
   }, []);
 
-  // Track current zoom path for breadcrumb display (does NOT affect filters/data)
-  const [zoomPath, setZoomPath] = useState<string[]>([]);
   const [resetZoomTrigger, setResetZoomTrigger] = useState(0);
 
-  const handleFocusedPathChange = useCallback((path: string[]) => {
-    setZoomPath(path);
-  }, []);
+  const treemapFocusedPath = useMemo(() => {
+    if (currentView === 'stakeholders') {
+      return filtersToStakeholdersTreemapPath(selectedStakeholders, selectedUnits, selectedTeams);
+    }
+    if (currentView === 'budget') {
+      return filtersToBudgetTreemapPath(selectedUnits, selectedTeams);
+    }
+    return [];
+  }, [currentView, selectedStakeholders, selectedUnits, selectedTeams]);
+
+  const handleFocusedPathChange = useCallback(
+    (path: string[]) => {
+      if (currentView === 'stakeholders') {
+        setScopeFilters(treemapPathToStakeholdersFilters(path));
+      } else if (currentView === 'budget') {
+        setScopeFilters(treemapPathToBudgetFilters(path));
+      }
+    },
+    [currentView, setScopeFilters]
+  );
   // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -475,35 +496,29 @@ const Index = () => {
 
   const handleNavigateBack = useCallback(() => {
     if (selectedTeams.length > 0) {
-      // If teams are selected with a single unit, clear both at once
-      // (this is the typical "drilled into unit" state)
       if (selectedUnits.length === 1) {
-        setSelectedTeams([]);
-        setSelectedUnits([]);
+        setScopeFilters({ units: [], teams: [] });
       } else {
-        // Multiple units selected - just clear teams
         setSelectedTeams([]);
       }
     } else if (selectedUnits.length > 0) {
-      // If unit is selected, clear it (go back to all units)
       setSelectedUnits([]);
     } else if (selectedStakeholders.length > 0) {
-      // If stakeholder is selected, clear it (go back to all stakeholders)
       setSelectedStakeholders([]);
     }
-    // Don't change toggle states when going back
   }, [
     selectedTeams.length,
     selectedUnits.length,
     selectedStakeholders.length,
     setSelectedTeams,
     setSelectedUnits,
+    setSelectedStakeholders,
+    setScopeFilters,
   ]);
 
   // Reset all filters (smart reset: if no quarters selected, restore all)
   const resetFilters = useCallback(() => {
-    setFilters([], []);
-    setSelectedStakeholders([]);
+    setScopeFilters({ units: [], teams: [], stakeholders: [] });
     setSupportFilter('all');
     setShowOnlyOfftrack(false);
     setHideStubs(false);
@@ -518,7 +533,7 @@ const Index = () => {
       const q2026 = filterQuarters2026(availableQuarters);
       setSelectedQuarters(q2026.length > 0 ? q2026 : [...availableQuarters]);
     }
-  }, [selectedQuarters.length, availableQuarters, setFilters]);
+  }, [selectedQuarters.length, availableQuarters, setScopeFilters]);
 
   const timelineFilterOptions = useMemo(
     () => ({
@@ -582,9 +597,6 @@ const Index = () => {
     setNavigationStack([]);
     setCurrentRoot(view === 'stakeholders' ? stakeholdersData : portfolioData);
     setHighlightedInitiative(null);
-    // Treemap zoom path is tab-specific (budget: unit-first; clusters: stakeholder-first).
-    // Reuse would mislabel the stakeholder filter with the budget unit segment.
-    setZoomPath([]);
     setResetZoomTrigger((prev) => prev + 1);
   };
 
@@ -850,12 +862,10 @@ const Index = () => {
           } else {
             setSelectedUnits(units);
           }
-          setZoomPath([]);
           setResetZoomTrigger(prev => prev + 1);
         }}
         onTeamsChange={(teams) => {
           setSelectedTeams(teams);
-          setZoomPath([]);
           setResetZoomTrigger(prev => prev + 1);
         }}
         supportFilter={supportFilter}
@@ -872,7 +882,6 @@ const Index = () => {
         selectedStakeholders={selectedStakeholders}
         onStakeholdersChange={(stakeholders) => {
           setSelectedStakeholders(stakeholders);
-          setZoomPath([]);
           setResetZoomTrigger(prev => prev + 1);
         }}
         availableYears={availableYears}
@@ -910,8 +919,6 @@ const Index = () => {
         }}
         costType={costType}
         onCostTypeChange={setCostType}
-        zoomPath={currentView !== 'timeline' ? zoomPath : []}
-        zoomActiveTab={currentView === 'stakeholders' ? 'stakeholders' : 'budget'}
         currentView={currentView}
         stakeholderFilterMode={currentView === 'stakeholders' ? 'single' : 'multi'}
         baselineByTeam={budgetTruth2026?.baselineByTeam}
@@ -963,7 +970,7 @@ const Index = () => {
             onUploadClick={() => fileInputRef.current?.click()}
             selectedQuarters={selectedQuarters}
             onNavigateBack={handleNavigateBack}
-            canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
+            canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
             onInitiativeClick={(name, path) => {
               setInitiativePeekPath(path);
             }}
@@ -978,7 +985,7 @@ const Index = () => {
             onAutoDisableInitiatives={handleAutoDisableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
-            initialFocusedPath={zoomPath}
+            initialFocusedPath={treemapFocusedPath}
             showMoney={effectiveShowMoney}
             showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}
@@ -1018,7 +1025,7 @@ const Index = () => {
             resetZoomTrigger={resetZoomTrigger}
             showTeams={showTeams}
             showInitiatives={showInitiatives}
-            initialFocusedPath={zoomPath}
+            initialFocusedPath={treemapFocusedPath}
             showMoney={effectiveShowMoney}
             showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}

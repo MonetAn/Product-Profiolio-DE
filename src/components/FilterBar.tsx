@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
-import { RawDataRow, calculateBudget, formatBudget, formatBudgetShort, hasTimelineVisibleBudgetInPeriod, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, getStakeholderSetKey, type SupportFilter } from '@/lib/dataManager';
+import { RawDataRow, calculateBudget, formatBudget, formatBudgetShort, hasTimelineVisibleBudgetInPeriod, isInitiativeOffTrack, isInitiativeSupport, parseStakeholderParts, compareStakeholderOrder, type SupportFilter } from '@/lib/dataManager';
 import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import {
   Tooltip,
@@ -80,10 +80,6 @@ interface FilterBarProps {
   onCostFilterChange?: (min: number | null, max: number | null) => void;
   costType?: 'period' | 'total';
   onCostTypeChange?: (type: 'period' | 'total') => void;
-  
-  // Zoom breadcrumb (visual only, no data effect)
-  zoomPath?: string[];
-  zoomActiveTab?: 'budget' | 'stakeholders';
 
   /** «Кластеры»: один кластер; «Бюджет» / «Таймлайн»: мультивыбор */
   stakeholderFilterMode?: 'multi' | 'single';
@@ -150,8 +146,6 @@ const FilterBar = ({
   onCostFilterChange,
   costType = 'period',
   onCostTypeChange,
-  zoomPath = [],
-  zoomActiveTab = 'budget',
   showSensitiveTreemap = false,
   onShowSensitiveTreemapChange,
   sensitiveTreemapToggleVisible = false,
@@ -277,28 +271,6 @@ const FilterBar = ({
         if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
         if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return acc;
 
-        const zoomActive =
-          (currentView === 'budget' || currentView === 'stakeholders') &&
-          zoomPath.length > 0 &&
-          zoomActiveTab === currentView;
-        if (zoomActive) {
-          if (zoomActiveTab === 'budget') {
-            if (row.unit !== zoomPath[0]) return acc;
-            if (zoomPath.length >= 2 && row.team !== zoomPath[1]) return acc;
-          } else {
-            const rowParts = parseStakeholderParts(row.stakeholders || '');
-            if (stakeholderFilterMode === 'single' && selectedStakeholders.length === 1) {
-              if (zoomPath.length >= 1 && !rowParts.includes(zoomPath[0])) return acc;
-              if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
-              if (zoomPath.length >= 3 && (row.team || 'Без команды') !== zoomPath[2]) return acc;
-            } else {
-              if (getStakeholderSetKey(row.stakeholders || '') !== zoomPath[0]) return acc;
-              if (zoomPath.length >= 2 && row.unit !== zoomPath[1]) return acc;
-              if (zoomPath.length >= 3 && row.team !== zoomPath[2]) return acc;
-            }
-          }
-        }
-
         if (currentView === 'timeline') {
           const costValue =
             costType === 'period'
@@ -357,8 +329,6 @@ const FilterBar = ({
     selectedUnits,
     selectedTeams,
     currentView,
-    zoomPath,
-    zoomActiveTab,
     costFilterMin,
     costFilterMax,
     costType,
@@ -389,34 +359,9 @@ const FilterBar = ({
     return `${selectedQuarters.length} кв.`;
   };
 
-  // Zoom context helpers
-  const getZoomUnitName = () => {
-    if (zoomActiveTab === 'budget') return zoomPath[0] || null;
-    if (zoomActiveTab === 'stakeholders') return zoomPath[1] || null;
-    return null;
-  };
-  const getZoomTeamName = () => {
-    if (zoomActiveTab === 'budget') return zoomPath[1] || null;
-    if (zoomActiveTab === 'stakeholders') return zoomPath[2] || null;
-    return null;
-  };
-  const getZoomStakeholderName = () => {
-    if (zoomActiveTab === 'stakeholders') return zoomPath[0] || null;
-    return null;
-  };
-
-  const isZoomContext = (filterType: 'unit' | 'team' | 'stakeholder') => {
-    if (filterType === 'unit') return selectedUnits.length === 0 && !!getZoomUnitName();
-    if (filterType === 'team') return selectedTeams.length === 0 && !!getZoomTeamName();
-    if (filterType === 'stakeholder') return selectedStakeholders.length === 0 && !!getZoomStakeholderName();
-    return false;
-  };
-
   // Stakeholder label - shorter
   const getStakeholderLabel = () => {
     if (selectedStakeholders.length === 0) {
-      const zoomName = getZoomStakeholderName();
-      if (zoomName) return zoomName.length > 10 ? zoomName.slice(0, 10) + '…' : zoomName;
       return stakeholderFilterMode === 'single' ? 'Кластер' : 'Стейкх.';
     }
     if (selectedStakeholders.length === 1) {
@@ -429,8 +374,6 @@ const FilterBar = ({
   // Unit label - shorter
   const getUnitLabel = () => {
     if (selectedUnits.length === 0) {
-      const zoomName = getZoomUnitName();
-      if (zoomName) return zoomName.length > 12 ? zoomName.slice(0, 12) + '...' : zoomName;
       return 'Юниты';
     }
     if (selectedUnits.length === 1) {
@@ -443,8 +386,6 @@ const FilterBar = ({
   // Team label - shorter
   const getTeamLabel = () => {
     if (selectedTeams.length === 0) {
-      const zoomName = getZoomTeamName();
-      if (zoomName) return zoomName.length > 12 ? zoomName.slice(0, 12) + '...' : zoomName;
       return 'Команды';
     }
     if (selectedTeams.length === 1) {
@@ -553,11 +494,9 @@ const FilterBar = ({
             <button
               onClick={() => setUnitMenuOpen(!unitMenuOpen)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-card border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
-                isZoomContext('unit')
-                  ? 'border-dashed border-muted-foreground/40 text-foreground/70'
-                  : selectedUnits.length > 0
-                    ? 'bg-primary/10 border-primary/30'
-                    : 'border-border'
+                selectedUnits.length > 0
+                  ? 'bg-primary/10 border-primary/30'
+                  : 'border-border'
               }`}
             >
               <span className="truncate max-w-[80px]">{getUnitLabel()}</span>
@@ -592,11 +531,9 @@ const FilterBar = ({
             <button
               onClick={() => setTeamMenuOpen(!teamMenuOpen)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-card border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
-                isZoomContext('team')
-                  ? 'border-dashed border-muted-foreground/40 text-foreground/70'
-                  : selectedTeams.length > 0
-                    ? 'bg-primary/10 border-primary/30'
-                    : 'border-border'
+                selectedTeams.length > 0
+                  ? 'bg-primary/10 border-primary/30'
+                  : 'border-border'
               }`}
             >
               <span className="truncate max-w-[80px]">{getTeamLabel()}</span>
@@ -635,11 +572,9 @@ const FilterBar = ({
             <button
               onClick={() => setStakeholderMenuOpen(!stakeholderMenuOpen)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-card border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
-                isZoomContext('stakeholder')
-                  ? 'border-dashed border-muted-foreground/40 text-foreground/70'
-                  : selectedStakeholders.length > 0
-                    ? 'bg-primary/10 border-primary/30'
-                    : 'border-border'
+                selectedStakeholders.length > 0
+                  ? 'bg-primary/10 border-primary/30'
+                  : 'border-border'
               }`}
             >
               <span className="truncate max-w-[80px]">{getStakeholderLabel()}</span>
