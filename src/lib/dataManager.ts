@@ -4,6 +4,7 @@ import {
   isQuarterPeriodKey,
   resolveTimelineStakeholders,
 } from './adminDataManager';
+import { budgetRubForDisplay } from './budgetDisplayRub';
 import {
   is2026Quarter,
   isOnly2026Quarters,
@@ -11,6 +12,12 @@ import {
   type TeamBaselineRow,
 } from './budgetTruth2026';
 import { getCurrentQuarter } from './quarterUtils';
+
+export {
+  budgetRubForDisplay,
+  DISPLAY_ROUNDING_DUST_RUB,
+  isDisplayRoundingDustRub,
+} from './budgetDisplayRub';
 
 // ===== DATA TYPES =====
 export interface QuarterData {
@@ -1033,24 +1040,26 @@ function shouldFormatBudgetAsMillions(value: number): boolean {
 }
 
 export function formatBudget(value: number): string {
-  if (shouldFormatBudgetAsMillions(value)) {
-    return (value / 1_000_000).toFixed(1) + ' млн ₽';
+  const rub = budgetRubForDisplay(value);
+  if (shouldFormatBudgetAsMillions(rub)) {
+    return (rub / 1_000_000).toFixed(1) + ' млн ₽';
   }
-  if (Math.abs(value) >= 1_000) {
-    return Math.round(value / 1_000) + ' тыс. ₽';
+  if (Math.abs(rub) >= 1_000) {
+    return Math.round(rub / 1_000) + ' тыс. ₽';
   }
-  return value + ' ₽';
+  return rub.toLocaleString('ru-RU') + ' ₽';
 }
 
 export function formatBudgetShort(value: number): string {
-  if (shouldFormatBudgetAsMillions(value)) {
-    return (value / 1_000_000).toFixed(1) + 'M';
+  const rub = budgetRubForDisplay(value);
+  if (shouldFormatBudgetAsMillions(rub)) {
+    return (rub / 1_000_000).toFixed(1) + 'M';
   }
-  if (Math.abs(value) >= 1_000) {
-    return Math.round(value / 1_000) + 'K';
+  if (Math.abs(rub) >= 1_000) {
+    return Math.round(rub / 1_000) + 'K';
   }
-  if (value <= 0) return '0';
-  return `${Math.round(value)}₽`;
+  if (rub <= 0) return '0';
+  return `${rub}₽`;
 }
 
 export function escapeHtml(text: string): string {

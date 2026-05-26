@@ -32,6 +32,7 @@ import {
   getInitiativeDisplayName,
   getStubResidualLabel,
 } from '@/lib/adminDataManager';
+import { budgetRubForDisplay } from '@/lib/budgetDisplayRub';
 import { formatBudgetShort } from '@/lib/dataManager';
 import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
@@ -319,14 +320,15 @@ const QuarterFields = ({
   }, [useExplicit, explicitDirty, handleExplicitSave, clearSaveFeedbackTimer]);
 
   const formatCurrency = (value: number) => {
-    if (Math.abs(value) < 1_000) {
-      return `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+    const rub = budgetRubForDisplay(value);
+    if (Math.abs(rub) < 1_000) {
+      return `${rub.toLocaleString('ru-RU')} ₽`;
     }
     return `${formatBudgetShort(value)} ₽`;
   };
 
   const formatCurrencyFull = (value: number) =>
-    `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+    `${budgetRubForDisplay(value).toLocaleString('ru-RU')} ₽`;
 
   if (variant === 'quickTimeline') {
     const showMetricBlock =
