@@ -17,6 +17,8 @@ export interface AccessState {
   isAdmin: boolean;
   /** Роль super_admin: полные данные в БД, настройка sensitive, галочка на дашборде */
   isSuperAdmin: boolean;
+  /** Ранний доступ: экспериментальный функционал (флаг early_access, любая роль). */
+  hasEarlyAccess: boolean;
   /** If false, user must not see money anywhere and has no money toggle */
   canViewMoney: boolean;
   scope: AccessScope;
@@ -40,6 +42,7 @@ function getCachedAccess(userId: string): {
   canAccess: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  hasEarlyAccess: boolean;
   canViewMoney: boolean;
   scope: AccessScope;
   displayName: string | null;
@@ -56,6 +59,7 @@ function getCachedAccess(userId: string): {
       canAccess: boolean;
       isAdmin: boolean;
       isSuperAdmin?: boolean;
+      hasEarlyAccess?: boolean;
       canViewMoney?: boolean;
       scope: AccessScope;
       displayName?: string | null;
@@ -74,6 +78,7 @@ function getCachedAccess(userId: string): {
       canAccess: Boolean(parsed.canAccess),
       isAdmin: Boolean(parsed.isAdmin),
       isSuperAdmin: Boolean(parsed.isSuperAdmin),
+      hasEarlyAccess: Boolean(parsed.hasEarlyAccess),
       canViewMoney: parsed.canViewMoney !== false,
       scope: {
         seeAll: Boolean(parsed.scope?.seeAll),
@@ -96,6 +101,7 @@ function setCachedAccess(
     canAccess: boolean;
     isAdmin: boolean;
     isSuperAdmin: boolean;
+    hasEarlyAccess: boolean;
     canViewMoney: boolean;
     scope: AccessScope;
     displayName: string | null;
@@ -138,6 +144,7 @@ export function parseAccessResponse(data: unknown): {
   canAccess: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  hasEarlyAccess: boolean;
   canViewMoney: boolean;
   scope: AccessScope;
   displayName: string | null;
@@ -152,6 +159,7 @@ export function parseAccessResponse(data: unknown): {
       canAccess: false,
       isAdmin: false,
       isSuperAdmin: false,
+      hasEarlyAccess: false,
       canViewMoney: true,
       scope: DEFAULT_SCOPE,
       displayName: null,
@@ -164,6 +172,7 @@ export function parseAccessResponse(data: unknown): {
     can_access: boolean;
     is_admin: boolean;
     is_super_admin?: boolean;
+    has_early_access?: boolean;
     can_view_money?: boolean;
     display_name?: string | null;
     member_unit?: string | null;
@@ -200,6 +209,7 @@ export function parseAccessResponse(data: unknown): {
     canAccess,
     isAdmin: Boolean(obj.is_admin),
     isSuperAdmin: Boolean(obj.is_super_admin),
+    hasEarlyAccess: Boolean(obj.has_early_access),
     canViewMoney: obj.can_view_money !== false,
     scope,
     displayName: typeof dn === 'string' && dn.trim() ? dn.trim() : null,
@@ -222,6 +232,7 @@ const noAccessState: AccessState = {
   canAccess: false,
   isAdmin: false,
   isSuperAdmin: false,
+  hasEarlyAccess: false,
   canViewMoney: true,
   scope: DEFAULT_SCOPE,
   displayName: null,
@@ -239,6 +250,7 @@ export function useAccess(): AccessState {
     canAccess: boolean;
     isAdmin: boolean;
     isSuperAdmin: boolean;
+    hasEarlyAccess: boolean;
     canViewMoney: boolean;
     scope: AccessScope;
     displayName: string | null;
@@ -282,6 +294,7 @@ export function useAccess(): AccessState {
           canAccess: false,
           isAdmin: false,
           isSuperAdmin: false,
+          hasEarlyAccess: false,
           canViewMoney: true,
           scope: DEFAULT_SCOPE,
           displayName: null,
@@ -367,6 +380,7 @@ export function useAccess(): AccessState {
     canAccess: access.canAccess,
     isAdmin: access.isAdmin,
     isSuperAdmin: access.isSuperAdmin,
+    hasEarlyAccess: access.hasEarlyAccess,
     canViewMoney: access.canViewMoney,
     scope: access.scope,
     displayName: access.displayName,

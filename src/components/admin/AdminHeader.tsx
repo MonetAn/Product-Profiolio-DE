@@ -83,7 +83,6 @@ const AdminHeader = ({
   const accessUrl = '/admin/access';
   const activityUrl = '/admin/activity';
   const sensitiveUrl = '/admin/sensitive';
-
   return (
     <header className="h-14 w-full min-w-0 bg-header border-b border-border flex items-center px-4 sm:px-6 shrink-0">
       <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 sm:px-3 shrink-0" asChild>

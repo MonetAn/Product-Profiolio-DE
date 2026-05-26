@@ -93,6 +93,7 @@ const ALLOWED_USERS_SELECT_COLUMNS = [
   'allowed_team_pairs',
   'can_view_money',
   'member_affiliations',
+  'early_access',
 ].join(', ');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -165,6 +166,7 @@ export default function AdminAccess() {
   const [scopeSelectedUnits, setScopeSelectedUnits] = useState<string[]>([]);
   const [scopeSelectedPairs, setScopeSelectedPairs] = useState<TeamPair[]>([]);
   const [scopeCanViewMoney, setScopeCanViewMoney] = useState(true);
+  const [scopeEarlyAccess, setScopeEarlyAccess] = useState(false);
   const [scopeSaving, setScopeSaving] = useState(false);
 
   const [orgDisplayName, setOrgDisplayName] = useState('');
@@ -419,6 +421,7 @@ export default function AdminAccess() {
         .eq('id', id)
         .maybeSingle();
       if (fresh) {
+        applyEarlyAccessFromRow(fresh);
         if (fresh.role === 'admin' || fresh.role === 'super_admin') {
           setScopeFullAccess(true);
           setScopeSelectedUnits([]);
@@ -468,8 +471,13 @@ export default function AdminAccess() {
 
   const editingRow = scopeDialogUserId ? list.find((r) => r.id === scopeDialogUserId) : null;
 
+  const applyEarlyAccessFromRow = (row: AllowedUserRow) => {
+    setScopeEarlyAccess(row.early_access === true);
+  };
+
   const selectUserForEditing = (row: AllowedUserRow) => {
     loadOrgFromRow(row);
+    applyEarlyAccessFromRow(row);
     if (isPrivilegedRole(row.role)) {
       setScopeDialogUserId(row.id);
       setScopeFullAccess(true);
@@ -489,6 +497,7 @@ export default function AdminAccess() {
     setScopeSelectedUnits(u);
     setScopeSelectedPairs(p);
     setScopeCanViewMoney(row.can_view_money !== false);
+    applyEarlyAccessFromRow(row);
   };
 
   const closeScopeDialog = () => {
@@ -550,7 +559,10 @@ export default function AdminAccess() {
     setScopeSaving(true);
     const profile = buildProfilePayload();
     if (isPrivilegedRole(editingRow.role)) {
-      const { error } = await supabase.from('allowed_users').update(profile).eq('id', scopeDialogUserId);
+      const { error } = await supabase
+        .from('allowed_users')
+        .update({ ...profile, early_access: scopeEarlyAccess })
+        .eq('id', scopeDialogUserId);
       setScopeSaving(false);
       if (error) {
         toast({ title: 'Ошибка сохранения', description: error.message, variant: 'destructive' });
@@ -570,6 +582,7 @@ export default function AdminAccess() {
         allowed_units,
         allowed_team_pairs,
         can_view_money: scopeCanViewMoney,
+        early_access: scopeEarlyAccess,
       })
       .eq('id', scopeDialogUserId);
     setScopeSaving(false);
@@ -1020,6 +1033,22 @@ export default function AdminAccess() {
                           )}
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="space-y-2 rounded-md border border-border p-3 bg-muted/20">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="scope-early-access"
+                          checked={scopeEarlyAccess}
+                          onCheckedChange={(c) => setScopeEarlyAccess(!!c)}
+                        />
+                        <Label htmlFor="scope-early-access" className="cursor-pointer font-medium">
+                          Ранний доступ
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground pl-6">
+                        Экспериментальный функционал в портфеле и админке. Область данных (юниты и команды) не
+                        меняется.
+                      </p>
                     </div>
                     {renderOrgForm()}
                     {isPrivilegedRole(editingRow.role) ? (

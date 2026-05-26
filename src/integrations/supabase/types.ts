@@ -525,6 +525,7 @@ export type Database = {
           member_unit: string | null
           member_team: string | null
           member_affiliations: Json | null
+          early_access: boolean
         }
         Insert: {
           id?: string
@@ -538,6 +539,7 @@ export type Database = {
           member_unit?: string | null
           member_team?: string | null
           member_affiliations?: Json | null
+          early_access?: boolean
         }
         Update: {
           id?: string
@@ -551,8 +553,51 @@ export type Database = {
           member_unit?: string | null
           member_team?: string | null
           member_affiliations?: Json | null
+          early_access?: boolean
         }
         Relationships: []
+      }
+      initiative_mappings: {
+        Row: {
+          id: string
+          source_initiative_id: string
+          target_initiative_id: string
+          notes: string | null
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          source_initiative_id: string
+          target_initiative_id: string
+          notes?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          source_initiative_id?: string
+          target_initiative_id?: string
+          notes?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "initiative_mappings_source_initiative_id_fkey"
+            columns: ["source_initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "initiative_mappings_target_initiative_id_fkey"
+            columns: ["target_initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dashboard_treemap_layout_config: {
         Row: {
