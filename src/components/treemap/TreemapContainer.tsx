@@ -167,10 +167,9 @@ const TreemapContainer = ({
   useEffect(() => {
     if (dataRootRef.current !== data.name) {
       dataRootRef.current = data.name;
-      setFocusedPath([]);
-      onFocusedPathChange?.([]);
+      setFocusedPath(initialFocusedPath ?? []);
     }
-  }, [data.name, onFocusedPathChange]);
+  }, [data.name, initialFocusedPath]);
 
   const prevInitialFocusedRef = useRef(initialFocusedPath);
   useEffect(() => {
@@ -182,15 +181,14 @@ const TreemapContainer = ({
     }
   }, [initialFocusedPath]);
   
-  // Reset focusedPath when manual filters trigger a reset
+  // Re-sync treemap zoom when FilterBar changes scope (filters stay in URL; do not clear them)
   const prevResetTriggerRef = useRef(resetZoomTrigger);
   useEffect(() => {
     if (resetZoomTrigger !== undefined && resetZoomTrigger !== prevResetTriggerRef.current) {
       prevResetTriggerRef.current = resetZoomTrigger;
-      setFocusedPath([]);
-      onFocusedPathChange?.([]);
+      setFocusedPath(initialFocusedPath ?? []);
     }
-  }, [resetZoomTrigger, onFocusedPathChange]);
+  }, [resetZoomTrigger, initialFocusedPath]);
 
 
 

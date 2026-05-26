@@ -6,9 +6,10 @@ import StaticTreemapNode from './StaticTreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useStaticTreemapLayout } from './useStaticTreemapLayout';
 import { TreemapLayoutNode, ColorGetter } from './types';
+import type { StaticTreemapLayoutStrategy } from './useStaticTreemapLayout';
 import type { TreeNode } from '@/lib/dataManager';
 import { getSubtreeValue } from '@/lib/dataManager';
-import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
+import { normalizeTreemapFocusPath, splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import '@/styles/treemap.css';
 
 export interface StaticTreemapContainerProps {
@@ -35,8 +36,10 @@ export interface StaticTreemapContainerProps {
   onUploadClick?: () => void;
   onFileDrop?: (file: File) => void;
   extraDepth?: number;
+  onAutoEnableUnits?: () => void;
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
+  onAutoDisableUnits?: () => void;
   onAutoDisableTeams?: () => void;
   onAutoDisableInitiatives?: () => void;
   onFocusedPathChange?: (path: string[]) => void;
@@ -62,6 +65,24 @@ export interface StaticTreemapContainerProps {
    * Админ-превью (матрица усилий): без exit-анимации при смене данных + изолированный фон под плитками,
    * чтобы удалённые ячейки не просвечивали в щелях между прямоугольниками.
    */
+  linkDragOverId?: string | null;
+  onInitiativeLinkDragStart?: (initiativeId: string) => void;
+  onInitiativeLinkDragEnter?: (initiativeId: string) => void;
+  onInitiativeLinkDragLeave?: () => void;
+  onInitiativeLinkDrop?: (sourceId: string, targetId: string) => void;
+  treemapLayoutStrategy?: StaticTreemapLayoutStrategy;
+  /** Подсветка выбранной инициативы (режим «Связать»). */
+  selectedInitiativeId?: string | null;
+  /** Явная глубина рендера (обзор кросс-инициатив); иначе считается из showTeams/showInitiatives. */
+  maxRenderDepth?: number;
+  /** Не включать команды/инициативы автоматически при клике (управление снаружи). */
+  disableAutoEnableLevels?: boolean;
+  /** Объединение: кросс-инициативы инициативы в тултипе (по adminInitiativeRowId). */
+  getInitiativeCrossNames?: (initiativeRowId: string) => string[];
+  /** Управляемый зум (обзор кросс-инициатив). */
+  focusedPath?: string[];
+  /** Клик по плитке кросс-инициативы (до зума). */
+  onCrossInitiativeClick?: (crossId: string) => void;
 }
 
 const StaticTreemapContainer = ({
@@ -85,8 +106,10 @@ const StaticTreemapContainer = ({
   onUploadClick,
   onFileDrop,
   extraDepth = 0,
+  onAutoEnableUnits,
   onAutoEnableTeams,
   onAutoEnableInitiatives,
+  onAutoDisableUnits,
   onAutoDisableTeams,
   onAutoDisableInitiatives,
   onFocusedPathChange,
@@ -100,13 +123,41 @@ const StaticTreemapContainer = ({
   treemapQuarterCatalog,
   nodeCursor = 'pointer',
   showPreliminaryWarnings = false,
+  linkDragOverId = null,
+  onInitiativeLinkDragStart,
+  onInitiativeLinkDragEnter,
+  onInitiativeLinkDragLeave,
+  onInitiativeLinkDrop,
+  treemapLayoutStrategy = 'semantic-units',
+  selectedInitiativeId = null,
+  maxRenderDepth: maxRenderDepthProp,
+  disableAutoEnableLevels = false,
+  getInitiativeCrossNames,
+  focusedPath: focusedPathProp,
+  onCrossInitiativeClick,
 }: StaticTreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
 
-  const [focusedPath, setFocusedPath] = useState<string[]>(initialFocusedPath || []);
+  const isFocusedPathControlled = focusedPathProp !== undefined;
+  const [internalFocusedPath, setInternalFocusedPath] = useState<string[]>(
+    initialFocusedPath ?? []
+  );
+  const focusedPath = isFocusedPathControlled ? (focusedPathProp ?? []) : internalFocusedPath;
+
+  const applyFocusedPath = useCallback(
+    (path: string[], options?: { syncFilters?: boolean }) => {
+      if (!isFocusedPathControlled) {
+        setInternalFocusedPath(path);
+      }
+      if (options?.syncFilters !== false) {
+        onFocusedPathChange?.(path);
+      }
+    },
+    [isFocusedPathControlled, onFocusedPathChange]
+  );
 
   // Tooltip state with race condition prevention using depth priority
   const [tooltipData, setTooltipData] = useState<{
@@ -132,41 +183,43 @@ const StaticTreemapContainer = ({
   useEffect(() => {
     if (dataRootRef.current !== data.name) {
       dataRootRef.current = data.name;
-      setFocusedPath([]);
-      onFocusedPathChange?.([]);
+      applyFocusedPath(initialFocusedPath ?? [], { syncFilters: false });
     }
-  }, [data.name, onFocusedPathChange]);
+  }, [data.name, initialFocusedPath, applyFocusedPath]);
 
   const prevInitialFocusedRef = useRef(initialFocusedPath);
   useEffect(() => {
+    if (isFocusedPathControlled) return;
     const ext = initialFocusedPath ?? [];
     const prev = prevInitialFocusedRef.current ?? [];
     if (ext.join('/') !== prev.join('/')) {
       prevInitialFocusedRef.current = ext;
-      setFocusedPath(ext);
+      setInternalFocusedPath(ext);
     }
-  }, [initialFocusedPath]);
+  }, [initialFocusedPath, isFocusedPathControlled]);
   
   // Reset focusedPath when manual filters trigger a reset
   const prevResetTriggerRef = useRef(resetZoomTrigger);
   useEffect(() => {
     if (resetZoomTrigger !== undefined && resetZoomTrigger !== prevResetTriggerRef.current) {
       prevResetTriggerRef.current = resetZoomTrigger;
-      setFocusedPath([]);
-      onFocusedPathChange?.([]);
+      applyFocusedPath(initialFocusedPath ?? [], { syncFilters: false });
     }
-  }, [resetZoomTrigger, onFocusedPathChange]);
+  }, [resetZoomTrigger, initialFocusedPath, applyFocusedPath]);
 
 
 
   const targetRenderDepth = useMemo(() => {
+    if (maxRenderDepthProp !== undefined) {
+      return maxRenderDepthProp + extraDepth;
+    }
     let depth = 1; // Units only
     if (showTeams && showInitiatives) depth = 3; // Unit > Team > Initiative
     else if (showTeams) depth = 2; // Unit > Team
     else if (showInitiatives) depth = 2; // Unit > Initiative (teams skipped in data)
     depth = Math.max(depth, focusedPath.length + 1);
     return depth + extraDepth;
-  }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);
+  }, [showTeams, showInitiatives, extraDepth, focusedPath.length, maxRenderDepthProp]);
 
   const layoutNodes = useStaticTreemapLayout({
     data,
@@ -175,6 +228,7 @@ const StaticTreemapContainer = ({
     extraDepth,
     focusedPath,
     maxRenderDepth: targetRenderDepth,
+    layoutStrategy: treemapLayoutStrategy,
   });
 
   // Clear tooltip when layout or filters change so it doesn't stay visible after re-layouts
@@ -234,25 +288,34 @@ const StaticTreemapContainer = ({
     const isNonLeaf = node.data.isUnit || node.data.isTeam || node.data.isStakeholder;
     
     if (isNonLeaf) {
-      // Smart auto-enable: show children based on node type
-      if (node.data.isUnit || node.data.isStakeholder) {
-        if (!showTeams) onAutoEnableTeams?.();
-      } else if (node.data.isTeam) {
-        if (!showInitiatives) onAutoEnableInitiatives?.();
+      if (node.data.isCrossInitiative && node.data.crossInitiativeId) {
+        onCrossInitiativeClick?.(node.data.crossInitiativeId);
+      }
+      if (!disableAutoEnableLevels) {
+        if (node.data.isCrossInitiative) {
+          onAutoEnableUnits?.();
+        } else if (node.data.isUnit || node.data.isStakeholder) {
+          onAutoEnableTeams?.();
+        } else if (node.data.isTeam) {
+          onAutoEnableInitiatives?.();
+        }
       }
 
-      const newFocusedPath = splitTreemapEncodedPath(node.path);
-      setFocusedPath(newFocusedPath);
-      onFocusedPathChange?.(newFocusedPath);
+      const newFocusedPath = normalizeTreemapFocusPath(
+        data,
+        splitTreemapEncodedPath(node.path)
+      );
+      applyFocusedPath(newFocusedPath);
     }
   }, [
     onInitiativeClick,
     onAdminInitiativeRowClick,
-    showTeams,
-    showInitiatives,
+    onAutoEnableUnits,
     onAutoEnableTeams,
     onAutoEnableInitiatives,
-    onFocusedPathChange,
+    onCrossInitiativeClick,
+    applyFocusedPath,
+    disableAutoEnableLevels,
   ]);
   
   // Navigate back handler — zoom out one level with symmetric auto-disable
@@ -262,19 +325,28 @@ const StaticTreemapContainer = ({
       const newPath = focusedPath.slice(0, -1);
       const newLength = newPath.length;
 
-      if (oldLength >= 2 && newLength < 2) {
+      if (oldLength >= 3 && newLength < 3) {
         onAutoDisableInitiatives?.();
       }
-      if (oldLength >= 1 && newLength < 1) {
+      if (oldLength >= 2 && newLength < 2) {
         onAutoDisableTeams?.();
       }
+      if (oldLength >= 1 && newLength < 1) {
+        onAutoDisableUnits?.();
+      }
 
-      setFocusedPath(newPath);
-      onFocusedPathChange?.(newPath);
+      applyFocusedPath(newPath);
     } else if (onNavigateBack) {
       onNavigateBack();
     }
-  }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives]);
+  }, [
+    focusedPath,
+    onNavigateBack,
+    applyFocusedPath,
+    onAutoDisableUnits,
+    onAutoDisableTeams,
+    onAutoDisableInitiatives,
+  ]);
 
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
@@ -397,6 +469,7 @@ const StaticTreemapContainer = ({
         tooltipInitiativeVariant={tooltipInitiativeVariant}
         docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
         showPreliminaryWarnings={showPreliminaryWarnings}
+        getInitiativeCrossNames={getInitiativeCrossNames}
       />
       
       {!isEmpty && dimensions.width > 0 && (
@@ -425,6 +498,12 @@ const StaticTreemapContainer = ({
               totalValue={totalValue}
               showMoney={showMoney}
               nodeCursor={nodeCursor}
+              linkDragOverId={linkDragOverId}
+              onInitiativeLinkDragStart={onInitiativeLinkDragStart}
+              onInitiativeLinkDragEnter={onInitiativeLinkDragEnter}
+              onInitiativeLinkDragLeave={onInitiativeLinkDragLeave}
+              onInitiativeLinkDrop={onInitiativeLinkDrop}
+              selectedInitiativeId={selectedInitiativeId}
             />
           ))}
         </div>

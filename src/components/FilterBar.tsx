@@ -60,7 +60,17 @@ interface FilterBarProps {
   hideNestingToggles?: boolean;
 
   /** Влияет на зум тримапы и на применение фильтра стоимости (только таймлайн) */
-  currentView?: 'budget' | 'stakeholders' | 'timeline';
+  currentView?: 'budget' | 'stakeholders' | 'timeline' | 'crossInitiatives';
+
+  /** Кросс-инициативы: «Остальное» — юниты портфеля на том же тремапе */
+  showCrossPortfolioRest?: boolean;
+  onShowCrossPortfolioRestChange?: (val: boolean) => void;
+  /** Кросс-инициативы: уровень юнитов внутри кросса */
+  crossShowUnits?: boolean;
+  onCrossShowUnitsChange?: (val: boolean) => void;
+  /** Кросс-инициативы: при одном юните в фильтре — показывать связанные кроссы рядом с юнитом */
+  showCrossesForSelectedUnit?: boolean;
+  onShowCrossesForSelectedUnitChange?: (val: boolean) => void;
 
   /** Только super_admin на вкладке «Бюджет»: показать sensitive в тримапе (по умолчанию скрыты на клиенте) */
   showSensitiveTreemap?: boolean;
@@ -138,6 +148,12 @@ const FilterBar = ({
   onResetFilters,
   hasActiveFilters = false,
   currentView = 'budget',
+  showCrossPortfolioRest = false,
+  onShowCrossPortfolioRestChange,
+  crossShowUnits = false,
+  onCrossShowUnitsChange,
+  showCrossesForSelectedUnit = true,
+  onShowCrossesForSelectedUnitChange,
   // Cost filter props
   costSortOrder = 'none',
   onCostSortOrderChange,
@@ -176,28 +192,29 @@ const FilterBar = ({
     setLocalMaxCost(costFilterMax !== null ? (costFilterMax / 1000000).toString() : '');
   }, [costFilterMin, costFilterMax]);
 
-  // Close menus on outside click
+  // Close menus on outside click (mousedown: не закрывать на том же клике, что открыл меню)
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (periodRef.current && !periodRef.current.contains(e.target as Node)) {
+    const handlePointerDownOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (periodRef.current && !periodRef.current.contains(target)) {
         setPeriodMenuOpen(false);
         setRangeStart(null);
       }
-      if (stakeholderRef.current && !stakeholderRef.current.contains(e.target as Node)) {
+      if (stakeholderRef.current && !stakeholderRef.current.contains(target)) {
         setStakeholderMenuOpen(false);
       }
-      if (unitRef.current && !unitRef.current.contains(e.target as Node)) {
+      if (unitRef.current && !unitRef.current.contains(target)) {
         setUnitMenuOpen(false);
       }
-      if (teamRef.current && !teamRef.current.contains(e.target as Node)) {
+      if (teamRef.current && !teamRef.current.contains(target)) {
         setTeamMenuOpen(false);
       }
-      if (costRef.current && !costRef.current.contains(e.target as Node)) {
+      if (costRef.current && !costRef.current.contains(target)) {
         setCostMenuOpen(false);
       }
     };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    return () => document.removeEventListener('mousedown', handlePointerDownOutside);
   }, []);
   
   // Cost filter helpers
@@ -945,6 +962,56 @@ const FilterBar = ({
                 </span>
                 <span>Инициативы</span>
               </label>
+              {currentView === 'crossInitiatives' && onShowCrossPortfolioRestChange && (
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showCrossPortfolioRest}
+                    onChange={(e) => onShowCrossPortfolioRestChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span
+                    className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showCrossPortfolioRest ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                  >
+                    {showCrossPortfolioRest && <Check size={10} />}
+                  </span>
+                  <span>Остальное</span>
+                </label>
+              )}
+              {currentView === 'crossInitiatives' && onCrossShowUnitsChange && (
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={crossShowUnits}
+                    onChange={(e) => onCrossShowUnitsChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span
+                    className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${crossShowUnits ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                  >
+                    {crossShowUnits && <Check size={10} />}
+                  </span>
+                  <span>Юниты</span>
+                </label>
+              )}
+              {currentView === 'crossInitiatives' &&
+                selectedUnits.length === 1 &&
+                onShowCrossesForSelectedUnitChange && (
+                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                    <input
+                      type="checkbox"
+                      checked={showCrossesForSelectedUnit}
+                      onChange={(e) => onShowCrossesForSelectedUnitChange(e.target.checked)}
+                      className="hidden"
+                    />
+                    <span
+                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showCrossesForSelectedUnit ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                    >
+                      {showCrossesForSelectedUnit && <Check size={10} />}
+                    </span>
+                    <span>Кроссы юнита</span>
+                  </label>
+                )}
               {sensitiveTreemapToggleVisible && currentView === 'budget' && onShowSensitiveTreemapChange && (
                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                   <input
