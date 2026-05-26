@@ -18,3 +18,13 @@ export function splitTreemapEncodedPath(path: string): string[] {
     }
   });
 }
+
+/** Путь клика D3-раскладки может начинаться с имени корня — для findTreeNodeByPath нужны только дочерние сегменты. */
+export function normalizeTreemapFocusPath(
+  root: { name: string; isRoot?: boolean },
+  path: string[]
+): string[] {
+  if (path.length === 0) return path;
+  if (path[0] === root.name) return path.slice(1);
+  return path;
+}
