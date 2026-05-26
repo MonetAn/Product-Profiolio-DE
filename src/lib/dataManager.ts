@@ -1,4 +1,9 @@
-import { AdminDataRow, AdminQuarterData, isQuarterPeriodKey } from './adminDataManager';
+import {
+  AdminDataRow,
+  AdminQuarterData,
+  isQuarterPeriodKey,
+  resolveTimelineStakeholders,
+} from './adminDataManager';
 import {
   is2026Quarter,
   isOnly2026Quarters,
@@ -138,8 +143,9 @@ export function convertFromDB(
     });
     
     // Collect stakeholder base entities (unique parts from all rows)
-    if (row.stakeholders) {
-      parseStakeholderParts(row.stakeholders).forEach(part => stakeholderSet.add(part));
+    const timelineStakeholders = resolveTimelineStakeholders(row);
+    if (timelineStakeholders) {
+      parseStakeholderParts(timelineStakeholders).forEach(part => stakeholderSet.add(part));
     }
   });
 
@@ -177,7 +183,7 @@ export function convertFromDB(
           : 'Не распределено'
         : row.initiative,
       description: row.description || '',
-      stakeholders: row.stakeholders || '',
+      stakeholders: resolveTimelineStakeholders(row),
       documentationLink: row.documentationLink || '',
       isTimelineStub: isStub,
       quarterlyData,

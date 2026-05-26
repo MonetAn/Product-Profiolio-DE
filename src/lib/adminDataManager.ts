@@ -78,6 +78,16 @@ export function stakeholdersStringFromList(labels: string[]): string {
   return sortStakeholderLabels(labels).join(', ');
 }
 
+/** Стейкхолдеры для таймлайна: выбор из админки (`stakeholders_list`), иначе legacy-строка. */
+export function resolveTimelineStakeholders(
+  row: Pick<AdminDataRow, 'stakeholdersList' | 'stakeholders'>
+): string {
+  if (row.stakeholdersList?.length) {
+    return stakeholdersStringFromList(row.stakeholdersList);
+  }
+  return row.stakeholders?.trim() ?? '';
+}
+
 /** JSON для колонки `initiatives.geo_cost_split` и API (без пустых note). */
 export function geoCostSplitToJson(split: GeoCostSplit): {
   entries: Record<string, unknown>[];
