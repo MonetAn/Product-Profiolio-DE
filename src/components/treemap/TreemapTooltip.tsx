@@ -29,6 +29,12 @@ interface TreemapTooltipProps {
   docReviewShowCostPeriodNote?: boolean;
   /** Показывать маркер предварительных значений (super_admin preview mode) */
   showPreliminaryWarnings?: boolean;
+  /** Объединение: названия кросс-инициатив для инициативы (по adminInitiativeRowId). */
+  getInitiativeCrossNames?: (initiativeRowId: string) => string[];
+  /** Объединение: участники кросс-инициативы для тултипа плитки кросса. */
+  getCrossInitiativeTooltipMembers?: (
+    crossInitiativeId: string
+  ) => { initiativeName: string; team: string }[];
 }
 
 export type { TreemapTooltipProps };
@@ -63,6 +69,8 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
     tooltipInitiativeVariant = 'default',
     docReviewShowCostPeriodNote = true,
     showPreliminaryWarnings = false,
+    getInitiativeCrossNames,
+    getCrossInitiativeTooltipMembers,
   }) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -194,10 +202,14 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
         html += `<div class="tooltip-type-line tooltip-type-line-subtle">${escapeHtml(PRELIMINARY_COST_USER_MESSAGE)}</div>`;
       }
 
-      if (showMoney && !node.isTimelineStub && node.value > 0) {
-        html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет за период</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
+      const budgetAmount =
+        typeof node.data?.displayBudget === 'number' && node.data.displayBudget > 0
+          ? node.data.displayBudget
+          : node.value;
+      if (showMoney && !node.isTimelineStub && budgetAmount > 0) {
+        html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет за период</span><span class="tooltip-value">${formatBudget(budgetAmount)}</span></div>`;
         if (totalValue > 0) {
-          const pct = ((node.value / totalValue) * 100).toFixed(1);
+          const pct = ((budgetAmount / totalValue) * 100).toFixed(1);
           html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${pct}%</span></div>`;
         }
       }
@@ -236,6 +248,21 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
         </div>`;
       }
 
+      const initiativeRowId = node.data?.adminInitiativeRowId;
+      if (getInitiativeCrossNames && initiativeRowId) {
+        const crossNames = getInitiativeCrossNames(initiativeRowId);
+        html += `<div class="tooltip-cross-initiatives">
+          <div class="tooltip-stakeholders-label">Кросс-инициативы</div>`;
+        if (crossNames.length > 0) {
+          html += `<ul class="tooltip-cross-list">${crossNames
+            .map((name) => `<li class="tooltip-cross-item">${escapeHtml(name)}</li>`)
+            .join('')}</ul>`;
+        } else {
+          html += `<p class="tooltip-cross-empty">Не входит ни в одну кросс-инициативу</p>`;
+        }
+        html += `</div>`;
+      }
+
       const cmp = node.data?.adminEffortCompare;
       if (cmp) {
         const ef = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 1, minimumFractionDigits: 0 });
@@ -251,6 +278,39 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
       }
 
       return html;
+    }
+
+    // Кросс-инициатива (админка «Объединение»): тип, бюджет, список участников
+    if (node.data?.isCrossInitiative) {
+      const budgetAmount =
+        typeof node.data.displayBudget === 'number' && node.data.displayBudget > 0
+          ? node.data.displayBudget
+          : node.value;
+      let crossHtml = `<div class="tooltip-header tooltip-header-cross">
+        <div class="tooltip-kicker">Кросс-инициатива</div>
+        <div class="tooltip-title">${escapeHtml(node.name)}</div>
+      </div>`;
+      if (showMoney && budgetAmount > 0) {
+        crossHtml += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(budgetAmount)}</span></div>`;
+      }
+      const crossId = node.data.crossInitiativeId;
+      if (getCrossInitiativeTooltipMembers && crossId) {
+        const participants = getCrossInitiativeTooltipMembers(crossId);
+        crossHtml += `<div class="tooltip-cross-participants">
+          <div class="tooltip-stakeholders-label">Участники</div>`;
+        if (participants.length > 0) {
+          crossHtml += `<ul class="tooltip-cross-list">${participants
+            .map(
+              (p) =>
+                `<li class="tooltip-cross-item">${escapeHtml(p.initiativeName)} — ${escapeHtml(p.team || 'Без команды')}</li>`
+            )
+            .join('')}</ul>`;
+        } else {
+          crossHtml += `<p class="tooltip-cross-empty">Пока нет участников</p>`;
+        }
+        crossHtml += `</div>`;
+      }
+      return crossHtml;
     }
     
     // Fallback: e.g. stakeholder group or other — budget + %

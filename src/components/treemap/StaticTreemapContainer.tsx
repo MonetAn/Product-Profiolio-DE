@@ -79,6 +79,10 @@ export interface StaticTreemapContainerProps {
   disableAutoEnableLevels?: boolean;
   /** Объединение: кросс-инициативы инициативы в тултипе (по adminInitiativeRowId). */
   getInitiativeCrossNames?: (initiativeRowId: string) => string[];
+  /** Объединение: участники кросс-инициативы в тултипе плитки. */
+  getCrossInitiativeTooltipMembers?: (
+    crossInitiativeId: string
+  ) => { initiativeName: string; team: string }[];
   /** Управляемый зум (обзор кросс-инициатив). */
   focusedPath?: string[];
   /** Клик по плитке кросс-инициативы (до зума). */
@@ -133,6 +137,7 @@ const StaticTreemapContainer = ({
   maxRenderDepth: maxRenderDepthProp,
   disableAutoEnableLevels = false,
   getInitiativeCrossNames,
+  getCrossInitiativeTooltipMembers,
   focusedPath: focusedPathProp,
   onCrossInitiativeClick,
 }: StaticTreemapContainerProps) => {
@@ -470,6 +475,7 @@ const StaticTreemapContainer = ({
         docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
         showPreliminaryWarnings={showPreliminaryWarnings}
         getInitiativeCrossNames={getInitiativeCrossNames}
+        getCrossInitiativeTooltipMembers={getCrossInitiativeTooltipMembers}
       />
       
       {!isEmpty && dimensions.width > 0 && (

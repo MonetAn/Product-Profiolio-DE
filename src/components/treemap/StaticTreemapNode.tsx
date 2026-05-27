@@ -67,13 +67,21 @@ const StaticTreemapNodeContent = memo(({
     );
   }
 
+  if (node.data.isRoot) {
+    return null;
+  }
+
   if (hasChildren) {
     const UnitIcon = showSemanticChrome ? getTreemapUnitIcon(node.name) : null;
+    const labelClass =
+      node.data.isCrossInitiative || node.isUnit || node.isTeam
+        ? 'text-white'
+        : textColorClass;
     return (
       <div
-        className={`absolute top-0.5 left-1 right-1 flex items-center gap-1 font-semibold ${textColorClass} ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+        className={`absolute top-0.5 left-1 right-1 flex items-center gap-1 font-semibold z-20 pointer-events-none ${labelClass} ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
         style={{
-          textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+          textShadow: '0 1px 3px rgba(0,0,0,0.85), 0 0 1px rgba(0,0,0,0.6)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -176,6 +184,13 @@ interface StaticTreemapNodeProps {
   totalValue?: number;
   showMoney?: boolean;
   nodeCursor?: CSSProperties['cursor'];
+  /** Режим «Объединение»: перетаскивание листьев-инициатив для линковки. */
+  linkDragOverId?: string | null;
+  onInitiativeLinkDragStart?: (initiativeId: string) => void;
+  onInitiativeLinkDragEnter?: (initiativeId: string) => void;
+  onInitiativeLinkDragLeave?: () => void;
+  onInitiativeLinkDrop?: (sourceId: string, targetId: string) => void;
+  selectedInitiativeId?: string | null;
 }
 
 const StaticTreemapNode = memo(({
@@ -192,6 +207,12 @@ const StaticTreemapNode = memo(({
   totalValue = 0,
   showMoney = true,
   nodeCursor = 'pointer',
+  linkDragOverId = null,
+  onInitiativeLinkDragStart,
+  onInitiativeLinkDragEnter,
+  onInitiativeLinkDragLeave,
+  onInitiativeLinkDrop,
+  selectedInitiativeId = null,
 }: StaticTreemapNodeProps) => {
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
@@ -210,6 +231,7 @@ const StaticTreemapNode = memo(({
     hasChildren && 'has-children',
     node.offTrack && isLeaf && 'off-track',
     node.isTeam && 'is-team',
+    node.data.isCrossInitiative && 'is-cross-initiative',
     node.isInitiative && 'is-initiative',
     node.isInitiative && node.isTimelineStub && 'is-timeline-stub',
   ]
@@ -217,6 +239,22 @@ const StaticTreemapNode = memo(({
     .join(' ');
 
   const leafShadow = initiativeLeafBoxShadow(node);
+  const initiativeId = node.data.adminInitiativeRowId;
+  const isLinkLeaf = Boolean(isLeaf && node.isInitiative && initiativeId && onInitiativeLinkDragStart);
+  const isLinkDropTarget = Boolean(isLinkLeaf && linkDragOverId && linkDragOverId === initiativeId);
+  const isSelected = Boolean(
+    initiativeId && selectedInitiativeId && selectedInitiativeId === initiativeId
+  );
+
+  const crossAllocated = node.crossAllocatedValue ?? node.data.crossAllocatedValue ?? 0;
+  const crossShare =
+    crossAllocated > 0 && node.value > 0
+      ? Math.min(1, crossAllocated / node.value)
+      : 0;
+  const showCrossBand =
+    crossShare > 0.02 &&
+    node.data.isPortfolioUnit &&
+    !node.data.isCrossInitiative;
 
   const boxStyle: React.CSSProperties = {
     position: 'absolute',
@@ -227,11 +265,56 @@ const StaticTreemapNode = memo(({
     backgroundColor: node.color,
     borderRadius: 4,
     overflow: 'hidden',
-    cursor: nodeCursor,
+    cursor: isLinkLeaf ? 'grab' : nodeCursor,
     ...(leafShadow ? { boxShadow: leafShadow } : {}),
+    ...(isLinkDropTarget
+      ? { outline: '2px solid hsl(var(--primary))', outlineOffset: -2, zIndex: 2 }
+      : {}),
+    ...(isSelected
+      ? {
+          outline: '2px solid rgba(255,255,255,0.95)',
+          outlineOffset: -2,
+          zIndex: 4,
+          filter: 'brightness(1.14) saturate(1.08)',
+          transition: 'filter 0.15s ease, outline 0.15s ease',
+        }
+      : { transition: 'filter 0.15s ease' }),
   };
 
   const eventHandlers = {
+    ...(isLinkLeaf
+      ? {
+          draggable: true,
+          onDragStart: (e: React.DragEvent) => {
+            e.stopPropagation();
+            e.dataTransfer.setData('text/initiative-id', initiativeId!);
+            e.dataTransfer.effectAllowed = 'link';
+            onInitiativeLinkDragStart?.(initiativeId!);
+          },
+          onDragEnter: (e: React.DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onInitiativeLinkDragEnter?.(initiativeId!);
+          },
+          onDragLeave: (e: React.DragEvent) => {
+            e.stopPropagation();
+            onInitiativeLinkDragLeave?.();
+          },
+          onDragOver: (e: React.DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onInitiativeLinkDragEnter?.(initiativeId!);
+          },
+          onDrop: (e: React.DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const sourceId = e.dataTransfer.getData('text/initiative-id');
+            if (sourceId && initiativeId) {
+              onInitiativeLinkDrop?.(sourceId, initiativeId);
+            }
+          },
+        }
+      : {}),
     onClick: (e: React.MouseEvent) => {
       e.stopPropagation();
       onClick?.(node);
@@ -249,6 +332,14 @@ const StaticTreemapNode = memo(({
 
   return (
     <div className={classNames} style={boxStyle} {...eventHandlers}>
+      {showCrossBand && (
+        <div
+          className="treemap-cross-allocated-band"
+          style={{ height: `${(crossShare * 100).toFixed(1)}%` }}
+          title="Доля юнита в кросс-инициативах"
+          aria-hidden
+        />
+      )}
       <StaticTreemapNodeContent
         node={node}
         showValue={!shouldRenderChildren}
@@ -273,6 +364,12 @@ const StaticTreemapNode = memo(({
           totalValue={totalValue}
           showMoney={showMoney}
           nodeCursor={nodeCursor}
+          linkDragOverId={linkDragOverId}
+          onInitiativeLinkDragStart={onInitiativeLinkDragStart}
+          onInitiativeLinkDragEnter={onInitiativeLinkDragEnter}
+          onInitiativeLinkDragLeave={onInitiativeLinkDragLeave}
+          onInitiativeLinkDrop={onInitiativeLinkDrop}
+          selectedInitiativeId={selectedInitiativeId}
         />
       ))}
     </div>

@@ -743,7 +743,12 @@ const Admin = () => {
   const handleHubRowDraftChange = useCallback(
     (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
       if (!isHubLocalRowId(id)) {
-        handleDataChange(id, field, value);
+        if (field === 'initiative' && typeof value === 'string') {
+          immediateUpdate(id, field, value);
+          return;
+        }
+        const delay = Array.isArray(value) || typeof value === 'boolean' ? 0 : 300;
+        updateInitiative(id, field, value, delay);
         return;
       }
       const allowed: (keyof HubRowFieldPatch)[] = [
@@ -769,7 +774,7 @@ const Admin = () => {
         return next;
       });
     },
-    [handleDataChange]
+    [immediateUpdate, updateInitiative]
   );
 
   const handleHubQuarterDraftChange = useCallback(
@@ -780,7 +785,7 @@ const Admin = () => {
       value: string | number | boolean | undefined
     ) => {
       if (!isHubLocalRowId(id)) {
-        handleQuarterDataChange(id, quarter, field, value);
+        updateQuarterData(id, quarter, field, value);
         return;
       }
       setHubQuarterPatches((prev) => {
@@ -791,13 +796,17 @@ const Admin = () => {
         return next;
       });
     },
-    [handleQuarterDataChange]
+    [updateQuarterData]
   );
 
   const handleHubInitiativeGeoCostSplitDraft = useCallback(
     (id: string, split: GeoCostSplit | undefined) => {
       if (!isHubLocalRowId(id)) {
-        handleInitiativeGeoCostSplitChange(id, split);
+        updateInitiativeGeoCostSplit(id, split);
+        if (split?.entries?.length) {
+          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
+          updateInitiative(id, 'stakeholdersList', sh, 0);
+        }
         return;
       }
       setHubRowPatches((prev) => {
@@ -824,7 +833,7 @@ const Admin = () => {
         return next;
       });
     },
-    [countryIdToClusterKey, handleInitiativeGeoCostSplitChange]
+    [countryIdToClusterKey, updateInitiativeGeoCostSplit, updateInitiative]
   );
 
   const handleHubAddPendingRow = useCallback(() => {
@@ -1390,7 +1399,7 @@ const Admin = () => {
     value: string | number | boolean | undefined
   ) => {
     if (field !== 'effortCoefficient') {
-      handleQuarterDataChange(id, quarter, field, value);
+      updateQuarterData(id, quarter, field, value);
       return;
     }
     setQuickDraftPatches((prev) => {
@@ -1400,13 +1409,17 @@ const Admin = () => {
       next.set(id, { ...byQuarter, [quarter]: quarterPatch });
       return next;
     });
-  }, [handleQuarterDataChange]);
+  }, [updateQuarterData]);
 
   const handleQuickGeoCostSplitDraft = useCallback(
     (id: string, split: GeoCostSplit | undefined) => {
-      handleInitiativeGeoCostSplitChange(id, split);
+      updateInitiativeGeoCostSplit(id, split);
+      if (split?.entries?.length) {
+        const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
+        updateInitiative(id, 'stakeholdersList', sh, 0);
+      }
     },
-    [handleInitiativeGeoCostSplitChange]
+    [updateInitiativeGeoCostSplit, updateInitiative, countryIdToClusterKey]
   );
 
   const handleSaveQuickDraft = useCallback(async (opts?: { silent?: boolean }) => {

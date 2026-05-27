@@ -1,6 +1,7 @@
 /** Ключи экспериментальных возможностей (для документации и будущих флагов). */
 export const EARLY_ACCESS_FEATURES = {
   initiativeMappings: 'initiative_mappings',
+  crossInitiatives: 'cross_initiatives',
   allocationDashboard: 'allocation_dashboard',
 } as const;
 

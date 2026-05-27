@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Globe2,
   ShieldAlert,
+  Link2,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
@@ -23,7 +24,8 @@ export type ViewMode =
   | 'markets'
   | 'access'
   | 'activity'
-  | 'sensitive';
+  | 'sensitive'
+  | 'unification';
 
 interface AdminHeaderProps {
   currentView: ViewMode;
@@ -56,7 +58,7 @@ const AdminHeader = ({
   onAddPerson,
 }: AdminHeaderProps) => {
   const [searchParams] = useSearchParams();
-  const { isSuperAdmin } = useAccess();
+  const { isSuperAdmin, hasEarlyAccess } = useAccess();
 
   // Build URLs preserving current filters
   const initiativesUrl = useMemo(() => {
@@ -83,6 +85,11 @@ const AdminHeader = ({
   const accessUrl = '/admin/access';
   const activityUrl = '/admin/activity';
   const sensitiveUrl = '/admin/sensitive';
+  const unificationUrl = useMemo(() => {
+    const queryString = searchParams.toString();
+    return queryString ? `/admin/unification?${queryString}` : '/admin/unification';
+  }, [searchParams]);
+
   return (
     <header className="h-14 w-full min-w-0 bg-header border-b border-border flex items-center px-4 sm:px-6 shrink-0">
       <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 sm:px-3 shrink-0" asChild>
@@ -108,6 +115,17 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Заполнение</span>
             </ToggleGroupItem>
           </Link>
+          {hasEarlyAccess && (
+            <Link to={unificationUrl}>
+              <ToggleGroupItem
+                value="unification"
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <Link2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Объединение</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
           {isSuperAdmin && (
             <Link to={fillAnalyticsUrl}>
               <ToggleGroupItem

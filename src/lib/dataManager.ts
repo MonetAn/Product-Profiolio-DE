@@ -76,6 +76,11 @@ export interface TreeNode {
   quarterlyData?: Record<string, QuarterData>;
   isUnit?: boolean;
   isTeam?: boolean;
+  /** Уровень «Объединение»: зонтик кросс-инициативы (дочерние узлы — юниты). */
+  isCrossInitiative?: boolean;
+  crossInitiativeId?: string;
+  unit?: string;
+  team?: string;
   isInitiative?: boolean;
   isRoot?: boolean;
   isStakeholder?: boolean;
@@ -101,6 +106,14 @@ export interface TreeNode {
   adminQuickReviewMissing?: string[];
   /** Лист treemap: в выбранном периоде есть квартал с предварительной стоимостью (не провалидировано финансами) */
   hasPreliminaryQuarterInPeriod?: boolean;
+  /** Обзор кросс-инициатив: реальный бюджет для тултипа (value может быть увеличен для раскладки). */
+  displayBudget?: number;
+  /** Юнит портфеля на дашборде «Кросс-инициативы» (legacy; не используется для «Остальное»). */
+  isPortfolioUnit?: boolean;
+  /** Блок «Остальное»: инициативы вне кросс-инициатив (юнит → команда → инициатива). */
+  isPortfolioRest?: boolean;
+  /** Сумма бюджета инициатив юнита, отнесённая в кросс-инициативы (для подсветки плитки). */
+  crossAllocatedValue?: number;
 }
 
 /** Sum of values in a node's subtree (node.value if set, else sum of children recursively). */
@@ -827,16 +840,11 @@ export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions
   return buildUnitsInitiativesTree(rawData, options);
 }
 
-// Helper: filter row based on options
-function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions): boolean {
-  const qs = options.selectedQuarters;
-  const includeNonPnlBudgets = options.includeNonPnlBudgets ?? false;
-  if (
-    calculateBudget(row, qs, buildTreeBudgetOptions(options)) <= 0 &&
-    periodEffortSum(row, qs) <= 0
-  )
-    return false;
-
+/** Юнит / команда / стейкхолдер / тип — без проверки budget>0 в периоде. */
+export function matchesDashboardStructuralFilters(
+  row: RawDataRow,
+  options: BuildTreeOptions
+): boolean {
   const isSupport = isInitiativeSupport(row, options.selectedQuarters);
   const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
 
@@ -846,15 +854,37 @@ function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions): boolean {
   if (options.hideStubs && row.isTimelineStub) return false;
   if (options.selectedStakeholders.length > 0) {
     const rowParts = parseStakeholderParts(row.stakeholders);
-    const hasMatch = rowParts.some(p => options.selectedStakeholders.includes(p));
+    const hasMatch = rowParts.some((p) => options.selectedStakeholders.includes(p));
     if (!hasMatch) return false;
   }
-  if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit)) return false;
+  if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit))
+    return false;
   if (options.unitFilter && row.unit !== options.unitFilter) return false;
-  if (options.selectedTeams && options.selectedTeams.length > 0 && !options.selectedTeams.includes(row.team)) return false;
+  if (options.selectedTeams && options.selectedTeams.length > 0 && !options.selectedTeams.includes(row.team))
+    return false;
   if (options.teamFilter && row.team !== options.teamFilter) return false;
 
   return true;
+}
+
+/** Участник кросс-инициативы: только явные фильтры (юнит, команда, стейкхолдер, тип). «Только PnL IT» на кроссы не действует. */
+export function matchesDashboardFiltersForCrossMember(
+  row: RawDataRow,
+  options: BuildTreeOptions
+): boolean {
+  return matchesDashboardStructuralFilters(row, options);
+}
+
+// Helper: filter row based on options
+function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions): boolean {
+  const qs = options.selectedQuarters;
+  if (
+    calculateBudget(row, qs, buildTreeBudgetOptions(options)) <= 0 &&
+    periodEffortSum(row, qs) <= 0
+  )
+    return false;
+
+  return matchesDashboardStructuralFilters(row, options);
 }
 
 // Case 1: Only Units with aggregated values
@@ -913,7 +943,15 @@ function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): 
     const teamName = row.team || 'Без команды';
 
     if (!unit.teamMap[teamName]) {
-      unit.teamMap[teamName] = { name: teamName, value: 0, distributedValue: 0, unallocatedValue: 0, isTeam: true, children: [] };
+      unit.teamMap[teamName] = {
+        name: teamName,
+        unit: row.unit,
+        value: 0,
+        distributedValue: 0,
+        unallocatedValue: 0,
+        isTeam: true,
+        children: [],
+      };
       unit.children.push(unit.teamMap[teamName]);
     }
 
@@ -962,13 +1000,15 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
     const teamName = row.team || 'Без команды';
 
     if (!unit.teamMap[teamName]) {
-      unit.teamMap[teamName] = { name: teamName, children: [], isTeam: true };
+      unit.teamMap[teamName] = { name: teamName, unit: row.unit, children: [], isTeam: true };
       unit.children.push(unit.teamMap[teamName]);
     }
 
     unit.teamMap[teamName].children!.push({
       name: row.initiative,
       value: leafValue,
+      unit: row.unit,
+      team: teamName,
       description: row.description,
       stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
       support: isSupport,

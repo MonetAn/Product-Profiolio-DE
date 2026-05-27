@@ -6,18 +6,53 @@ import { adjustBrightness, mixHexWithNeutralGray } from '@/lib/dataManager';
 import { encodeTreemapPathSegment } from '@/lib/treemapPathCodec';
 import type { ColorGetter, TreemapLayoutNode } from '@/components/treemap/types';
 
+/** Ключ цвета для узла (юнит, кросс, «Остальное» с одним юнитом). */
+export function treemapColorAnchorForNode(node: TreeNode, fallback: string): string {
+  if (node.isCrossInitiative) return node.name;
+  if (node.isPortfolioRest) {
+    const units = (node.children ?? []).filter((c) => c.isUnit && !c.isCrossInitiative);
+    if (units.length === 1) return units[0].name;
+    return node.name;
+  }
+  if (node.isUnit && !node.isCrossInitiative) return node.name;
+  if (node.unit) return node.unit;
+  return fallback;
+}
+
+function resolveTreemapColorKey(
+  node: TreeNode,
+  depth: number,
+  topLevelName: string,
+  unitColorKey?: string
+): string {
+  if (node.isCrossInitiative) return node.name;
+  if (node.isPortfolioRest) {
+    const units = (node.children ?? []).filter((c) => c.isUnit && !c.isCrossInitiative);
+    if (units.length === 1) return units[0].name;
+    return node.name;
+  }
+  if (node.isPortfolioUnit) return node.name;
+  if (node.isUnit && !node.isCrossInitiative) return node.name;
+  if (node.unit) return node.unit;
+  if (unitColorKey) return unitColorKey;
+  if (node.isTeam || node.isInitiative) return topLevelName;
+  return topLevelName;
+}
+
 function flattenD3Hierarchy(
   node: d3.HierarchyRectangularNode<TreeNode>,
   depth: number,
   getColor: ColorGetter,
   parentPath: string,
   maxDepth: number,
-  topLevelName: string
+  topLevelName: string,
+  unitColorKey?: string
 ): TreemapLayoutNode {
   const enc = encodeTreemapPathSegment(node.data.name);
   const path = parentPath ? `${parentPath}/${enc}` : enc;
 
-  const baseColor = getColor(topLevelName);
+  const colorKey = resolveTreemapColorKey(node.data, depth, topLevelName, unitColorKey);
+  const baseColor = getColor(colorKey);
   let color = baseColor;
   if (depth === 1) color = adjustBrightness(baseColor, -15);
   else if (depth === 2) color = adjustBrightness(baseColor, -30);
@@ -53,12 +88,16 @@ function flattenD3Hierarchy(
     isTimelineStub: node.data.isTimelineStub,
     distributedValue: node.data.distributedValue,
     unallocatedValue: node.data.unallocatedValue,
+    crossAllocatedValue: node.data.crossAllocatedValue,
     hasPreliminaryQuarterInPeriod: node.data.hasPreliminaryQuarterInPeriod,
   };
 
+  const childUnitKey =
+    node.data.isUnit && !node.data.isCrossInitiative ? node.data.name : unitColorKey;
+
   if (node.children && depth < maxDepth) {
     layoutNode.children = node.children.map((child) =>
-      flattenD3Hierarchy(child, depth + 1, getColor, path, maxDepth, topLevelName)
+      flattenD3Hierarchy(child, depth + 1, getColor, path, maxDepth, topLevelName, childUnitKey)
     );
   }
 
@@ -114,6 +153,8 @@ function buildNodeShell(
     isStakeholder: rootNode.isStakeholder,
     distributedValue: rootNode.distributedValue,
     unallocatedValue: rootNode.unallocatedValue,
+    crossAllocatedValue: rootNode.crossAllocatedValue,
+    unitStripeColor: rootNode.unitStripeColor,
   };
 }
 
@@ -128,7 +169,8 @@ function layoutDirectChildrenInRect(
   getColor: ColorGetter,
   colorAnchor: string,
   childDepth: number,
-  maxDepth: number
+  maxDepth: number,
+  unitColorKey?: string
 ): TreemapLayoutNode[] {
   const width = Math.max(0, x1 - x0);
   const height = Math.max(0, y1 - y0);
@@ -161,7 +203,17 @@ function layoutDirectChildrenInRect(
 
   return (hRoot.children ?? []).map((d3Child) => {
     const source = rawChildren.find((c) => c.name === d3Child.data.name) ?? d3Child.data;
-    let laid = flattenD3Hierarchy(d3Child, childDepth, getColor, parentPath, maxDepth, colorAnchor);
+    const childUnitKey =
+      source.isUnit && !source.isCrossInitiative ? source.name : unitColorKey;
+    let laid = flattenD3Hierarchy(
+      d3Child,
+      childDepth,
+      getColor,
+      parentPath,
+      maxDepth,
+      colorAnchor,
+      childUnitKey
+    );
     laid = offsetLayoutTree(laid, x0, y0);
 
     const hasGrandchildren = (source.children?.length ?? 0) > 0 && maxDepth > childDepth + 1;
@@ -176,9 +228,10 @@ function layoutDirectChildrenInRect(
       laid.y1,
       getColor,
       maxDepth,
-      colorAnchor,
+      treemapColorAnchorForNode(source, colorAnchor),
       childDepth,
-      laid.path
+      laid.path,
+      childUnitKey
     );
     return { ...laid, children: nested.children };
   });
@@ -197,8 +250,11 @@ export function layoutD3SubtreeInRect(
   maxDepth: number,
   colorAnchor?: string,
   depth = 0,
-  nodePath?: string
+  nodePath?: string,
+  unitColorKey?: string
 ): TreemapLayoutNode {
+  const effectiveUnitKey =
+    rootNode.isUnit && !rootNode.isCrossInitiative ? rootNode.name : unitColorKey;
   const anchor = colorAnchor ?? rootNode.name;
   const segment = encodeTreemapPathSegment(rootNode.name);
   const fullPath = nodePath ?? segment;
@@ -220,7 +276,8 @@ export function layoutD3SubtreeInRect(
     getColor,
     anchor,
     depth + 1,
-    maxDepth
+    maxDepth,
+    effectiveUnitKey
   );
 
   return { ...shell, path: fullPath, children };

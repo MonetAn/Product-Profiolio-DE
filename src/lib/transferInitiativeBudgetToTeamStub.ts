@@ -136,28 +136,29 @@ async function upsertSplitAddition(stubId: string, delta: BudgetSplitRow): Promi
   if (error) throw error;
 }
 
-async function syncStubQuarterlyCostFromSplit(stubId: string): Promise<void> {
-  const rows = await fetchBudgetRows(stubId);
-  const byQ = quarterlyCostsFromSplitRows(rows);
+/** Сколько переносить на заглушку по кварталам: quarterly — источник; если cost=0, берём split. */
+export function computeTransferAddByQuarter(
+  quarterlyData: Record<string, AdminQuarterData> | undefined,
+  splitRows: BudgetSplitRow[]
+): Record<(typeof Y2026_QUARTERS)[number], number> {
+  const quarterlyAdd = sumQuarterlyCost2026(quarterlyData);
+  const quarterlySum = Y2026_QUARTERS.reduce((s, q) => s + quarterlyAdd[q], 0);
+  if (quarterlySum > 0) return quarterlyAdd;
 
-  const { data: initRow, error: readErr } = await supabase
-    .from('initiatives')
-    .select('quarterly_data')
-    .eq('id', stubId)
-    .single();
-  if (readErr) throw readErr;
-
-  const qd = quarterlyJsonToAdminRecord(initRow?.quarterly_data);
-  for (const q of Y2026_QUARTERS) {
-    const cur = qd[q] ?? createEmptyQuarterData();
-    qd[q] = { ...cur, cost: byQ[q] ?? 0 };
+  const fromSplit = quarterlyCostsFromSplitRows(splitRows);
+  const splitSum = Y2026_QUARTERS.reduce((s, q) => s + (fromSplit[q] ?? 0), 0);
+  if (splitSum > 0) {
+    return fromSplit as Record<(typeof Y2026_QUARTERS)[number], number>;
   }
+  return quarterlyAdd;
+}
 
-  const { error } = await supabase
-    .from('initiatives')
-    .update({ quarterly_data: quarterlyDataToJson(qd) as Json })
-    .eq('id', stubId);
-  if (error) throw error;
+export function hasTransferableBudget(
+  quarterlyData: Record<string, AdminQuarterData> | undefined,
+  splitRows: BudgetSplitRow[]
+): boolean {
+  const add = computeTransferAddByQuarter(quarterlyData, splitRows);
+  return Y2026_QUARTERS.some((q) => (add[q] ?? 0) > 0);
 }
 
 async function addQuarterlyCostToStub(
@@ -276,15 +277,10 @@ export async function transferInitiativeBudgetToTeamStub(
   if (!unit || !team) return { transferred: false, stubId: null };
 
   const splitRows = await fetchBudgetRows(initiativeId);
-  const splitSum = splitRows.reduce((s, r) => s + r.q1 + r.q2 + r.q3 + r.q4, 0);
-  const quarterlyAdd =
-    splitRows.length === 0
-      ? sumQuarterlyCost2026(quarterlyJsonToAdminRecord(row.quarterly_data))
-      : ({} as Record<(typeof Y2026_QUARTERS)[number], number>);
-  const quarterlyOnlySum =
-    splitRows.length === 0 ? Y2026_QUARTERS.reduce((s, q) => s + quarterlyAdd[q], 0) : 0;
+  const quarterlyRecord = quarterlyJsonToAdminRecord(row.quarterly_data);
+  const addByQuarter = computeTransferAddByQuarter(quarterlyRecord, splitRows);
 
-  if (splitSum <= 0 && quarterlyOnlySum <= 0) {
+  if (!hasTransferableBudget(quarterlyRecord, splitRows)) {
     return { transferred: false, stubId: null };
   }
 
@@ -300,10 +296,11 @@ export async function transferInitiativeBudgetToTeamStub(
       .delete()
       .eq('initiative_id', initiativeId);
     if (delErr) throw delErr;
-    await syncStubQuarterlyCostFromSplit(stubId);
-  } else {
-    await addQuarterlyCostToStub(stubId, quarterlyAdd);
   }
+
+  // Накапливаем cost на заглушке. syncStubQuarterlyCostFromSplit не вызываем:
+  // он перезаписывает quarterly только из split и теряет уже лежащие на стабе деньги.
+  await addQuarterlyCostToStub(stubId, addByQuarter);
 
   await zeroInitiative2026Costs(initiativeId);
 

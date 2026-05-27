@@ -8,13 +8,15 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
-export type ViewType = 'budget' | 'stakeholders' | 'timeline';
+export type ViewType = 'budget' | 'stakeholders' | 'timeline' | 'crossInitiatives';
 
 interface HeaderProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   onSearchClick: () => void;
   isAdmin?: boolean;
+  /** Четвёртая вкладка «Кросс-инициативы» (ранний доступ). */
+  showCrossInitiativesTab?: boolean;
   /** Сохраняет `?units=&teams=&stakeholders=` при переходе в админку (как в useFilterParams). */
   adminTo?: string;
 }
@@ -25,6 +27,7 @@ const Header = ({
   onSearchClick,
   isAdmin = false,
   adminTo,
+  showCrossInitiativesTab = false,
 }: HeaderProps) => {
   const navigate = useNavigate();
   return (
@@ -81,6 +84,21 @@ const Header = ({
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
         </button>
+        {showCrossInitiativesTab && (
+          <button
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
+              currentView === 'crossInitiatives'
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+            }`}
+            onClick={() => onViewChange('crossInitiatives')}
+          >
+            Кросс-инициативы <kbd className="text-xs text-muted-foreground ml-1">4</kbd>
+            {currentView === 'crossInitiatives' && (
+              <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
+            )}
+          </button>
+        )}
       </nav>
 
       {/* Actions */}

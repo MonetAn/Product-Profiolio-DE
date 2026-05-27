@@ -101,6 +101,16 @@
 }
 
 /* Visual distinction for Team vs Initiative in Stakeholders treemap */
+.treemap-node.is-cross-initiative {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.treemap-node.is-cross-initiative:hover {
+  filter: brightness(1.06) saturate(1.05);
+}
+
 .treemap-node.is-team {
   /* border removed for cleaner look */
 }
@@ -147,6 +157,34 @@ html.admin-engineering .treemap-node.admin-effort-changed {
 
 .treemap-node.depth-1 {
   /* border removed for cleaner look */
+}
+
+/* Дашборд: доля юнита, ушедшая в кросс-инициативы */
+.treemap-cross-allocated-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(124, 58, 237, 0.42),
+    rgba(124, 58, 237, 0.42) 5px,
+    rgba(124, 58, 237, 0.18) 5px,
+    rgba(124, 58, 237, 0.18) 10px
+  );
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.dark .treemap-cross-allocated-band {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(167, 139, 250, 0.5),
+    rgba(167, 139, 250, 0.5) 5px,
+    rgba(167, 139, 250, 0.22) 5px,
+    rgba(167, 139, 250, 0.22) 10px
+  );
 }
 
 .treemap-node.depth-2 {
@@ -493,6 +531,52 @@ a.tooltip-doc-link {
   font-weight: 500;
 }
 
+.tooltip-header-cross {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.tooltip-header-cross .tooltip-title {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.tooltip-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.tooltip-cross-initiatives,
+.tooltip-cross-participants {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.tooltip-cross-list {
+  margin: 0;
+  padding: 0 0 0 1rem;
+  list-style: disc;
+}
+
+.tooltip-cross-item {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.tooltip-cross-empty {
+  margin: 0;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.4;
+}
+
 /* Tooltip description */
 .tooltip-description {
   margin-top: 12px;
@@ -590,6 +674,22 @@ a.tooltip-doc-link {
 
 .navigate-back-button.visible {
   display: flex;
+}
+
+/* Объединение: фиолетовая кнопка «назад» на тремапе (хорошо видна на цветных плитках) */
+.unification-workspace .navigate-back-button {
+  background: #7b5fa8;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 4px 16px -2px rgb(72 52 120 / 0.45),
+    0 0 0 1px rgb(72 52 120 / 0.2);
+}
+
+.unification-workspace .navigate-back-button:hover {
+  background: #6b4e9a;
+  box-shadow:
+    0 6px 20px -2px rgb(72 52 120 / 0.5),
+    0 0 0 1px rgb(72 52 120 / 0.25);
 }
 
 /* Legacy up-button - keep for compatibility */

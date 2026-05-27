@@ -7,6 +7,7 @@ import Header, { ViewType } from '@/components/Header';
 import FilterBar from '@/components/FilterBar';
 import BudgetTreemap from '@/components/BudgetTreemap';
 import StakeholdersTreemap from '@/components/StakeholdersTreemap';
+import { DashboardCrossTreemap } from '@/components/DashboardCrossTreemap';
 import GanttView from '@/components/GanttView';
 import { InitiativePeekModal } from '@/components/InitiativePeekModal';
 import { LogoLoader } from '@/components/LogoLoader';
@@ -39,6 +40,9 @@ import { useFilterParams } from '@/hooks/useFilterParams';
 import { useAccess } from '@/hooks/useAccess';
 import { useSensitiveDashboardMask } from '@/hooks/useSensitiveDashboardMask';
 import { useBudgetTruth2026 } from '@/hooks/useBudgetTruth2026';
+import { useCrossInitiatives } from '@/hooks/useCrossInitiatives';
+import type { AdminDataRow } from '@/lib/adminDataManager';
+import type { UnificationBudgetContext } from '@/lib/unificationBudget';
 import { filterQuarters2026 } from '@/lib/budgetTruth2026';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
 import {
@@ -56,7 +60,10 @@ const Index = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   useRecordDailyPresence('portfolio', !!user);
-  const { isAdmin, isSuperAdmin, canAccess, canViewMoney, scope } = useAccess();
+  const { isAdmin, isSuperAdmin, canAccess, canViewMoney, scope, hasEarlyAccess } = useAccess();
+  const { data: crossBundle, isLoading: crossBundleLoading } = useCrossInitiatives({
+    enabled: hasEarlyAccess,
+  });
   const {
     selectedUnits,
     selectedTeams,
@@ -96,6 +103,12 @@ const Index = () => {
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
   const [showOnlyPnlIt, setShowOnlyPnlIt] = useState(true);
+  /** Кросс-инициативы: «Остальное» — инициативы вне кроссов (выкл. = только кроссы, как в админке). */
+  const [showCrossPortfolioRest, setShowCrossPortfolioRest] = useState(false);
+  /** Кросс-инициативы: уровень «юниты» внутри кросса */
+  const [crossShowUnits, setCrossShowUnits] = useState(false);
+  /** Кросс-инициативы: раскрыть инициативы внутри плиток кроссов (не влияет на «Остальное»). */
+  const [crossShowInitiativesInside, setCrossShowInitiativesInside] = useState(false);
   const [showMoney, setShowMoney] = useState(true);
   /** Super admin: по умолчанию скрываем sensitive на клиенте (полные строки уже приходят из API) */
   const [showSensitiveTreemap, setShowSensitiveTreemap] = useState(false);
@@ -123,6 +136,7 @@ const Index = () => {
   const dragCounterRef = useRef(0);
   // Track which nesting levels were auto-enabled (vs manually toggled by user)
   const autoEnabledRef = useRef({ teams: false, initiatives: false });
+  const crossUnitsAutoEnabledRef = useRef(false);
   
   // Track if quarters were already initialized
   const quartersInitializedRef = useRef(false);
@@ -351,6 +365,26 @@ const Index = () => {
       autoEnabledRef.current.initiatives = false;
     }
   }, []);
+
+  const handleCrossAutoEnableUnits = useCallback(() => {
+    if (!crossShowUnits) {
+      setCrossShowUnits(true);
+      crossUnitsAutoEnabledRef.current = true;
+    }
+  }, [crossShowUnits]);
+
+  const handleCrossAutoDisableUnits = useCallback(() => {
+    if (crossUnitsAutoEnabledRef.current) {
+      setCrossShowUnits(false);
+      crossUnitsAutoEnabledRef.current = false;
+    }
+  }, []);
+
+  const handleCrossLevelStateReset = useCallback(() => {
+    handleCrossAutoDisableUnits();
+    handleAutoDisableTeams();
+    handleAutoDisableInitiatives();
+  }, [handleCrossAutoDisableUnits, handleAutoDisableTeams, handleAutoDisableInitiatives]);
 
   const [resetZoomTrigger, setResetZoomTrigger] = useState(0);
 
@@ -590,15 +624,76 @@ const Index = () => {
 
   // View switching
   const handleViewChange = (view: ViewType) => {
+    if (view === 'crossInitiatives' && !hasEarlyAccess) {
+      setCurrentView('budget');
+      return;
+    }
     if (view === 'stakeholders' && selectedStakeholders.length > 1) {
       setSelectedStakeholders([selectedStakeholders[0]]);
     }
     setCurrentView(view);
     setNavigationStack([]);
-    setCurrentRoot(view === 'stakeholders' ? stakeholdersData : portfolioData);
+    if (view === 'stakeholders') {
+      setCurrentRoot(stakeholdersData);
+    } else if (view !== 'crossInitiatives' && view !== 'timeline') {
+      setCurrentRoot(portfolioData);
+    }
     setHighlightedInitiative(null);
     setResetZoomTrigger((prev) => prev + 1);
   };
+
+  useEffect(() => {
+    if (!hasEarlyAccess && currentView === 'crossInitiatives') {
+      setCurrentView('budget');
+    }
+  }, [hasEarlyAccess, currentView]);
+
+  const initiativeById = useMemo(() => {
+    const map = new Map<string, AdminDataRow>();
+    for (const row of dbData ?? []) {
+      map.set(row.id, row);
+    }
+    return map;
+  }, [dbData]);
+
+  const unificationBudgetCtx = useMemo<UnificationBudgetContext>(
+    () => ({ baselineByTeam: budgetTruth2026?.baselineByTeam }),
+    [budgetTruth2026?.baselineByTeam]
+  );
+
+  const treemapBuildOptions = useMemo(() => {
+    const unitFilter = selectedUnits.length === 1 ? selectedUnits[0] : '';
+    const teamFilter = selectedTeams.length === 1 ? selectedTeams[0] : '';
+    return {
+      selectedQuarters,
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      selectedStakeholders,
+      unitFilter,
+      teamFilter,
+      selectedUnits,
+      selectedTeams,
+      showTeams,
+      showInitiatives,
+      includeNonPnlBudgets: !showOnlyPnlIt,
+      includePreliminaryData: false,
+      preliminaryQuarterBudgetMap: undefined,
+      baselineByTeam: budgetTruth2026?.baselineByTeam,
+    };
+  }, [
+    selectedQuarters,
+    supportFilter,
+    showOnlyOfftrack,
+    hideStubs,
+    selectedStakeholders,
+    selectedUnits,
+    selectedTeams,
+    showTeams,
+    showInitiatives,
+    showOnlyPnlIt,
+    budgetTruth2026?.baselineByTeam,
+  ]);
 
   // Resolve initiative row from treemap path (Unit/Team/Initiative or Stakeholder/Unit/Team/Initiative)
   const initiativePeekRow = (() => {
@@ -607,7 +702,7 @@ const Index = () => {
     let unit = '';
     let team = '';
     let initiative = '';
-    if (parts.length === 2 && currentView === 'budget') {
+    if (parts.length === 2 && (currentView === 'budget' || currentView === 'crossInitiatives')) {
       const noTeamRow = displayData.find(
         (r) => r.unit === parts[0] && r.initiative === parts[1] && !(r.team || '').trim()
       );
@@ -618,7 +713,7 @@ const Index = () => {
       if (teamInitMatches.length === 1) return teamInitMatches[0];
       unit = parts[0];
       initiative = parts[1];
-    } else if (parts.length === 3 && currentView === 'budget') {
+    } else if (parts.length === 3 && (currentView === 'budget' || currentView === 'crossInitiatives')) {
       // Budget: Unit/Team/Initiative
       const teamRaw = parts[1];
       unit = parts[0];
@@ -661,6 +756,9 @@ const Index = () => {
         case '1': handleViewChange('budget'); break;
         case '2': handleViewChange('stakeholders'); break;
         case '3': handleViewChange('timeline'); break;
+        case '4':
+          if (hasEarlyAccess) handleViewChange('crossInitiatives');
+          break;
         case '/': e.preventDefault(); setShowSearch(true); break;
         case '?': setShowShortcuts(true); break;
         case 'r':
@@ -691,7 +789,7 @@ const Index = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters, showTeams, showInitiatives]);
+  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters, showTeams, showInitiatives, hasEarlyAccess]);
 
   // Search across all rows (not scoped to active dashboard filters)
   const searchResults = displayData.filter(row => {
@@ -714,6 +812,53 @@ const Index = () => {
   const sortedJoin = (items: string[]) => [...items].sort().join(',');
 
   // Include all data-affecting filters so treemap animation state cannot reuse stale layers.
+  const crossTreemapContentKey = useMemo(
+    () =>
+      [
+        'cross',
+        supportFilter,
+        showOnlyOfftrack ? 'offtrack:1' : 'offtrack:0',
+        hideStubs ? 'stubs:0' : 'stubs:1',
+        showOnlyPnlIt ? 'pnlit:1' : 'pnlit:0',
+        showTeams ? 'teams:1' : 'teams:0',
+        showInitiatives ? 'initiatives:1' : 'initiatives:0',
+        sortedJoin(selectedUnits),
+        sortedJoin(selectedTeams),
+        sortedJoin(selectedStakeholders),
+        sortedJoin(selectedQuarters),
+        showCrossPortfolioRest ? 'rest:1' : 'rest:0',
+        crossShowUnits ? 'crossUnits:1' : 'crossUnits:0',
+        crossShowInitiativesInside ? 'crossIniIn:1' : 'crossIniIn:0',
+        crossBundle?.crossInitiatives.length ?? 0,
+        crossBundle?.members.length ?? 0,
+      ].join('|'),
+    [
+      supportFilter,
+      showOnlyOfftrack,
+      hideStubs,
+      showOnlyPnlIt,
+      showTeams,
+      showInitiatives,
+      selectedUnits,
+      selectedTeams,
+      selectedStakeholders,
+      selectedQuarters,
+      showCrossPortfolioRest,
+      crossShowUnits,
+      crossShowInitiativesInside,
+      crossBundle,
+    ]
+  );
+
+  const crossLevelVisibility = useMemo(
+    () => ({
+      showUnits: crossShowUnits,
+      showTeams,
+      showInitiatives,
+    }),
+    [crossShowUnits, showTeams, showInitiatives]
+  );
+
   const budgetTreemapContentKey = useMemo(
     () =>
       [
@@ -848,6 +993,7 @@ const Index = () => {
         onSearchClick={() => setShowSearch(true)}
         isAdmin={isAdmin}
         adminTo={isAdmin ? adminEntryUrl : undefined}
+        showCrossInitiativesTab={hasEarlyAccess}
       />
 
       {/* Filter Bar - 2 rows now */}
@@ -906,6 +1052,25 @@ const Index = () => {
           setShowOnlyOfftrack(prev => !prev);
         }}
         hideNestingToggles={currentView === 'timeline'}
+        showCrossPortfolioRest={showCrossPortfolioRest}
+        onShowCrossPortfolioRestChange={(v) => {
+          setShowCrossPortfolioRest(v);
+          if (!v) {
+            setShowInitiatives(false);
+            autoEnabledRef.current.initiatives = false;
+          }
+          setResetZoomTrigger((prev) => prev + 1);
+        }}
+        crossShowUnits={crossShowUnits}
+        onCrossShowUnitsChange={(v) => {
+          setCrossShowUnits(v);
+          setResetZoomTrigger((prev) => prev + 1);
+        }}
+        crossShowInitiativesInside={crossShowInitiativesInside}
+        onCrossShowInitiativesInsideChange={(v) => {
+          setCrossShowInitiativesInside(v);
+          setResetZoomTrigger((prev) => prev + 1);
+        }}
         onResetFilters={resetFilters}
         hasActiveFilters={hasActiveFilters}
         // Cost filter props (Timeline only)
@@ -1029,6 +1194,36 @@ const Index = () => {
             showMoney={effectiveShowMoney}
             showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}
+          />
+        )}
+
+        {currentView === 'crossInitiatives' && hasEarlyAccess && (
+          <DashboardCrossTreemap
+            rawData={displayData}
+            bundle={crossBundle}
+            initiativeById={initiativeById}
+            buildOptions={treemapBuildOptions}
+            budgetCtx={unificationBudgetCtx}
+            selectedQuarters={selectedQuarters}
+            showMoney={effectiveShowMoney}
+            isLoading={crossBundleLoading}
+            selectedUnits={selectedUnits}
+            showPortfolioRest={showCrossPortfolioRest}
+            showCrossesForSelectedUnit
+            crossLevelVisibility={crossLevelVisibility}
+            showInitiativesInsideCrosses={crossShowInitiativesInside}
+            showTeams={showTeams}
+            showInitiatives={showInitiatives}
+            onAutoEnableUnits={handleCrossAutoEnableUnits}
+            onAutoEnableTeams={handleAutoEnableTeams}
+            onAutoEnableInitiatives={handleAutoEnableInitiatives}
+            onAutoDisableUnits={handleCrossAutoDisableUnits}
+            onAutoDisableTeams={handleAutoDisableTeams}
+            onAutoDisableInitiatives={handleAutoDisableInitiatives}
+            onLevelStateReset={handleCrossLevelStateReset}
+            onInitiativeClick={(_name, path) => setInitiativePeekPath(path)}
+            contentKey={crossTreemapContentKey}
+            resetZoomTrigger={resetZoomTrigger}
           />
         )}
 

@@ -62,16 +62,15 @@ interface FilterBarProps {
   /** Влияет на зум тримапы и на применение фильтра стоимости (только таймлайн) */
   currentView?: 'budget' | 'stakeholders' | 'timeline' | 'crossInitiatives';
 
-  /** Кросс-инициативы: «Остальное» — юниты портфеля на том же тремапе */
+  /** Кросс-инициативы: «Остальное» — инициативы вне кроссов на том же тремапе */
   showCrossPortfolioRest?: boolean;
   onShowCrossPortfolioRestChange?: (val: boolean) => void;
   /** Кросс-инициативы: уровень юнитов внутри кросса */
   crossShowUnits?: boolean;
   onCrossShowUnitsChange?: (val: boolean) => void;
-  /** Кросс-инициативы: при одном юните в фильтре — показывать связанные кроссы рядом с юнитом */
-  showCrossesForSelectedUnit?: boolean;
-  onShowCrossesForSelectedUnitChange?: (val: boolean) => void;
-
+  /** Кросс-инициативы: инициативы внутри плиток кроссов (не влияет на «Остальное») */
+  crossShowInitiativesInside?: boolean;
+  onCrossShowInitiativesInsideChange?: (val: boolean) => void;
   /** Только super_admin на вкладке «Бюджет»: показать sensitive в тримапе (по умолчанию скрыты на клиенте) */
   showSensitiveTreemap?: boolean;
   onShowSensitiveTreemapChange?: (val: boolean) => void;
@@ -152,8 +151,8 @@ const FilterBar = ({
   onShowCrossPortfolioRestChange,
   crossShowUnits = false,
   onCrossShowUnitsChange,
-  showCrossesForSelectedUnit = true,
-  onShowCrossesForSelectedUnitChange,
+  crossShowInitiativesInside = false,
+  onCrossShowInitiativesInsideChange,
   // Cost filter props
   costSortOrder = 'none',
   onCostSortOrderChange,
@@ -938,80 +937,125 @@ const FilterBar = ({
                   <span>Только PnL IT</span>
                 </label>
               )}
-              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                <input
-                  type="checkbox"
-                  checked={showTeams}
-                  onChange={(e) => onShowTeamsChange(e.target.checked)}
-                  className="hidden"
-                />
-                <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                  {showTeams && <Check size={10} />}
-                </span>
-                <span>Команды</span>
-              </label>
-              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                <input
-                  type="checkbox"
-                  checked={showInitiatives}
-                  onChange={(e) => onShowInitiativesChange(e.target.checked)}
-                  className="hidden"
-                />
-                <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                  {showInitiatives && <Check size={10} />}
-                </span>
-                <span>Инициативы</span>
-              </label>
-              {currentView === 'crossInitiatives' && onShowCrossPortfolioRestChange && (
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                  <input
-                    type="checkbox"
-                    checked={showCrossPortfolioRest}
-                    onChange={(e) => onShowCrossPortfolioRestChange(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span
-                    className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showCrossPortfolioRest ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
-                  >
-                    {showCrossPortfolioRest && <Check size={10} />}
-                  </span>
-                  <span>Остальное</span>
-                </label>
-              )}
-              {currentView === 'crossInitiatives' && onCrossShowUnitsChange && (
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-                  <input
-                    type="checkbox"
-                    checked={crossShowUnits}
-                    onChange={(e) => onCrossShowUnitsChange(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span
-                    className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${crossShowUnits ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
-                  >
-                    {crossShowUnits && <Check size={10} />}
-                  </span>
-                  <span>Юниты</span>
-                </label>
-              )}
-              {currentView === 'crossInitiatives' &&
-                selectedUnits.length === 1 &&
-                onShowCrossesForSelectedUnitChange && (
+              {currentView === 'crossInitiatives' ? (
+                <>
+                  {onCrossShowUnitsChange && (
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                      <input
+                        type="checkbox"
+                        checked={crossShowUnits}
+                        onChange={(e) => onCrossShowUnitsChange(e.target.checked)}
+                        className="hidden"
+                      />
+                      <span
+                        className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${crossShowUnits ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                      >
+                        {crossShowUnits && <Check size={10} />}
+                      </span>
+                      <span>Юниты</span>
+                    </label>
+                  )}
                   <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                     <input
                       type="checkbox"
-                      checked={showCrossesForSelectedUnit}
-                      onChange={(e) => onShowCrossesForSelectedUnitChange(e.target.checked)}
+                      checked={showTeams}
+                      onChange={(e) => onShowTeamsChange(e.target.checked)}
                       className="hidden"
                     />
                     <span
-                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showCrossesForSelectedUnit ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
                     >
-                      {showCrossesForSelectedUnit && <Check size={10} />}
+                      {showTeams && <Check size={10} />}
                     </span>
-                    <span>Кроссы юнита</span>
+                    <span>Команды</span>
                   </label>
-                )}
+                  {onCrossShowInitiativesInsideChange && (
+                    <label
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary"
+                      title="Раскрывает инициативы внутри плиток кросс-инициатив"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={crossShowInitiativesInside}
+                        onChange={(e) => onCrossShowInitiativesInsideChange(e.target.checked)}
+                        className="hidden"
+                      />
+                      <span
+                        className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${crossShowInitiativesInside ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                      >
+                        {crossShowInitiativesInside && <Check size={10} />}
+                      </span>
+                      <span>В кроссах</span>
+                    </label>
+                  )}
+                  {onShowCrossPortfolioRestChange && (
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                      <input
+                        type="checkbox"
+                        checked={showCrossPortfolioRest}
+                        onChange={(e) => onShowCrossPortfolioRestChange(e.target.checked)}
+                        className="hidden"
+                      />
+                      <span
+                        className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showCrossPortfolioRest ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                      >
+                        {showCrossPortfolioRest && <Check size={10} />}
+                      </span>
+                      <span>Остальное</span>
+                    </label>
+                  )}
+                  {showCrossPortfolioRest && (
+                    <label
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary"
+                      title="Раскрывает инициативы в блоке «Остальное»"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showInitiatives}
+                        onChange={(e) => onShowInitiativesChange(e.target.checked)}
+                        className="hidden"
+                      />
+                      <span
+                        className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                      >
+                        {showInitiatives && <Check size={10} />}
+                      </span>
+                      <span>Инициативы</span>
+                    </label>
+                  )}
+                </>
+              ) : (
+                <>
+                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                    <input
+                      type="checkbox"
+                      checked={showTeams}
+                      onChange={(e) => onShowTeamsChange(e.target.checked)}
+                      className="hidden"
+                    />
+                    <span
+                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                    >
+                      {showTeams && <Check size={10} />}
+                    </span>
+                    <span>Команды</span>
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                    <input
+                      type="checkbox"
+                      checked={showInitiatives}
+                      onChange={(e) => onShowInitiativesChange(e.target.checked)}
+                      className="hidden"
+                    />
+                    <span
+                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}
+                    >
+                      {showInitiatives && <Check size={10} />}
+                    </span>
+                    <span>Инициативы</span>
+                  </label>
+                </>
+              )}
               {sensitiveTreemapToggleVisible && currentView === 'budget' && onShowSensitiveTreemapChange && (
                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
                   <input

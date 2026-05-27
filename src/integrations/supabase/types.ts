@@ -557,6 +557,69 @@ export type Database = {
         }
         Relationships: []
       }
+      cross_initiatives: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: []
+      }
+      cross_initiative_members: {
+        Row: {
+          id: string
+          cross_initiative_id: string
+          initiative_id: string
+          cost_share_pct: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cross_initiative_id: string
+          initiative_id: string
+          cost_share_pct?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cross_initiative_id?: string
+          initiative_id?: string
+          cost_share_pct?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cross_initiative_members_cross_initiative_id_fkey"
+            columns: ["cross_initiative_id"]
+            isOneToOne: false
+            referencedRelation: "cross_initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cross_initiative_members_initiative_id_fkey"
+            columns: ["initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       initiative_mappings: {
         Row: {
           id: string
@@ -680,6 +743,11 @@ export type Database = {
     Functions: {
       is_dodo_employee: { Args: never; Returns: boolean }
       get_my_access: { Args: Record<string, never>; Returns: Json }
+      get_cross_initiatives_bundle: { Args: Record<string, never>; Returns: Json }
+      create_cross_initiative_with_members: {
+        Args: { p_name: string; p_initiative_ids: string[]; p_created_by?: string | null }
+        Returns: string
+      }
       record_presence: { Args: { p_surface: string }; Returns: undefined }
       get_presence_timeline: {
         Args: {

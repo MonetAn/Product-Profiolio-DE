@@ -32,7 +32,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { useAccess } from '@/hooks/useAccess';
+import { clearAccessCache, useAccess } from '@/hooks/useAccess';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -144,8 +144,14 @@ function formatDate(iso: string) {
 export default function AdminAccess() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { isAdmin } = useAccess();
+  const { isAdmin, retryAccess } = useAccess();
   const currentEmail = user?.email?.toLowerCase() ?? '';
+
+  const refreshAccessIfSelf = (savedEmail: string | null | undefined) => {
+    if (!savedEmail || savedEmail.toLowerCase() !== currentEmail) return;
+    clearAccessCache();
+    retryAccess();
+  };
 
   const [list, setList] = useState<AllowedUserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -569,6 +575,7 @@ export default function AdminAccess() {
         return;
       }
       toast({ title: 'Сохранено' });
+      refreshAccessIfSelf(editingRow.email);
       closeScopeDialog();
       fetchList();
       return;
@@ -591,6 +598,7 @@ export default function AdminAccess() {
       return;
     }
     toast({ title: 'Сохранено' });
+    refreshAccessIfSelf(editingRow.email);
     closeScopeDialog();
     fetchList();
   };

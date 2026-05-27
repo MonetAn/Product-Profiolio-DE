@@ -50,6 +50,8 @@ export interface TreemapLayoutNode {
   distributedValue?: number;
   /** For unit-only view: aggregated unallocated budget */
   unallocatedValue?: number;
+  /** Дашборд кросс-инициатив: бюджет юнита, отнесённый в кроссы */
+  crossAllocatedValue?: number;
   /** Лист: в периоде фильтра есть квартал с предварительной стоимостью */
   hasPreliminaryQuarterInPeriod?: boolean;
 }

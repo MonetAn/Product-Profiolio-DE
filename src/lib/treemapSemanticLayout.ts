@@ -118,6 +118,7 @@ function buildUnitLeafNode(
     isInitiative: node.isInitiative,
     distributedValue: node.distributedValue,
     unallocatedValue: node.unallocatedValue,
+    crossAllocatedValue: node.crossAllocatedValue,
   };
 }
 

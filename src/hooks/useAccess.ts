@@ -38,6 +38,16 @@ const DEFAULT_SCOPE: AccessScope = { seeAll: true, allowedUnits: [], allowedTeam
 
 const ACCESS_CACHE_KEY = 'app_access';
 
+/** Сброс кэша после смены early_access / scope в админке (иначе sessionStorage держит старый снимок). */
+export function clearAccessCache(): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.removeItem(ACCESS_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function getCachedAccess(userId: string): {
   canAccess: boolean;
   isAdmin: boolean;

@@ -46,7 +46,7 @@ if [ -z "$ids" ]; then
 else
   count=0
   for id in $ids; do
-    gh run delete "$id" --repo "$REPO" --confirm
+    gh run delete "$id" --repo "$REPO"
     count=$((count + 1))
   done
   echo "Удалено runs: $count"
