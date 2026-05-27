@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { AdminDataRow } from '@/lib/adminDataManager';
 import {
   computeTransferAddByQuarter,
+  computeTransferAddFromEffort,
   hasTransferableBudget,
   pickCanonicalTeamStub,
 } from './transferInitiativeBudgetToTeamStub';
@@ -53,5 +55,50 @@ describe('computeTransferAddByQuarter', () => {
         [{ budget_department: 'X', q1: 1, q2: 0, q3: 0, q4: 0, is_in_pnl_it: true }]
       )
     ).toBe(true);
+  });
+
+  it('uses effort % × team quarter total when cost and split are zero', () => {
+    const teamRows: AdminDataRow[] = [
+      {
+        id: 'stub',
+        unit: 'U',
+        team: 'T',
+        initiative: 'Стоимость команды T 2026',
+        stakeholdersList: [],
+        description: '',
+        documentationLink: '',
+        stakeholders: '',
+        isTimelineStub: true,
+        quarterlyData: {
+          '2026-Q1': { cost: 1_000_000, otherCosts: 0, effortCoefficient: 0 },
+        },
+      },
+      {
+        id: 'del',
+        unit: 'U',
+        team: 'T',
+        initiative: 'To delete',
+        stakeholdersList: [],
+        description: '',
+        documentationLink: '',
+        stakeholders: '',
+        isTimelineStub: false,
+        quarterlyData: {
+          '2026-Q1': { cost: 0, otherCosts: 0, effortCoefficient: 10 },
+        },
+      },
+    ];
+    const add = computeTransferAddFromEffort(teamRows[1].quarterlyData, teamRows);
+    expect(add['2026-Q1']).toBe(100_000);
+    expect(
+      hasTransferableBudget(
+        teamRows[1].quarterlyData,
+        [],
+        teamRows
+      )
+    ).toBe(true);
+    expect(
+      computeTransferAddByQuarter(teamRows[1].quarterlyData, [], teamRows)['2026-Q1']
+    ).toBe(100_000);
   });
 });

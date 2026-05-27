@@ -1,9 +1,11 @@
 import { supabase } from '@/integrations/supabase/client';
 import {
+  type AdminDataRow,
   AdminQuarterData,
   createEmptyQuarterData,
   isQuarterPeriodKey,
 } from '@/lib/adminDataManager';
+import { teamQuarterCostSum } from '@/lib/adminEffortTreemapPreviewModel';
 import { quarterlyDataToJson, quarterlyJsonToAdminRecord } from '@/hooks/useInitiatives';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -136,10 +138,37 @@ async function upsertSplitAddition(stubId: string, delta: BudgetSplitRow): Promi
   if (error) throw error;
 }
 
-/** Сколько переносить на заглушку по кварталам: quarterly — источник; если cost=0, берём split. */
+/**
+ * Доля бюджета команды по % усилия (как при сохранении Quick Flow), если в quarterly cost=0.
+ * Tq — сумма cost+other по всей команде в квартале (включая удаляемую строку).
+ */
+export function computeTransferAddFromEffort(
+  quarterlyData: Record<string, AdminQuarterData> | undefined,
+  teamRows: AdminDataRow[]
+): Record<(typeof Y2026_QUARTERS)[number], number> {
+  const out: Record<string, number> = {};
+  for (const q of Y2026_QUARTERS) out[q] = 0;
+  if (!quarterlyData || teamRows.length === 0) {
+    return out as Record<(typeof Y2026_QUARTERS)[number], number>;
+  }
+
+  for (const q of Y2026_QUARTERS) {
+    const qd = quarterlyData[q] ?? createEmptyQuarterData();
+    const eff = Math.max(0, Math.min(100, toNum(qd.effortCoefficient)));
+    if (eff <= 0) continue;
+    const Tq = teamQuarterCostSum(teamRows, q);
+    if (Tq <= 0) continue;
+    const other = toNum(qd.otherCosts);
+    out[q] = Math.max(0, Math.round((eff / 100) * Tq) - other);
+  }
+  return out as Record<(typeof Y2026_QUARTERS)[number], number>;
+}
+
+/** Сколько переносить на заглушку: quarterly → split → доля по % усилия в команде. */
 export function computeTransferAddByQuarter(
   quarterlyData: Record<string, AdminQuarterData> | undefined,
-  splitRows: BudgetSplitRow[]
+  splitRows: BudgetSplitRow[],
+  teamRows?: AdminDataRow[]
 ): Record<(typeof Y2026_QUARTERS)[number], number> {
   const quarterlyAdd = sumQuarterlyCost2026(quarterlyData);
   const quarterlySum = Y2026_QUARTERS.reduce((s, q) => s + quarterlyAdd[q], 0);
@@ -150,15 +179,46 @@ export function computeTransferAddByQuarter(
   if (splitSum > 0) {
     return fromSplit as Record<(typeof Y2026_QUARTERS)[number], number>;
   }
+
+  if (teamRows && teamRows.length > 0) {
+    const fromEffort = computeTransferAddFromEffort(quarterlyData, teamRows);
+    const effortSum = Y2026_QUARTERS.reduce((s, q) => s + (fromEffort[q] ?? 0), 0);
+    if (effortSum > 0) return fromEffort;
+  }
+
   return quarterlyAdd;
 }
 
 export function hasTransferableBudget(
   quarterlyData: Record<string, AdminQuarterData> | undefined,
-  splitRows: BudgetSplitRow[]
+  splitRows: BudgetSplitRow[],
+  teamRows?: AdminDataRow[]
 ): boolean {
-  const add = computeTransferAddByQuarter(quarterlyData, splitRows);
+  const add = computeTransferAddByQuarter(quarterlyData, splitRows, teamRows);
   return Y2026_QUARTERS.some((q) => (add[q] ?? 0) > 0);
+}
+
+async function fetchTeamRowsForTransfer(unit: string, team: string): Promise<AdminDataRow[]> {
+  const { data, error } = await supabase
+    .from('initiatives')
+    .select('id, unit, team, initiative, is_timeline_stub, quarterly_data')
+    .eq('unit', unit)
+    .eq('team', team)
+    .is('deleted_at', null);
+  if (error) throw error;
+
+  return (data ?? []).map((raw) => ({
+    id: raw.id,
+    unit: raw.unit ?? unit,
+    team: raw.team ?? team,
+    initiative: raw.initiative ?? '',
+    stakeholdersList: [],
+    description: '',
+    documentationLink: '',
+    stakeholders: '',
+    isTimelineStub: Boolean(raw.is_timeline_stub),
+    quarterlyData: quarterlyJsonToAdminRecord(raw.quarterly_data),
+  }));
 }
 
 async function addQuarterlyCostToStub(
@@ -278,9 +338,10 @@ export async function transferInitiativeBudgetToTeamStub(
 
   const splitRows = await fetchBudgetRows(initiativeId);
   const quarterlyRecord = quarterlyJsonToAdminRecord(row.quarterly_data);
-  const addByQuarter = computeTransferAddByQuarter(quarterlyRecord, splitRows);
+  const teamRows = await fetchTeamRowsForTransfer(unit, team);
+  const addByQuarter = computeTransferAddByQuarter(quarterlyRecord, splitRows, teamRows);
 
-  if (!hasTransferableBudget(quarterlyRecord, splitRows)) {
+  if (!hasTransferableBudget(quarterlyRecord, splitRows, teamRows)) {
     return { transferred: false, stubId: null };
   }
 
