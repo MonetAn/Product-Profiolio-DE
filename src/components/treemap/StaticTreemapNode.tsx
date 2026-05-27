@@ -114,6 +114,13 @@ const StaticTreemapNodeContent = memo(({
 
 StaticTreemapNodeContent.displayName = 'StaticTreemapNodeContent';
 
+/** Деньги на плитке: displayBudget (кросс-инициатива, инициатива), иначе value для раскладки. */
+function treemapMoneyLabel(node: TreemapLayoutNode): number {
+  const displayBudget = node.data?.displayBudget;
+  if (typeof displayBudget === 'number' && displayBudget > 0) return displayBudget;
+  return node.value;
+}
+
 function LeafCellContent({
   textColorClass,
   isTiny,
@@ -134,6 +141,7 @@ function LeafCellContent({
   node: TreemapLayoutNode;
 }) {
   const shadow = textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none';
+  const moneyLabel = treemapMoneyLabel(node);
 
   return (
     <div className="absolute inset-0 flex items-center justify-center p-1">
@@ -154,7 +162,7 @@ function LeafCellContent({
             className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
             style={{ textShadow: shadow }}
           >
-            {`${((node.value / totalValue) * 100).toFixed(1)}%`}
+            {`${((moneyLabel / totalValue) * 100).toFixed(1)}%`}
           </div>
         )}
         {showValue && showMoney && node.height > 40 && !isTiny && (
@@ -162,7 +170,7 @@ function LeafCellContent({
             className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
             style={{ textShadow: shadow }}
           >
-            {formatBudget(node.value)}
+            {formatBudget(moneyLabel)}
           </div>
         )}
       </div>

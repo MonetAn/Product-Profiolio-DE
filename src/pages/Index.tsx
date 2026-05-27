@@ -64,6 +64,11 @@ const Index = () => {
   const { data: crossBundle, isLoading: crossBundleLoading } = useCrossInitiatives({
     enabled: hasEarlyAccess,
   });
+  /** Полный каталог для расчёта кросс-инициатив (как в админке «Кросс-инициатива»). */
+  const { data: crossInitiativeCatalog } = useInitiatives({
+    tableAll: hasEarlyAccess,
+    enabled: hasEarlyAccess,
+  });
   const {
     selectedUnits,
     selectedTeams,
@@ -675,8 +680,11 @@ const Index = () => {
     for (const row of dbData ?? []) {
       map.set(row.id, row);
     }
+    for (const row of crossInitiativeCatalog ?? []) {
+      if (!map.has(row.id)) map.set(row.id, row);
+    }
     return map;
-  }, [dbData]);
+  }, [dbData, crossInitiativeCatalog]);
 
   const unificationBudgetCtx = useMemo<UnificationBudgetContext>(
     () => ({ baselineByTeam: budgetTruth2026?.baselineByTeam }),

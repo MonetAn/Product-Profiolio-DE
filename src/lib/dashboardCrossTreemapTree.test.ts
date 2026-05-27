@@ -13,7 +13,7 @@ const row = (partial: Partial<AdminDataRow> & Pick<AdminDataRow, 'id' | 'unit' |
   ({
     description: '',
     stakeholders: '',
-    quarterlyData: { '2026-Q1': { budget: 100, effort: 1 } },
+    quarterlyData: { '2026-Q1': { cost: 100, effortCoefficient: 1 } },
     ...partial,
   }) as AdminDataRow;
 
@@ -57,7 +57,7 @@ describe('buildPortfolioRestTree', () => {
         initiative: 'In cross',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { budget: 100, effort: 1 } },
+        quarterlyData: { '2026-Q1': { cost: 100, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i1',
       },
       {
@@ -66,7 +66,7 @@ describe('buildPortfolioRestTree', () => {
         initiative: 'Local only',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { budget: 50, effort: 1 } },
+        quarterlyData: { '2026-Q1': { cost: 50, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i2',
       },
     ];
@@ -112,7 +112,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
         initiative: 'A',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { budget: 100, effort: 1 } },
+        quarterlyData: { '2026-Q1': { cost: 100, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i1',
       },
       {
@@ -121,7 +121,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
         initiative: 'B',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { budget: 40, effort: 1 } },
+        quarterlyData: { '2026-Q1': { cost: 40, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i2',
       },
     ];
@@ -183,7 +183,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
           initiative: 'A',
           description: '',
           stakeholders: '',
-          quarterlyData: { '2026-Q1': { budget: 10, effort: 1 } },
+          quarterlyData: { '2026-Q1': { cost: 10, effortCoefficient: 1 } },
           adminInitiativeRowId: 'i1',
         },
       ],
@@ -208,7 +208,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
           unit: 'U1',
           team: 'T',
           initiative: 'Effort only',
-          quarterlyData: { '2026-Q1': { budget: 0, effort: 5 } },
+          quarterlyData: { '2026-Q1': { cost: 0, effortCoefficient: 5 } },
         }),
       ],
     ]);
@@ -267,7 +267,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
         initiative: 'A',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { budget: 10, effort: 1 } },
+        quarterlyData: { '2026-Q1': { cost: 10, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i1',
       },
     ];
@@ -285,7 +285,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
     expect(tree.children?.[0]?.name).toBe('Cross');
   });
 
-  it('hides cross with no members after team filter', () => {
+  it('keeps all teams inside cross when filtering by one team (like admin overview)', () => {
     const initiativeById = new Map<string, AdminDataRow>([
       ['i1', row({ id: 'i1', unit: 'U1', team: 'Team A', initiative: 'X' })],
       ['i2', row({ id: 'i2', unit: 'U2', team: 'Team B', initiative: 'Y' })],
@@ -316,31 +316,23 @@ describe('buildDashboardCrossPortfolioTree', () => {
       ],
     };
 
-    const rawData = [
-      {
-        unit: 'U1',
-        team: 'Team A',
-        initiative: 'X',
-        description: '',
-        stakeholders: '',
-        quarterlyData: { '2026-Q1': { budget: 10, effort: 1 } },
-        adminInitiativeRowId: 'i1',
-      },
-    ];
-
     const tree = buildDashboardCrossOnlyTree(
       bundle,
       initiativeById,
       ['2026-Q1'],
       undefined,
-      rawData,
+      [],
       { ...buildOptions, selectedTeams: ['Team A'] }
     );
 
     const cross = tree.children?.find((c) => c.name === 'Mixed');
     expect(cross).toBeDefined();
-    const teams = cross?.children?.[0]?.children?.map((t) => t.name) ?? [];
+    const unitNames = cross?.children?.map((u) => u.name) ?? [];
+    expect(unitNames).toContain('U1');
+    expect(unitNames).toContain('U2');
+    const teams = (cross?.children ?? []).flatMap((u) => u.children?.map((t) => t.name) ?? []);
     expect(teams).toContain('Team A');
-    expect(teams).not.toContain('Team B');
+    expect(teams).toContain('Team B');
+    expect(cross?.displayBudget).toBe(100);
   });
 });

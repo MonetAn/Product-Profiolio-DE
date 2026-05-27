@@ -19,6 +19,7 @@ import {
   type CrossInitiativesBundle,
 } from '@/lib/crossInitiativeModel';
 import { calculateBudget, formatBudget } from '@/lib/dataManager';
+import type { UnificationBudgetContext } from '@/lib/unificationBudget';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 import { getCrossName } from '@/hooks/useCrossInitiatives';
 import {
@@ -35,6 +36,7 @@ interface InitiativeUnificationSheetProps {
   bundle: CrossInitiativesBundle | undefined;
   initiativeById: Map<string, AdminDataRow>;
   selectedQuarters: string[];
+  budgetCtx?: UnificationBudgetContext;
   showMoney: boolean;
   onRemoveFromCross: (crossId: string, initiativeId: string) => void;
   onSaveShares: (updates: { id: string; cost_share_pct: number }[]) => Promise<void>;
@@ -50,6 +52,7 @@ export function InitiativeUnificationSheet({
   bundle,
   initiativeById,
   selectedQuarters,
+  budgetCtx,
   showMoney,
   onRemoveFromCross,
   onSaveShares,
@@ -81,7 +84,7 @@ export function InitiativeUnificationSheet({
   }, [memberships, shareDraft]);
 
   const fullCost = initiativeRow
-    ? initiativeFullCost(initiativeRow, selectedQuarters)
+    ? initiativeFullCost(initiativeRow, selectedQuarters, budgetCtx)
     : 0;
 
   const handleSaveShares = async () => {
@@ -151,7 +154,8 @@ export function InitiativeUnificationSheet({
                         m.cross_initiative_id,
                         bundle.members,
                         initiativeById,
-                        selectedQuarters
+                        selectedQuarters,
+                        budgetCtx
                       )
                     : 0;
                   return (

@@ -11,6 +11,7 @@ import {
   initiativeRowToRaw,
   membersForCross,
   type CrossInitiativeMemberRow,
+  type CrossInitiativeRow,
   type CrossInitiativesBundle,
 } from '@/lib/crossInitiativeModel';
 import type { UnificationBudgetContext } from '@/lib/unificationBudget';
@@ -64,12 +65,54 @@ function memberMatchesDashboardFilters(
   return true;
 }
 
-function filterMembersForDashboard(
-  members: CrossInitiativeMemberRow[],
+function scopeFilterActive(buildOptions: BuildTreeOptions): boolean {
+  return (
+    (buildOptions.selectedUnits?.length ?? 0) > 0 ||
+    (buildOptions.selectedTeams?.length ?? 0) > 0 ||
+    Boolean(buildOptions.unitFilter) ||
+    Boolean(buildOptions.teamFilter)
+  );
+}
+
+function memberMatchesScopeFilter(
+  m: CrossInitiativeMemberRow,
   initiativeById: Map<string, AdminDataRow>,
   buildOptions: BuildTreeOptions
-): CrossInitiativeMemberRow[] {
-  return members.filter((m) => memberMatchesDashboardFilters(m, initiativeById, buildOptions));
+): boolean {
+  const row = initiativeById.get(m.initiative_id);
+  const unit = m.unit || row?.unit || '';
+  const team = m.team || row?.team || '';
+  if (buildOptions.selectedUnits?.length && !buildOptions.selectedUnits.includes(unit)) {
+    return false;
+  }
+  if (buildOptions.unitFilter && unit !== buildOptions.unitFilter) return false;
+  if (buildOptions.selectedTeams?.length && !buildOptions.selectedTeams.includes(team)) {
+    return false;
+  }
+  if (buildOptions.teamFilter && team !== buildOptions.teamFilter) return false;
+  return true;
+}
+
+/**
+ * Как в админке «Посмотреть и отредактировать»: фильтр юнита/команды отбирает кроссы,
+ * но внутри кросса остаются все участники и полная стоимость.
+ */
+function visibleCrossesForDashboard(
+  bundle: CrossInitiativesBundle,
+  initiativeById: Map<string, AdminDataRow>,
+  buildOptions: BuildTreeOptions
+): CrossInitiativeRow[] {
+  const scopeOn = scopeFilterActive(buildOptions);
+  return bundle.crossInitiatives.filter((cross) => {
+    const crossMembers = membersForCross(cross.id, bundle.members);
+    if (crossMembers.length === 0) return false;
+    if (scopeOn) {
+      return crossMembers.some((m) => memberMatchesScopeFilter(m, initiativeById, buildOptions));
+    }
+    return crossMembers.some((m) =>
+      memberMatchesDashboardFilters(m, initiativeById, buildOptions)
+    );
+  });
 }
 
 /** Убрать из дерева бюджета инициативы, уже входящие в кросс-инициативы. */
@@ -136,10 +179,10 @@ function buildFilteredCrossRoot(
   budgetCtx: UnificationBudgetContext | undefined,
   buildOptions: BuildTreeOptions
 ): TreeNode {
-  const members = filterMembersForDashboard(bundle.members, initiativeById, buildOptions);
+  const visible = visibleCrossesForDashboard(bundle, initiativeById, buildOptions);
   return buildCrossInitiativeOverviewTree(
-    bundle.crossInitiatives,
-    members,
+    visible,
+    bundle.members,
     initiativeById,
     selectedQuarters,
     budgetCtx

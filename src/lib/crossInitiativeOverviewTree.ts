@@ -1,6 +1,7 @@
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import {
   contributionToCross,
+  crossInitiativeTotalCost,
   initiativeFullCost,
   initiativeRowToRaw,
   membersForCross,
@@ -132,12 +133,20 @@ export function buildCrossInitiativeOverviewTree(
     if (unitNodes.length === 0) continue;
 
     const crossValue = unitNodes.reduce((s, c) => s + (c.value ?? 0), 0);
+    const crossTotal = crossInitiativeTotalCost(
+      cross.id,
+      members,
+      initiativeById,
+      selectedQuarters,
+      budgetCtx
+    );
     crossNodes.push({
       name: cross.name,
       isUnit: true,
       isCrossInitiative: true,
       crossInitiativeId: cross.id,
-      value: crossValue,
+      value: Math.max(crossValue, crossTotal, 1),
+      displayBudget: crossTotal,
       children: unitNodes,
     });
   }

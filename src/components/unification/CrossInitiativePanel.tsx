@@ -26,6 +26,7 @@ interface CrossInitiativePanelProps {
   allInitiatives: AdminDataRow[];
   initiativeById: Map<string, AdminDataRow>;
   selectedQuarters: string[];
+  budgetPeriodLabel?: string;
   budgetCtx?: UnificationBudgetContext;
   showMoney: boolean;
   onEditInitiativeShares: (initiativeId: string) => void;
@@ -45,6 +46,7 @@ export function CrossInitiativePanel({
   allInitiatives,
   initiativeById,
   selectedQuarters,
+  budgetPeriodLabel,
   budgetCtx,
   showMoney,
   onEditInitiativeShares,
@@ -122,7 +124,8 @@ export function CrossInitiativePanel({
         />
         {showMoney && (
           <p className="text-sm text-muted-foreground tabular-nums">
-            Стоимость за период: {formatBudget(crossTotal)}
+            Стоимость за период
+            {budgetPeriodLabel ? ` (${budgetPeriodLabel})` : ''}: {formatBudget(crossTotal)}
           </p>
         )}
       </div>

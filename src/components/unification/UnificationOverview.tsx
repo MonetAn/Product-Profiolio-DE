@@ -40,6 +40,7 @@ interface UnificationOverviewProps {
   allInitiatives: AdminDataRow[];
   initiativeById: Map<string, AdminDataRow>;
   selectedQuarters: string[];
+  budgetPeriodLabel?: string;
   showMoney: boolean;
   isLoading: boolean;
   budgetCtx: UnificationBudgetContext;
@@ -72,6 +73,7 @@ export function UnificationOverview({
   allInitiatives,
   initiativeById,
   selectedQuarters,
+  budgetPeriodLabel,
   showMoney,
   isLoading,
   budgetCtx,
@@ -347,6 +349,7 @@ export function UnificationOverview({
               allInitiatives={allInitiatives}
               initiativeById={initiativeById}
               selectedQuarters={selectedQuarters}
+              budgetPeriodLabel={budgetPeriodLabel}
               budgetCtx={budgetCtx}
               showMoney={showMoney}
               onEditInitiativeShares={handleInitiativeClick}

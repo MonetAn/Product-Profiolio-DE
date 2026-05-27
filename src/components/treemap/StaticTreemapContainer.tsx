@@ -77,6 +77,12 @@ export interface StaticTreemapContainerProps {
   maxRenderDepth?: number;
   /** Не включать команды/инициативы автоматически при клике (управление снаружи). */
   disableAutoEnableLevels?: boolean;
+  /**
+   * Симметрия галочек при zoom out:
+   * - portfolio: юнит (path 1) → команды, команда (path 2) → инициативы (вкладка «Бюджет»)
+   * - cross: +1 уровень (кросс → юнит → команда → инициатива)
+   */
+  zoomAutoLevelMode?: 'portfolio' | 'cross';
   /** Объединение: кросс-инициативы инициативы в тултипе (по adminInitiativeRowId). */
   getInitiativeCrossNames?: (initiativeRowId: string) => string[];
   /** Объединение: участники кросс-инициативы в тултипе плитки. */
@@ -136,6 +142,7 @@ const StaticTreemapContainer = ({
   selectedInitiativeId = null,
   maxRenderDepth: maxRenderDepthProp,
   disableAutoEnableLevels = false,
+  zoomAutoLevelMode = 'portfolio',
   getInitiativeCrossNames,
   getCrossInitiativeTooltipMembers,
   focusedPath: focusedPathProp,
@@ -323,6 +330,30 @@ const StaticTreemapContainer = ({
     disableAutoEnableLevels,
   ]);
   
+  const applyZoomOutAutoDisable = useCallback(
+    (oldLength: number, newLength: number) => {
+      if (disableAutoEnableLevels) return;
+
+      if (zoomAutoLevelMode === 'cross') {
+        if (oldLength >= 3 && newLength < 3) onAutoDisableInitiatives?.();
+        if (oldLength >= 2 && newLength < 2) onAutoDisableTeams?.();
+        if (oldLength >= 1 && newLength < 1) onAutoDisableUnits?.();
+        return;
+      }
+
+      // portfolio (бюджет, стейкхолдеры): юнит → команды, команда → инициативы
+      if (oldLength >= 2 && newLength < 2) onAutoDisableInitiatives?.();
+      if (oldLength >= 1 && newLength < 1) onAutoDisableTeams?.();
+    },
+    [
+      disableAutoEnableLevels,
+      zoomAutoLevelMode,
+      onAutoDisableInitiatives,
+      onAutoDisableTeams,
+      onAutoDisableUnits,
+    ]
+  );
+
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {
     if (focusedPath.length > 0) {
@@ -330,28 +361,12 @@ const StaticTreemapContainer = ({
       const newPath = focusedPath.slice(0, -1);
       const newLength = newPath.length;
 
-      if (oldLength >= 3 && newLength < 3) {
-        onAutoDisableInitiatives?.();
-      }
-      if (oldLength >= 2 && newLength < 2) {
-        onAutoDisableTeams?.();
-      }
-      if (oldLength >= 1 && newLength < 1) {
-        onAutoDisableUnits?.();
-      }
-
+      applyZoomOutAutoDisable(oldLength, newLength);
       applyFocusedPath(newPath);
     } else if (onNavigateBack) {
       onNavigateBack();
     }
-  }, [
-    focusedPath,
-    onNavigateBack,
-    applyFocusedPath,
-    onAutoDisableUnits,
-    onAutoDisableTeams,
-    onAutoDisableInitiatives,
-  ]);
+  }, [focusedPath, onNavigateBack, applyFocusedPath, applyZoomOutAutoDisable]);
 
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;

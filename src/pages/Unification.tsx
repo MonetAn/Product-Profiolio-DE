@@ -29,7 +29,10 @@ import {
   getCrossName,
 } from '@/hooks/useCrossInitiatives';
 import { crossIdsForInitiative, membersForCross } from '@/lib/crossInitiativeModel';
-import { getCurrentQuarter } from '@/lib/quarterUtils';
+import {
+  defaultPortfolioQuarters2026,
+  formatBudgetPeriodLabel,
+} from '@/lib/budgetTruth2026';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 
 function mutationErrorMessage(e: unknown): string {
@@ -93,13 +96,14 @@ export default function Unification() {
     () => extractQuartersFromData(allInitiatives),
     [allInitiatives]
   );
-  const selectedQuarters = useMemo(() => {
-    const current = getCurrentQuarter();
-    if (availableQuarters.includes(current)) return [current];
-    return availableQuarters.length > 0
-      ? [availableQuarters[availableQuarters.length - 1]]
-      : [];
-  }, [availableQuarters]);
+  const selectedQuarters = useMemo(
+    () => defaultPortfolioQuarters2026(availableQuarters),
+    [availableQuarters]
+  );
+  const budgetPeriodLabel = useMemo(
+    () => formatBudgetPeriodLabel(selectedQuarters),
+    [selectedQuarters]
+  );
 
   const initiativeById = useMemo(() => {
     const m = new Map<string, AdminDataRow>();
@@ -268,6 +272,7 @@ export default function Unification() {
             allInitiatives={allInitiatives}
             initiativeById={initiativeById}
             selectedQuarters={selectedQuarters}
+            budgetPeriodLabel={budgetPeriodLabel}
             showMoney={canViewMoney}
             isLoading={isLoading}
             budgetCtx={budgetCtx}

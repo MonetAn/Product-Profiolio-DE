@@ -18,6 +18,7 @@ import type { BuildTreeOptions, RawDataRow, TreeNode } from '@/lib/dataManager';
 import { createCrossOverviewColorGetter } from '@/lib/crossTreemapColors';
 import {
   crossNamesForInitiative,
+  membersForCross,
   type CrossInitiativesBundle,
 } from '@/lib/crossInitiativeModel';
 import type { UnificationBudgetContext } from '@/lib/unificationBudget';
@@ -257,6 +258,22 @@ export function DashboardCrossTreemap({
     [bundle]
   );
 
+  const getCrossInitiativeTooltipMembers = useCallback(
+    (crossId: string) => {
+      const list = membersForCross(crossId, bundle?.members ?? []);
+      return list
+        .map((m) => {
+          const row = initiativeById.get(m.initiative_id);
+          return {
+            initiativeName: row?.initiative ?? m.initiative_name ?? '—',
+            team: m.team || row?.team || '',
+          };
+        })
+        .sort((a, b) => a.initiativeName.localeCompare(b.initiativeName, 'ru'));
+    },
+    [bundle?.members, initiativeById]
+  );
+
   const handleFocusedPathChange = useCallback(
     (path: string[]) => {
       setFocusedPath(path);
@@ -357,6 +374,7 @@ export function DashboardCrossTreemap({
       viewKey="crossInitiatives"
       nodeCursor="pointer"
       getInitiativeCrossNames={getInitiativeCrossNames}
+      getCrossInitiativeTooltipMembers={getCrossInitiativeTooltipMembers}
     />
   );
 }
