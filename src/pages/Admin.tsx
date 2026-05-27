@@ -742,6 +742,10 @@ const Admin = () => {
 
   const handleHubRowDraftChange = useCallback(
     (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
+      if (!isHubLocalRowId(id)) {
+        handleDataChange(id, field, value);
+        return;
+      }
       const allowed: (keyof HubRowFieldPatch)[] = [
         'initiative',
         'stakeholdersList',
@@ -765,7 +769,7 @@ const Admin = () => {
         return next;
       });
     },
-    []
+    [handleDataChange]
   );
 
   const handleHubQuarterDraftChange = useCallback(
@@ -775,6 +779,10 @@ const Admin = () => {
       field: keyof AdminQuarterData,
       value: string | number | boolean | undefined
     ) => {
+      if (!isHubLocalRowId(id)) {
+        handleQuarterDataChange(id, quarter, field, value);
+        return;
+      }
       setHubQuarterPatches((prev) => {
         const next = new Map(prev);
         const byQuarter = next.get(id) ?? {};
@@ -783,11 +791,15 @@ const Admin = () => {
         return next;
       });
     },
-    []
+    [handleQuarterDataChange]
   );
 
   const handleHubInitiativeGeoCostSplitDraft = useCallback(
     (id: string, split: GeoCostSplit | undefined) => {
+      if (!isHubLocalRowId(id)) {
+        handleInitiativeGeoCostSplitChange(id, split);
+        return;
+      }
       setHubRowPatches((prev) => {
         const next = new Map(prev);
         const cur = next.get(id) ?? {};
@@ -812,7 +824,7 @@ const Admin = () => {
         return next;
       });
     },
-    [countryIdToClusterKey]
+    [countryIdToClusterKey, handleInitiativeGeoCostSplitChange]
   );
 
   const handleHubAddPendingRow = useCallback(() => {
@@ -1273,23 +1285,19 @@ const Admin = () => {
 
   const handleQuickInitiativeDraftChange = useCallback(
     (id: string, field: keyof QuickFlowRowPatch, value: string | string[] | boolean) => {
-      setQuickRowPatches((prev) => {
-        const next = new Map(prev);
-        const cur = next.get(id) ?? {};
-        if (field === 'stakeholdersList') {
-          const list = value as string[];
-          next.set(id, {
-            ...cur,
-            stakeholdersList: list,
-            stakeholders: stakeholdersStringFromList(list),
-          });
-        } else {
-          next.set(id, { ...cur, [field]: value } as QuickFlowRowPatch);
-        }
-        return next;
-      });
+      if (field === 'initiative' && typeof value === 'string') {
+        immediateUpdate(id, 'initiative', value);
+        return;
+      }
+      if (field === 'stakeholdersList') {
+        updateInitiative(id, 'stakeholdersList', value as string[], 0);
+        return;
+      }
+      if (field === 'description' || field === 'documentationLink') {
+        updateInitiative(id, field, String(value), 0);
+      }
     },
-    []
+    [immediateUpdate, updateInitiative]
   );
 
   /** Кварталы, где в черновике менялись коэффициенты усилий (для шага 4: лист vs база). */
@@ -1381,6 +1389,10 @@ const Admin = () => {
     field: keyof AdminQuarterData,
     value: string | number | boolean | undefined
   ) => {
+    if (field !== 'effortCoefficient') {
+      handleQuarterDataChange(id, quarter, field, value);
+      return;
+    }
     setQuickDraftPatches((prev) => {
       const next = new Map(prev);
       const byQuarter = next.get(id) ?? {};
@@ -1388,35 +1400,13 @@ const Admin = () => {
       next.set(id, { ...byQuarter, [quarter]: quarterPatch });
       return next;
     });
-  }, []);
+  }, [handleQuarterDataChange]);
 
   const handleQuickGeoCostSplitDraft = useCallback(
     (id: string, split: GeoCostSplit | undefined) => {
-      setQuickRowPatches((prev) => {
-        const next = new Map(prev);
-        const cur = next.get(id) ?? {};
-        const geo = split?.entries?.length ? split : undefined;
-        let patch: QuickFlowRowPatch = {
-          ...cur,
-          initiativeGeoCostSplit: geo,
-        };
-        if (split?.entries?.length) {
-          const sh = stakeholdersListFromGeoSplit(split.entries, countryIdToClusterKey);
-          patch = {
-            ...patch,
-            stakeholdersList: sh,
-            stakeholders: stakeholdersStringFromList(sh),
-          };
-        } else {
-          const { stakeholdersList: _d, stakeholders: _s, ...rest } = patch;
-          patch = rest as QuickFlowRowPatch;
-        }
-        if (Object.keys(patch).length > 0) next.set(id, patch);
-        else next.delete(id);
-        return next;
-      });
+      handleInitiativeGeoCostSplitChange(id, split);
     },
-    [countryIdToClusterKey]
+    [handleInitiativeGeoCostSplitChange]
   );
 
   const handleSaveQuickDraft = useCallback(async (opts?: { silent?: boolean }) => {

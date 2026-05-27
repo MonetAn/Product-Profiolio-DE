@@ -386,7 +386,7 @@ export function AdminQuickFlowReviewTreemapStep({
                     Отмена
                   </Button>
                   <Button type="button" onClick={saveAndClose}>
-                    {compactChrome ? 'В черновик' : 'Сохранить'}
+                    Сохранить
                   </Button>
                 </div>
               </DialogFooter>
@@ -400,7 +400,7 @@ export function AdminQuickFlowReviewTreemapStep({
           <AlertDialogHeader>
             <AlertDialogTitle>Закрыть без сохранения?</AlertDialogTitle>
             <AlertDialogDescription>
-              Изменения не будут применены к черновику.
+              Изменения не будут сохранены.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
