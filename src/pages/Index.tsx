@@ -380,11 +380,33 @@ const Index = () => {
     }
   }, []);
 
+  const crossInitiativesInsideAutoEnabledRef = useRef(false);
+
+  const handleCrossAutoEnableInitiativesInside = useCallback(() => {
+    if (!crossShowInitiativesInside) {
+      setCrossShowInitiativesInside(true);
+      crossInitiativesInsideAutoEnabledRef.current = true;
+    }
+  }, [crossShowInitiativesInside]);
+
+  const handleCrossAutoDisableInitiativesInside = useCallback(() => {
+    if (crossInitiativesInsideAutoEnabledRef.current) {
+      setCrossShowInitiativesInside(false);
+      crossInitiativesInsideAutoEnabledRef.current = false;
+    }
+  }, []);
+
   const handleCrossLevelStateReset = useCallback(() => {
     handleCrossAutoDisableUnits();
     handleAutoDisableTeams();
     handleAutoDisableInitiatives();
-  }, [handleCrossAutoDisableUnits, handleAutoDisableTeams, handleAutoDisableInitiatives]);
+    handleCrossAutoDisableInitiativesInside();
+  }, [
+    handleCrossAutoDisableUnits,
+    handleAutoDisableTeams,
+    handleAutoDisableInitiatives,
+    handleCrossAutoDisableInitiativesInside,
+  ]);
 
   const [resetZoomTrigger, setResetZoomTrigger] = useState(0);
 
@@ -1216,10 +1238,10 @@ const Index = () => {
             showInitiatives={showInitiatives}
             onAutoEnableUnits={handleCrossAutoEnableUnits}
             onAutoEnableTeams={handleAutoEnableTeams}
-            onAutoEnableInitiatives={handleAutoEnableInitiatives}
+            onAutoEnableInitiatives={handleCrossAutoEnableInitiativesInside}
             onAutoDisableUnits={handleCrossAutoDisableUnits}
             onAutoDisableTeams={handleAutoDisableTeams}
-            onAutoDisableInitiatives={handleAutoDisableInitiatives}
+            onAutoDisableInitiatives={handleCrossAutoDisableInitiativesInside}
             onLevelStateReset={handleCrossLevelStateReset}
             onInitiativeClick={(_name, path) => setInitiativePeekPath(path)}
             contentKey={crossTreemapContentKey}

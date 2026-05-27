@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminRoute } from "@/components/AdminRoute";
+import { AdminSuperAdminRoute } from "@/components/AdminSuperAdminRoute";
 import Index from "./pages/Index";
 import Admin from "./pages/Admin";
 import AdminPeople from "./pages/AdminPeople";
@@ -65,42 +66,54 @@ const App = () => (
             <Route path="/admin/people" element={
               <ProtectedRoute>
                 <AdminRoute>
-                  <AdminPeople />
+                  <AdminSuperAdminRoute>
+                    <AdminPeople />
+                  </AdminSuperAdminRoute>
                 </AdminRoute>
               </ProtectedRoute>
             } />
             <Route path="/admin/markets" element={
               <ProtectedRoute>
                 <AdminRoute>
-                  <AdminMarkets />
+                  <AdminSuperAdminRoute>
+                    <AdminMarkets />
+                  </AdminSuperAdminRoute>
                 </AdminRoute>
               </ProtectedRoute>
             } />
             <Route path="/admin/access" element={
               <ProtectedRoute>
                 <AdminRoute>
-                  <AdminAccess />
+                  <AdminSuperAdminRoute>
+                    <AdminAccess />
+                  </AdminSuperAdminRoute>
                 </AdminRoute>
               </ProtectedRoute>
             } />
             <Route path="/admin/activity" element={
               <ProtectedRoute>
                 <AdminRoute>
-                  <AdminActivity />
+                  <AdminSuperAdminRoute>
+                    <AdminActivity />
+                  </AdminSuperAdminRoute>
                 </AdminRoute>
               </ProtectedRoute>
             } />
             <Route path="/admin/sensitive" element={
               <ProtectedRoute>
                 <AdminRoute>
-                  <AdminSensitive />
+                  <AdminSuperAdminRoute>
+                    <AdminSensitive />
+                  </AdminSuperAdminRoute>
                 </AdminRoute>
               </ProtectedRoute>
             } />
             <Route path="/admin/fill-analytics" element={
               <ProtectedRoute>
                 <AdminRoute>
-                  <AdminFillAnalytics />
+                  <AdminSuperAdminRoute>
+                    <AdminFillAnalytics />
+                  </AdminSuperAdminRoute>
                 </AdminRoute>
               </ProtectedRoute>
             } />

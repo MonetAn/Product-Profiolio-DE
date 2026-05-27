@@ -137,7 +137,7 @@ const Admin = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { memberUnit, memberTeam, memberAffiliations, isAdmin, isSuperAdmin, scope, accessLoading } = useAccess();
+  const { memberUnit, memberTeam, memberAffiliations, isAdmin, isSuperAdmin, hasEarlyAccess, scope, accessLoading } = useAccess();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state from URL
@@ -2087,12 +2087,15 @@ const Admin = () => {
    * чтобы пользователь мог сразу выбрать scope (даже когда ничего не выбрано).
    */
   const showFillScopeToolbar = hasData && !isQuickMode && !showQuickSetup;
-  /** Только «К дашборду» сверху, если нет строки scope (quick / setup). */
-  const showAdminFillOnlyTopStrip = !isSuperAdmin && !showFillScopeToolbar;
+  /** Шапка с вкладками: super_admin — всё; admin + ранний доступ — заполнение и объединение. */
+  const showAdminNavHeader = isSuperAdmin || (isAdmin && hasEarlyAccess);
+  /** Admin без раннего доступа — только пикер заполнения (как раньше). */
+  const showAdminFillOnlyTopStrip =
+    isAdmin && !hasEarlyAccess && !isSuperAdmin && !showFillScopeToolbar;
 
   return (
     <div className="h-screen w-full min-w-0 bg-background flex flex-col overflow-hidden">
-      {isSuperAdmin ? (
+      {showAdminNavHeader ? (
         <AdminHeader
           currentView="initiatives"
           initiativeCount={filteredData.length}
@@ -2159,7 +2162,7 @@ const Admin = () => {
           <div className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
             {showFillScopeToolbar && (
               <div className="flex min-w-0 shrink-0 items-stretch gap-2 border-b border-border bg-muted/20 px-2 py-2 sm:gap-3 sm:px-4">
-                {!isSuperAdmin ? (
+                {!showAdminNavHeader ? (
                   <Button
                     variant="outline"
                     size="sm"

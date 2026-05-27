@@ -60,15 +60,26 @@ describe('resolveDashboardCrossSplitVisibility', () => {
     expect(inside.cross.showInitiatives).toBe(true);
   });
 
-  it('внутри кросса — полная видимость уровней', () => {
-    const { cross, rest } = resolveDashboardCrossSplitVisibility(
+  it('внутри кросса на глубине 1 — юниты без инициатив, если «В кроссах» выкл', () => {
+    const { cross } = resolveDashboardCrossSplitVisibility(
       true,
       ['GDPR'],
       portfolioTree(),
-      levels,
+      { showUnits: false, showTeams: false, showInitiatives: false },
       false
     );
-    expect(cross).toEqual(levels);
-    expect(rest.showInitiatives).toBe(true);
+    expect(cross.showUnits).toBe(true);
+    expect(cross.showInitiatives).toBe(false);
+  });
+
+  it('внутри команды (глубина 3) — инициативы даже без «В кроссах»', () => {
+    const { cross } = resolveDashboardCrossSplitVisibility(
+      false,
+      ['GDPR', 'U1', 'T1'],
+      portfolioTree(),
+      { showUnits: true, showTeams: true, showInitiatives: false },
+      false
+    );
+    expect(cross.showInitiatives).toBe(true);
   });
 });

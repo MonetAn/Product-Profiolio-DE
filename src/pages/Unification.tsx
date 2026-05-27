@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccess } from '@/hooks/useAccess';
+import { canManageCrossInitiatives } from '@/lib/crossInitiativeAccess';
 import { useBudgetTruth2026 } from '@/hooks/useBudgetTruth2026';
 import { useInitiatives, extractQuartersFromData } from '@/hooks/useInitiatives';
 import {
@@ -48,6 +49,7 @@ type LastMemberState = {
 export default function Unification() {
   const { user } = useAuth();
   const { canViewMoney, hasEarlyAccess } = useAccess();
+  const canManageCrosses = canManageCrossInitiatives({ hasEarlyAccess });
   const { data: budgetTruth2026 } = useBudgetTruth2026();
 
   const budgetCtx = useMemo(
@@ -58,7 +60,9 @@ export default function Unification() {
   const { data: allInitiatives = [], isLoading: initiativesLoading } = useInitiatives({
     tableAll: true,
   });
-  const { data: bundle, isLoading: crossLoading } = useCrossInitiatives();
+  const { data: bundle, isLoading: crossLoading } = useCrossInitiatives({
+    enabled: canManageCrosses,
+  });
   const mutations = useCrossInitiativeMutations();
 
   const [mode, setMode] = useState<'overview' | 'link' | 'manage'>('overview');
@@ -176,7 +180,7 @@ export default function Unification() {
       });
   };
 
-  if (!hasEarlyAccess) {
+  if (!canManageCrosses) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Нет доступа к разделу «Объединение».</p>

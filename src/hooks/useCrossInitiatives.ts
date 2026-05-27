@@ -11,8 +11,8 @@ import {
 export const CROSS_INITIATIVES_QUERY_KEY = ['cross_initiatives_bundle'] as const;
 
 const CROSS_RLS_HINT =
-  'Нет прав на создание кросс-инициативы: на проде примените scripts/sql/fix_cross_initiatives_rls_prod.sql, ' +
-  'проверьте early_access в allowed_users и сбросьте кэш (sessionStorage app_access, перелогин).';
+  'Нет прав на кросс-инициативы: нужен ранний доступ или роль admin, миграция cross_initiatives_admin_access, ' +
+  'перелогин (sessionStorage app_access).';
 
 function throwCrossInitiativeError(err: { code?: string; message?: string }): never {
   const msg = err.message ?? '';

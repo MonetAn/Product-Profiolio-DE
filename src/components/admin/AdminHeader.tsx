@@ -12,6 +12,7 @@ import {
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useAccess } from '@/hooks/useAccess';
+import { canManageCrossInitiatives } from '@/lib/crossInitiativeAccess';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
@@ -59,6 +60,9 @@ const AdminHeader = ({
 }: AdminHeaderProps) => {
   const [searchParams] = useSearchParams();
   const { isSuperAdmin, hasEarlyAccess } = useAccess();
+  const showUnification = canManageCrossInitiatives({ hasEarlyAccess });
+  /** Люди, рынки, доступ, активность — только super_admin. */
+  const showEngineeringNav = isSuperAdmin;
 
   // Build URLs preserving current filters
   const initiativesUrl = useMemo(() => {
@@ -115,7 +119,7 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Заполнение</span>
             </ToggleGroupItem>
           </Link>
-          {hasEarlyAccess && (
+          {showUnification && (
             <Link to={unificationUrl}>
               <ToggleGroupItem
                 value="unification"
@@ -126,7 +130,7 @@ const AdminHeader = ({
               </ToggleGroupItem>
             </Link>
           )}
-          {isSuperAdmin && (
+          {showEngineeringNav && (
             <Link to={fillAnalyticsUrl}>
               <ToggleGroupItem
                 value="fillAnalytics"
@@ -137,43 +141,51 @@ const AdminHeader = ({
               </ToggleGroupItem>
             </Link>
           )}
-          <Link to={peopleUrl}>
-            <ToggleGroupItem 
-              value="people" 
-              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Люди</span>
-            </ToggleGroupItem>
-          </Link>
-          <Link to={marketsUrl}>
-            <ToggleGroupItem
-              value="markets"
-              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Globe2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Рынки</span>
-            </ToggleGroupItem>
-          </Link>
-          <Link to={accessUrl}>
-            <ToggleGroupItem 
-              value="access" 
-              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Доступ</span>
-            </ToggleGroupItem>
-          </Link>
-          <Link to={activityUrl}>
-            <ToggleGroupItem 
-              value="activity" 
-              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Activity className="h-4 w-4" />
-              <span className="hidden sm:inline">Активность</span>
-            </ToggleGroupItem>
-          </Link>
-          {isSuperAdmin && (
+          {showEngineeringNav && (
+            <Link to={peopleUrl}>
+              <ToggleGroupItem 
+                value="people" 
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Люди</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
+          {showEngineeringNav && (
+            <Link to={marketsUrl}>
+              <ToggleGroupItem
+                value="markets"
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <Globe2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Рынки</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
+          {showEngineeringNav && (
+            <Link to={accessUrl}>
+              <ToggleGroupItem 
+                value="access" 
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <Shield className="h-4 w-4" />
+                <span className="hidden sm:inline">Доступ</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
+          {showEngineeringNav && (
+            <Link to={activityUrl}>
+              <ToggleGroupItem 
+                value="activity" 
+                className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+              >
+                <Activity className="h-4 w-4" />
+                <span className="hidden sm:inline">Активность</span>
+              </ToggleGroupItem>
+            </Link>
+          )}
+          {showEngineeringNav && (
             <Link to={sensitiveUrl}>
               <ToggleGroupItem
                 value="sensitive"

@@ -235,6 +235,23 @@ export function DashboardCrossTreemap({
     [displayTree, focusedPath]
   );
 
+  const effectiveCrossInitiativesVisible = useMemo(() => {
+    const { cross } = resolveDashboardCrossSplitVisibility(
+      showPortfolioRest,
+      focusedPath,
+      portfolioTree ?? { name: '', children: [] },
+      crossLevelVisibility,
+      showInitiativesInsideCrosses
+    );
+    return cross.showInitiatives;
+  }, [
+    showPortfolioRest,
+    focusedPath,
+    portfolioTree,
+    crossLevelVisibility,
+    showInitiativesInsideCrosses,
+  ]);
+
   const getInitiativeCrossNames = useCallback(
     (initiativeId: string) => crossNamesForInitiative(initiativeId, bundle),
     [bundle]
@@ -321,6 +338,9 @@ export function DashboardCrossTreemap({
       getColor={treemapGetColor}
       treemapLayoutStrategy="d3-root"
       maxRenderDepth={maxRenderDepth}
+      showTeams={crossLevelVisibility.showTeams}
+      showInitiatives={effectiveCrossInitiativesVisible}
+      disableAutoEnableLevels
       focusedPath={focusedPath}
       onFocusedPathChange={handleFocusedPathChange}
       onInitiativeClick={onInitiativeClick}
