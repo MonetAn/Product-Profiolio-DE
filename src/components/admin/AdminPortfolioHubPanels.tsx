@@ -23,6 +23,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { AdminDataRow, AdminQuarterData, GeoCostSplit } from '@/lib/adminDataManager';
 import { effortMatrixColumnChipState, hasInitiativeEffortOrCostInYear } from '@/lib/adminDataManager';
+import { rowsAfterSimulatedDeletes } from '@/lib/adminEffortTreemapPreviewModel';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange, getCurrentQuarter, getPreviousQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
@@ -334,7 +335,20 @@ export function AdminPortfolioHubPanels({
     setStickyMatrixIds({ key: scopeKey, ids });
   }, [filteredData, scopeKey, currentCalendarYear, stickyMatrixIds]);
 
-  const coeffMatrixData = useMemo(() => {
+  const coeffBaselineRef = useRef<AdminDataRow[] | null>(null);
+  const prevOpenForCoeffRef = useRef<PortfolioHubPanel>(null);
+  useEffect(() => {
+    coeffBaselineRef.current = null;
+  }, [scopeKey]);
+
+  useEffect(() => {
+    if (open === 'coefficients' && prevOpenForCoeffRef.current !== 'coefficients') {
+      coeffBaselineRef.current = null;
+    }
+    prevOpenForCoeffRef.current = open;
+  }, [open]);
+
+  const coeffMatrixRaw = useMemo(() => {
     const sticky =
       stickyMatrixIds?.key === scopeKey ? stickyMatrixIds.ids : null;
     return filteredData.filter(
@@ -345,6 +359,13 @@ export function AdminPortfolioHubPanels({
         (sticky?.has(r.id) ?? false)
     );
   }, [filteredData, currentCalendarYear, stickyMatrixIds, scopeKey]);
+
+  const coeffMatrixData = useMemo(() => {
+    const baseline = coeffBaselineRef.current ?? coeffMatrixRaw;
+    const simulated = rowsAfterSimulatedDeletes(baseline, filteredData, fillQuarters);
+    const visibleIds = new Set(coeffMatrixRaw.map((r) => r.id));
+    return simulated.filter((r) => r.isTimelineStub || visibleIds.has(r.id));
+  }, [coeffMatrixRaw, filteredData, fillQuarters]);
 
   const coeffMatrixMatchesScope = useMemo(() => {
     const u = (unit ?? '').trim();
@@ -357,31 +378,13 @@ export function AdminPortfolioHubPanels({
     });
   }, [coeffMatrixData, unit, team]);
 
-  const coeffBaselineRef = useRef<AdminDataRow[] | null>(null);
-  const prevOpenForCoeffRef = useRef<PortfolioHubPanel>(null);
-  useEffect(() => {
-    coeffBaselineRef.current = null;
-  }, [scopeKey]);
-
-  useEffect(() => {
-    if (open === 'coefficients' && prevOpenForCoeffRef.current !== 'coefficients') {
-      /**
-       * Сбрасываем baseline при входе в панель и берём снимок чуть позже, когда данные матрицы уже
-       * стабилизировались (после возможной подгрузки черновика/инициализации фильтра).
-       * Иначе «До изменений» может зафиксироваться пустым.
-       */
-      coeffBaselineRef.current = null;
-    }
-    prevOpenForCoeffRef.current = open;
-  }, [open]);
-
   useEffect(() => {
     if (open !== 'coefficients') return;
     if (coeffBaselineRef.current !== null) return;
     if (coeffMatrixData.length === 0) return;
     if (!coeffMatrixMatchesScope) return;
-    coeffBaselineRef.current = structuredClone(coeffMatrixData);
-  }, [open, coeffMatrixData, coeffMatrixMatchesScope]);
+    coeffBaselineRef.current = structuredClone(coeffMatrixRaw);
+  }, [open, coeffMatrixRaw, coeffMatrixMatchesScope]);
 
   useEffect(() => {
     if (open === null) return;
@@ -597,9 +600,10 @@ export function AdminPortfolioHubPanels({
                   </div>
                 </div>
                 <AdminQuickFlowEffortComparePanel
-                  baselineRows={coeffBaselineRef.current ?? coeffMatrixData}
+                  baselineRows={coeffBaselineRef.current ?? coeffMatrixRaw}
                   currentRows={coeffMatrixData}
                   previewQuarters={matrixVisibleQuarters}
+                  simulateDeletes={false}
                   immersive
                   className="min-w-0 min-h-[280px] lg:min-h-0"
                   onCloseComparison={() => setTreemapCompareOpen(false)}

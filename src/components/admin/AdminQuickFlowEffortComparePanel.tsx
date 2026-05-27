@@ -6,6 +6,7 @@ import type { AdminDataRow } from '@/lib/adminDataManager';
 import {
   applyEffortCompareToTreeChildren,
   buildEffortTreemapPreviewModel,
+  rowsAfterSimulatedDeletes,
 } from '@/lib/adminEffortTreemapPreviewModel';
 import { PRELIMINARY_COST_USER_MESSAGE, type TreeNode } from '@/lib/dataManager';
 import { compareQuarters } from '@/lib/quarterUtils';
@@ -23,6 +24,11 @@ type Props = {
   onCloseComparison?: () => void;
   /** Split с матрицей: без лишних рамок, максимум площади под treemap. */
   immersive?: boolean;
+  /**
+   * false — currentRows уже с переносом бюджета на стаб (хаб «коэффициенты»).
+   * true (по умолчанию) — симулировать перенос из baseline (quick flow).
+   */
+  simulateDeletes?: boolean;
   className?: string;
 };
 
@@ -44,6 +50,7 @@ export function AdminQuickFlowEffortComparePanel({
   headerAction,
   onCloseComparison,
   immersive = false,
+  simulateDeletes = true,
   className,
 }: Props) {
   const qs = useMemo(
@@ -51,13 +58,24 @@ export function AdminQuickFlowEffortComparePanel({
     [previewQuarters]
   );
 
+  const afterRows = useMemo(
+    () =>
+      simulateDeletes
+        ? rowsAfterSimulatedDeletes(baselineRows, currentRows, qs)
+        : currentRows,
+    [simulateDeletes, baselineRows, currentRows, qs]
+  );
+
   const beforeModel = useMemo(
     () => buildEffortTreemapPreviewModel(baselineRows, qs),
     [baselineRows, qs]
   );
   const afterModel = useMemo(
-    () => buildEffortTreemapPreviewModel(currentRows, qs),
-    [currentRows, qs]
+    () =>
+      buildEffortTreemapPreviewModel(afterRows, qs, {
+        fixedEffectiveTotal: beforeModel.effectiveTotal,
+      }),
+    [afterRows, qs, beforeModel.effectiveTotal]
   );
 
   const { beforeChildren, afterChildren } = useMemo(

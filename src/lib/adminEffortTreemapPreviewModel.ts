@@ -9,6 +9,98 @@ import { getUnitColor, mixHexWithNeutralGray } from '@/lib/dataManager';
 import { compareQuarters } from '@/lib/quarterUtils';
 
 const UNALLOCATED_COLOR = '#94a3b8';
+const PREVIEW_STUB_ROW_ID = '__portfolio_preview_stub__';
+
+function toNum(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function createPreviewStubRow(unit: string, team: string): AdminDataRow {
+  return {
+    id: PREVIEW_STUB_ROW_ID,
+    unit,
+    team,
+    initiative: `Стоимость команды ${team} 2026`,
+    stakeholdersList: [],
+    description: '',
+    documentationLink: '',
+    stakeholders: '',
+    isTimelineStub: true,
+    quarterlyData: {},
+  };
+}
+
+/** Сколько «перенести» с удаляемой строки в превью (cost или доля по % от Tq до удаления). */
+function previewTransferAddForQuarter(
+  delRow: AdminDataRow,
+  quarter: string,
+  teamBeforeDelete: AdminDataRow[]
+): number {
+  const qd = delRow.quarterlyData[quarter] ?? createEmptyQuarterData();
+  const fromCost = Math.max(0, toNum(qd.cost) + toNum(qd.otherCosts));
+  if (fromCost > 0) return fromCost;
+  const eff = Math.max(0, Math.min(100, toNum(qd.effortCoefficient)));
+  if (eff <= 0) return 0;
+  const Tq = teamQuarterCostSum(teamBeforeDelete, quarter);
+  if (Tq <= 0) return 0;
+  return Math.max(0, Math.round((eff / 100) * Tq) - toNum(qd.otherCosts));
+}
+
+/**
+ * Черновик удаления в хабе/quick flow: бюджет убранных строк переносится на стаб «Не распределено»
+ * только для UI (до «Сохранить»). В БД — отдельно через transferInitiativeBudgetToTeamStub.
+ */
+export function rowsAfterSimulatedDeletes(
+  baselineRows: AdminDataRow[],
+  currentRows: AdminDataRow[],
+  previewQuarters: string[]
+): AdminDataRow[] {
+  const qs = previewQuarters.filter(Boolean);
+  if (qs.length === 0 || baselineRows.length === 0) return currentRows;
+
+  const currentIds = new Set(currentRows.map((r) => r.id));
+  const deleted = baselineRows.filter((r) => !currentIds.has(r.id) && !r.isTimelineStub);
+  if (deleted.length === 0) return currentRows;
+
+  const rows = structuredClone(currentRows);
+  const unit = rows.find((r) => r.unit)?.unit ?? baselineRows.find((r) => r.unit)?.unit ?? '';
+  const team = rows.find((r) => r.team)?.team ?? baselineRows.find((r) => r.team)?.team ?? '';
+
+  let stubIdx = rows.findIndex((r) => r.isTimelineStub);
+  if (stubIdx < 0) {
+    rows.push(createPreviewStubRow(unit, team));
+    stubIdx = rows.length - 1;
+  }
+
+  const stub = rows[stubIdx];
+  const quarterlyData = structuredClone(stub.quarterlyData);
+
+  for (const del of deleted) {
+    for (const q of qs) {
+      const add = previewTransferAddForQuarter(del, q, baselineRows);
+      if (add <= 0) continue;
+      const cur = quarterlyData[q] ?? createEmptyQuarterData();
+      quarterlyData[q] = {
+        ...cur,
+        cost: Math.max(0, toNum(cur.cost) + add),
+        effortCoefficient: 0,
+      };
+    }
+  }
+
+  rows[stubIdx] = { ...stub, quarterlyData };
+  return rows;
+}
+
+export type EffortTreemapPreviewOptions = {
+  /** Фиксированная сумма команды (снимок «до» при удалениях в черновике). */
+  fixedEffectiveTotal?: number;
+};
 
 /**
  * Сколько % бюджета строка забирает у команды в этом квартале (для не-заглушек).
@@ -313,9 +405,13 @@ export type EffortTreemapPreviewModel = {
  */
 export function buildEffortTreemapPreviewModel(
   rows: AdminDataRow[],
-  previewQuarters: string[]
+  previewQuarters: string[],
+  options?: EffortTreemapPreviewOptions
 ): EffortTreemapPreviewModel {
-  const effectiveTotal = teamPeriodCostSum(rows, previewQuarters);
+  const effectiveTotal =
+    options?.fixedEffectiveTotal != null && options.fixedEffectiveTotal > 0
+      ? options.fixedEffectiveTotal
+      : teamPeriodCostSum(rows, previewQuarters);
   const teamForResidual = rows.find((r) => r.team)?.team ?? '';
   const virtualUnallocLabel = getStubResidualLabel(teamForResidual);
   const isUnallocLabel = (name: string) =>
