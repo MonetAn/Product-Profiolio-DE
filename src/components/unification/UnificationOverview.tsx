@@ -258,7 +258,7 @@ export function UnificationOverview({
           Пока нет кросс-инициатив. Создайте первую связь между инициативами разных команд.
         </p>
         <Button type="button" onClick={onSwitchToLink}>
-          Связать инициативы
+          Создать новую
         </Button>
       </div>
     );

@@ -183,7 +183,7 @@ export default function Unification() {
   if (!canManageCrosses) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Нет доступа к разделу «Объединение».</p>
+        <p className="text-muted-foreground">Нет доступа к разделу «Кросс-инициатива».</p>
       </div>
     );
   }
@@ -201,21 +201,21 @@ export default function Unification() {
           <TabsList className="bg-muted/80 shrink-0">
             <TabsTrigger
               value="overview"
-              className="data-[state=active]:bg-[#7B5FA8] data-[state=active]:text-white data-[state=active]:shadow-sm"
+              className="data-[state=active]:bg-[#7B5FA8] data-[state=active]:text-white data-[state=active]:shadow-sm text-xs sm:text-sm"
             >
-              Кросс-инициативы
+              Посмотреть и отредактировать
             </TabsTrigger>
             <TabsTrigger
               value="link"
-              className="data-[state=active]:bg-[#7B5FA8] data-[state=active]:text-white data-[state=active]:shadow-sm"
+              className="data-[state=active]:bg-[#7B5FA8] data-[state=active]:text-white data-[state=active]:shadow-sm text-xs sm:text-sm"
             >
-              Связать
+              Создать новую
             </TabsTrigger>
             <TabsTrigger
               value="manage"
-              className="data-[state=active]:bg-[#7B5FA8] data-[state=active]:text-white data-[state=active]:shadow-sm"
+              className="data-[state=active]:bg-[#7B5FA8] data-[state=active]:text-white data-[state=active]:shadow-sm text-xs sm:text-sm"
             >
-              Связи
+              Список связей
             </TabsTrigger>
           </TabsList>
           {(mode === 'overview' || mode === 'manage') && (
@@ -347,12 +347,27 @@ export default function Unification() {
         >
           <UnificationManage
             bundle={bundle}
+            allInitiatives={allInitiatives}
             initiativeById={initiativeById}
             isLoading={isLoading}
             filterUnits={portfolioFilterUnits}
             filterTeams={portfolioFilterTeams}
             onRemove={requestRemoveFromCross}
             removing={mutations.removeFromCross.isPending}
+            adding={mutations.addToCross.isPending}
+            onAddMembers={async (crossId, initiativeIds) => {
+              for (const initiativeId of initiativeIds) {
+                await mutations.addToCross.mutateAsync({
+                  crossInitiativeId: crossId,
+                  initiativeId,
+                });
+              }
+              toast.success(
+                initiativeIds.length === 1
+                  ? 'Инициатива добавлена'
+                  : `Добавлено инициатив: ${initiativeIds.length}`
+              );
+            }}
           />
         </TabsContent>
       </Tabs>

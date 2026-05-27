@@ -5,7 +5,7 @@ export function canViewCrossInitiativesOnDashboard(access: {
   return access.hasEarlyAccess;
 }
 
-/** Админка «Объединение» и API кроссов — только ранний доступ. */
+/** Админка «Кросс-инициатива» и API кроссов — только ранний доступ. */
 export function canManageCrossInitiatives(access: {
   hasEarlyAccess: boolean;
 }): boolean {

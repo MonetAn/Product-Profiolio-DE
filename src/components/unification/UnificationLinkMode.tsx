@@ -383,7 +383,7 @@ export function UnificationLinkMode({
             disabled={!selectedSourceId || !selectedTargetId || linking}
             onClick={openLinkDialog}
           >
-            Связать
+            Создать
           </Button>
         </div>
       </div>

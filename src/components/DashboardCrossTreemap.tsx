@@ -311,7 +311,7 @@ export function DashboardCrossTreemap({
     return (
       <div className="flex flex-col items-center justify-center h-full px-8 text-center gap-2">
         <p className="text-muted-foreground max-w-md">
-          Пока нет кросс-инициатив. Связи создаются в разделе «Объединение» в админке.
+          Пока нет кросс-инициатив. Связи создаются в разделе «Кросс-инициатива» в админке.
         </p>
       </div>
     );
