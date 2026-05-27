@@ -687,10 +687,11 @@ export function isInitiativeSupportInCurrentQuarter(row: RawDataRow): boolean {
 
 export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]): boolean {
   if (selectedQuarters.length === 0) return false;
-  // Off-track only if the LAST quarter in selected period was off-track
-  const lastQuarter = selectedQuarters[selectedQuarters.length - 1];
-  const qData = row.quarterlyData[lastQuarter];
-  return qData ? !qData.onTrack : false;
+  // Initiative is off-track if any selected quarter has off-track status.
+  return selectedQuarters.some((quarter) => {
+    const qData = row.quarterlyData[quarter];
+    return qData ? !qData.onTrack : false;
+  });
 }
 
 /** В выбранных кварталах есть хотя бы один с предварительной стоимостью (costFinanceConfirmed === false). */

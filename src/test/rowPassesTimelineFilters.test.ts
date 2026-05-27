@@ -81,4 +81,22 @@ describe('rowPassesTimelineFilters', () => {
       )
     ).toBe(false);
   });
+
+  it('passes off-track filter when any selected quarter is off-track', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          quarterlyData: {
+            '2026-Q1': { budget: 100, onTrack: false },
+            '2026-Q2': { budget: 100, onTrack: true },
+          },
+        }),
+        {
+          ...baseOptions,
+          selectedQuarters: ['2026-Q1', '2026-Q2'],
+          showOnlyOfftrack: true,
+        }
+      )
+    ).toBe(true);
+  });
 });
