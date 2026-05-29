@@ -821,13 +821,38 @@ const Index = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters, showTeams, showInitiatives, hasEarlyAccess]);
 
+  const searchBudgetOptions = useMemo(
+    () => ({
+      includeNonPnlBudgets: !showOnlyPnlIt,
+      includePreliminaryData: false as const,
+      preliminaryQuarterBudgetMap: undefined,
+      baselineByTeam: budgetTruth2026?.baselineByTeam,
+    }),
+    [showOnlyPnlIt, budgetTruth2026?.baselineByTeam]
+  );
+
   // Search across all rows (not scoped to active dashboard filters)
-  const searchResults = displayData.filter(row => {
-    const q = searchQuery.toLowerCase();
-    return row.initiative.toLowerCase().includes(q) ||
-           row.unit.toLowerCase().includes(q) ||
-           row.team.toLowerCase().includes(q);
-  }).slice(0, 20);
+  const allSearchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return displayData.filter(
+      (row) =>
+        row.initiative.toLowerCase().includes(q) ||
+        row.unit.toLowerCase().includes(q) ||
+        row.team.toLowerCase().includes(q)
+    );
+  }, [displayData, searchQuery]);
+
+  const searchResults = allSearchResults.slice(0, 20);
+
+  const searchResultsTotalBudget = useMemo(
+    () =>
+      allSearchResults.reduce(
+        (sum, row) => sum + calculateBudget(row, selectedQuarters, searchBudgetOptions),
+        0
+      ),
+    [allSearchResults, selectedQuarters, searchBudgetOptions]
+  );
 
   // Off-track items
   const offtrackItems = displayData.filter(row => {
@@ -1343,10 +1368,27 @@ const Index = () => {
                       <div className="text-sm font-medium truncate">{row.initiative}</div>
                       <div className="text-xs text-muted-foreground">{row.unit} › {row.team}</div>
                     </div>
+                    {effectiveShowMoney && (
+                      <div className="text-sm font-medium tabular-nums flex-shrink-0">
+                        {formatBudget(calculateBudget(row, selectedQuarters, searchBudgetOptions))}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
             </div>
+            {effectiveShowMoney && allSearchResults.length > 0 && (
+              <div className="flex items-center justify-between gap-3 p-3 border-t border-border text-sm">
+                <span className="text-muted-foreground">
+                  {allSearchResults.length > searchResults.length
+                    ? `Показано ${searchResults.length} из ${allSearchResults.length}`
+                    : `Найдено: ${allSearchResults.length}`}
+                </span>
+                <span className="font-semibold tabular-nums">
+                  Итого: {formatBudget(searchResultsTotalBudget)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
