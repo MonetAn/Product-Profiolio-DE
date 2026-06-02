@@ -52,6 +52,24 @@ const SYNC_ASSIGNMENTS_PEOPLE_SELECT_COLUMNS = ['id'].join(', ');
 const SYNC_ASSIGNMENTS_EXISTING_SELECT_COLUMNS = ['id', 'person_id', 'quarterly_effort', 'is_auto'].join(', ');
 const SYNC_ASSIGNMENTS_WRITE_CHUNK = 20;
 
+const QUARTERLY_DEBOUNCE_SUFFIX = '-quarterly';
+
+function quarterlyDebounceKey(initiativeId: string): string {
+  return `${initiativeId}${QUARTERLY_DEBOUNCE_SUFFIX}`;
+}
+
+function initiativeIdFromQuarterlyDebounceKey(key: string): string | null {
+  if (!key.endsWith(QUARTERLY_DEBOUNCE_SUFFIX)) return null;
+  const id = key.slice(0, -QUARTERLY_DEBOUNCE_SUFFIX.length);
+  return id.length > 0 ? id : null;
+}
+
+function quarterFieldDebounceDelay(value: string | number | boolean | undefined): number {
+  if (typeof value === 'boolean') return 0;
+  if (typeof value === 'number') return 500;
+  return 1000;
+}
+
 /** Список инициатив кэшируется с ключом `['initiatives', { units, teams, tableAll }]` — обновляем все совпадающие запросы. */
 function findRowInInitiativeCaches(queryClient: QueryClient, id: string): AdminDataRow | undefined {
   const entries = queryClient.getQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY });
@@ -100,6 +118,8 @@ export function useInitiativeMutations() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const debounceTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  /** Кварталы с изменённым effortCoefficient, ожидающие syncAssignments после PATCH quarterly_data. */
+  const pendingEffortSyncsRef = useRef<Map<string, Set<string>>>(new Map());
   const invalidateTimerRef = useRef<NodeJS.Timeout | null>(null);
   /** Сколько ближайших onSettled пропустить с отдельным invalidate — одна инвалидация в конце пакета (Quick Flow). */
   const bulkInitiativeInvalidateSkipsRef = useRef(0);
@@ -422,9 +442,37 @@ export function useInitiativeMutations() {
     [queryClient, toast]
   );
 
+  const persistQuarterDataFromCache = useCallback(
+    async (id: string) => {
+      const currentRow = findRowInInitiativeCaches(queryClient, id);
+      if (!currentRow) return;
+
+      await updateMutation.mutateAsync({
+        id,
+        patch: { quarterly_data: quarterlyDataToJson(currentRow.quarterlyData) },
+      });
+
+      const effortQuarters = pendingEffortSyncsRef.current.get(id);
+      if (!effortQuarters || effortQuarters.size === 0) return;
+
+      const latestRow = findRowInInitiativeCaches(queryClient, id) ?? currentRow;
+      for (const q of effortQuarters) {
+        const eff = Math.max(
+          0,
+          Math.min(100, Number(latestRow.quarterlyData[q]?.effortCoefficient) || 0)
+        );
+        if (eff > 0) {
+          await syncAssignments(latestRow, q, eff);
+        }
+      }
+      pendingEffortSyncsRef.current.delete(id);
+    },
+    [queryClient, updateMutation, syncAssignments]
+  );
+
   const updateQuarterData = useCallback(
     (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean | undefined) => {
-      const key = `${id}-quarterly-${quarter}-${field}`;
+      const key = quarterlyDebounceKey(id);
       const existing = debounceTimers.current.get(key);
       if (existing) clearTimeout(existing);
 
@@ -449,34 +497,54 @@ export function useInitiativeMutations() {
         );
       });
 
+      if (field === 'effortCoefficient') {
+        const pending = pendingEffortSyncsRef.current.get(id) ?? new Set<string>();
+        pending.add(quarter);
+        pendingEffortSyncsRef.current.set(id, pending);
+      }
+
       setSyncStatus('saving');
 
-      const delay =
-        typeof value === 'boolean'
-          ? 0
-          : typeof value === 'number'
-            ? 500
-            : 1000;
+      const delay = quarterFieldDebounceDelay(value);
 
       const timer = setTimeout(async () => {
-        updateMutation.mutate({
-          id,
-          patch: { quarterly_data: quarterlyDataToJson(updatedQuarterlyData) },
-        });
-
-        if (field === 'effortCoefficient' && typeof value === 'number' && value > 0) {
-          const updatedRow = { ...currentRow, quarterlyData: updatedQuarterlyData };
-          await syncAssignments(updatedRow, quarter, value);
-        }
-
         debounceTimers.current.delete(key);
         setPendingCount(debounceTimers.current.size);
+        try {
+          await persistQuarterDataFromCache(id);
+        } finally {
+          if (debounceTimers.current.size === 0 && !updateMutation.isPending) {
+            setSyncStatus('synced');
+          }
+          setPendingCount(debounceTimers.current.size);
+        }
       }, delay);
 
       debounceTimers.current.set(key, timer);
       setPendingCount(debounceTimers.current.size);
     },
-    [updateMutation, queryClient, syncAssignments]
+    [updateMutation, queryClient, persistQuarterDataFromCache]
+  );
+
+  /** Немедленно записать quarterly_data инициативы (кнопка «Сохранить» в карточке квартала). */
+  const flushQuarterDataNow = useCallback(
+    async (id: string) => {
+      const key = quarterlyDebounceKey(id);
+      const existing = debounceTimers.current.get(key);
+      if (existing) {
+        clearTimeout(existing);
+        debounceTimers.current.delete(key);
+        setPendingCount(debounceTimers.current.size);
+      }
+
+      setSyncStatus('saving');
+      setLastError(null);
+      await persistQuarterDataFromCache(id);
+      if (debounceTimers.current.size === 0) {
+        setSyncStatus('synced');
+      }
+    },
+    [persistQuarterDataFromCache]
   );
 
   const updateQuarterDataBulk = useCallback(
@@ -618,7 +686,7 @@ export function useInitiativeMutations() {
     [updateMutation, queryClient]
   );
 
-  /** Сразу отправить в БД все отложенные debounce-обновления (кнопка «Сохранить»). */
+  /** Сразу отправить в БД все отложенные debounce-обновления. */
   const flushDebouncedSavesNow = useCallback(async () => {
     const keys = [...debounceTimers.current.keys()];
     for (const key of keys) {
@@ -636,30 +704,19 @@ export function useInitiativeMutations() {
     setSyncStatus('saving');
     setLastError(null);
 
-    const quarterKeyRe = /^(.+)-quarterly-(\d{4}-Q\d)-(.+)$/;
-
+    const quarterlyIds = new Set<string>();
+    const otherKeys: string[] = [];
     for (const key of keys) {
-      const qm = key.match(quarterKeyRe);
-      if (qm) {
-        const [, id, quarter, field] = qm;
-        const currentRow = findRowInInitiativeCaches(queryClient, id);
-        if (!currentRow) continue;
-        await updateMutation.mutateAsync({
-          id,
-          patch: { quarterly_data: quarterlyDataToJson(currentRow.quarterlyData) },
-        });
-        if (field === 'effortCoefficient') {
-          const eff = Math.max(
-            0,
-            Math.min(100, Number(currentRow.quarterlyData[quarter]?.effortCoefficient) || 0)
-          );
-          if (eff > 0) {
-            await syncAssignments(currentRow, quarter, eff);
-          }
-        }
-        continue;
-      }
+      const id = initiativeIdFromQuarterlyDebounceKey(key);
+      if (id) quarterlyIds.add(id);
+      else otherKeys.push(key);
+    }
 
+    for (const id of quarterlyIds) {
+      await persistQuarterDataFromCache(id);
+    }
+
+    for (const key of otherKeys) {
       let parsed: { id: string; field: string } | null = null;
       for (const suffix of INIT_DEBOUNCE_KEY_SUFFIXES) {
         if (key.endsWith(`-${suffix}`)) {
@@ -694,7 +751,7 @@ export function useInitiativeMutations() {
 
     setSyncStatus('synced');
     scheduleInitiativesInvalidate(0);
-  }, [queryClient, updateMutation, syncAssignments, scheduleInitiativesInvalidate]);
+  }, [queryClient, updateMutation, persistQuarterDataFromCache, scheduleInitiativesInvalidate]);
 
   const flushPendingChanges = useCallback(() => {
     debounceTimers.current.forEach((timer) => clearTimeout(timer));
@@ -725,6 +782,7 @@ export function useInitiativeMutations() {
     lastError,
     flushPendingChanges,
     flushDebouncedSavesNow,
+    flushQuarterDataNow,
     retry,
     beginBulkInitiativeMutations,
     finalizeBulkInitiativeMutations,

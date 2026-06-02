@@ -125,6 +125,7 @@ type Props = {
     field: keyof AdminQuarterData,
     value: string | number | boolean | undefined
   ) => void;
+  onFlushQuarterSaves?: (initiativeId: string) => Promise<void>;
   compactChrome?: boolean;
 };
 
@@ -142,6 +143,7 @@ export function AdminQuickFlowTimelineFillStep({
   unit,
   team,
   onQuarterDataChange,
+  onFlushQuarterSaves,
   compactChrome = false,
 }: Props) {
   const [quarterEdit, setQuarterEdit] = useState<{ id: string; quarter: string } | null>(null);
@@ -383,6 +385,7 @@ export function AdminQuickFlowTimelineFillStep({
                   scenarioQuarters={scenarioQuartersForSupport}
                   persistMode="explicitSave"
                   onDirtyChange={setQuarterDialogDirty}
+                  onFlushQuarterSaves={onFlushQuarterSaves}
                 />
               </div>
             </>

@@ -197,6 +197,7 @@ const Admin = () => {
     pendingChanges,
     retry,
     flushDebouncedSavesNow,
+    flushQuarterDataNow,
     isSaving: mutationsSaving,
     immediateUpdate,
   } = useInitiativeMutations();
@@ -1748,6 +1749,13 @@ const Admin = () => {
     [updateQuarterData]
   );
 
+  const handleFlushQuarterSaves = useCallback(
+    async (initiativeId: string) => {
+      await flushQuarterDataNow(initiativeId);
+    },
+    [flushQuarterDataNow]
+  );
+
   const handleInitiativeGeoCostSplitChange = useCallback(
     (id: string, split: GeoCostSplit | undefined) => {
       updateInitiativeGeoCostSplit(id, split);
@@ -2386,6 +2394,7 @@ const Admin = () => {
                 step={quickStep}
                 setStep={setQuickStep}
                 onQuarterDataChange={handleQuickDraftChange}
+                onFlushQuarterSaves={handleFlushQuarterSaves}
                 onInitiativeDraftChange={handleQuickInitiativeDraftChange}
                 onQuickAddInitiativeRow={handleQuickAddInitiativeRow}
                 focusMatrixInitiativeId={matrixFocusInitiativeId}
@@ -2432,6 +2441,7 @@ const Admin = () => {
                     team={selectedTeams[0] ?? ''}
                     marketCountries={marketCountries}
                     onQuarterDataChange={handleHubQuarterDraftChange}
+                    onFlushQuarterSaves={handleFlushQuarterSaves}
                     onInitiativeGeoCostSplitChange={handleHubInitiativeGeoCostSplitDraft}
                     onInitiativeFieldChange={handleHubRowDraftChange}
                     onAddInitiativeFromMatrix={handleHubAddPendingRow}

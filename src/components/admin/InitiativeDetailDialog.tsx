@@ -97,6 +97,8 @@ interface QuarterFieldsProps {
   persistMode?: QuarterFieldsPersistMode;
   /** Уведомление родителя о несохранённых правках (только при persistMode=explicitSave). */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Немедленная запись quarterly_data после «Сохранить» (explicitSave). */
+  onFlushQuarterSaves?: (initiativeId: string) => Promise<void>;
 }
 
 function supportScenarioSelectValue(row: AdminDataRow, sortedQs: string[]): string {
@@ -145,6 +147,7 @@ const QuarterFields = ({
   scenarioQuarters = [],
   persistMode = 'blur',
   onDirtyChange,
+  onFlushQuarterSaves,
 }: QuarterFieldsProps) => {
   const useExplicit = persistMode === 'explicitSave' && variant === 'quickTimeline';
   const save = (field: keyof AdminQuarterData) => (value: string | number | boolean) =>
@@ -190,6 +193,7 @@ const QuarterFields = ({
   );
   /** Локальная обратная связь по кнопке «Сохранить» (explicitSave). */
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'unchanged'>('idle');
+  const [isPersisting, setIsPersisting] = useState(false);
   const saveFeedbackTimerRef = useRef<number | null>(null);
 
   const clearSaveFeedbackTimer = useCallback(() => {
@@ -300,8 +304,8 @@ const QuarterFields = ({
     onQuarterDataChange,
   ]);
 
-  const handleExplicitSaveClick = useCallback(() => {
-    if (!useExplicit) return;
+  const handleExplicitSaveClick = useCallback(async () => {
+    if (!useExplicit || isPersisting) return;
     clearSaveFeedbackTimer();
     if (!explicitDirty) {
       setSaveFeedback('unchanged');
@@ -312,12 +316,36 @@ const QuarterFields = ({
       return;
     }
     handleExplicitSave();
+    if (onFlushQuarterSaves) {
+      setIsPersisting(true);
+      try {
+        await onFlushQuarterSaves(initiativeId);
+        setSaveFeedback('saved');
+        saveFeedbackTimerRef.current = window.setTimeout(() => {
+          saveFeedbackTimerRef.current = null;
+          setSaveFeedback('idle');
+        }, 2200);
+      } catch {
+        setSaveFeedback('idle');
+      } finally {
+        setIsPersisting(false);
+      }
+      return;
+    }
     setSaveFeedback('saved');
     saveFeedbackTimerRef.current = window.setTimeout(() => {
       saveFeedbackTimerRef.current = null;
       setSaveFeedback('idle');
     }, 2200);
-  }, [useExplicit, explicitDirty, handleExplicitSave, clearSaveFeedbackTimer]);
+  }, [
+    useExplicit,
+    isPersisting,
+    explicitDirty,
+    handleExplicitSave,
+    clearSaveFeedbackTimer,
+    onFlushQuarterSaves,
+    initiativeId,
+  ]);
 
   const formatCurrency = (value: number) => {
     const rub = budgetRubForDisplay(value);
@@ -531,20 +559,24 @@ const QuarterFields = ({
                   <span className="font-medium text-emerald-700 dark:text-emerald-400">Изменения записаны.</span>
                 ) : saveFeedback === 'unchanged' ? (
                   <span>Нечего сохранять.</span>
+                ) : isPersisting ? (
+                  <span>Сохранение…</span>
                 ) : null}
               </p>
               <Button
                 type="button"
                 variant={saveFeedback === 'saved' ? 'outline' : 'default'}
-                disabled={saveFeedback === 'saved'}
+                disabled={saveFeedback === 'saved' || isPersisting}
                 className={cn(
                   'order-1 min-w-[10.5rem] touch-manipulation transition-transform active:scale-[0.97] active:brightness-95',
                   saveFeedback === 'saved' &&
                     'border-emerald-600/45 bg-emerald-600/[0.08] text-emerald-900 hover:bg-emerald-600/[0.12] dark:border-emerald-500/45 dark:bg-emerald-500/10 dark:text-emerald-50'
                 )}
-                onClick={handleExplicitSaveClick}
+                onClick={() => void handleExplicitSaveClick()}
               >
-                {saveFeedback === 'saved' ? (
+                {isPersisting ? (
+                  'Сохранение…'
+                ) : saveFeedback === 'saved' ? (
                   <>
                     <Check className="mr-2 h-4 w-4 shrink-0" aria-hidden />
                     Сохранено

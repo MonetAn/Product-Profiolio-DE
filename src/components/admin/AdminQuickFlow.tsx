@@ -141,6 +141,7 @@ interface AdminQuickFlowProps {
     field: keyof AdminQuarterData,
     value: string | number | boolean | undefined
   ) => void;
+  onFlushQuarterSaves?: (initiativeId: string) => Promise<void>;
   /** Черновик полей карточки инициативы (quick flow), без записи в БД до «Сохранить». */
   onInitiativeDraftChange?: (
     id: string,
@@ -909,6 +910,7 @@ export default function AdminQuickFlow({
   team,
   onDeleteInitiativeAddedInQuickFlow,
   onQuarterDataChange,
+  onFlushQuarterSaves,
   onInitiativeDraftChange,
   onOpenAddInitiative,
   onQuickAddInitiativeRow,
@@ -1676,6 +1678,7 @@ export default function AdminQuickFlow({
                 unit={unit}
                 team={team}
                 onQuarterDataChange={onQuarterDataChange}
+                onFlushQuarterSaves={onFlushQuarterSaves}
               />
             ) : null}
             {step === stepCountrySplit ? (

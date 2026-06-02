@@ -154,6 +154,7 @@ type Props = {
     field: keyof AdminQuarterData,
     value: string | number | boolean | undefined
   ) => void;
+  onFlushQuarterSaves?: (initiativeId: string) => Promise<void>;
   onInitiativeFieldChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => void;
   onInitiativeGeoCostSplitChange: (id: string, split: GeoCostSplit | undefined) => void;
   onAddInitiativeFromMatrix: () => void | Promise<void>;
@@ -300,6 +301,7 @@ export function AdminPortfolioHubPanels({
   team,
   marketCountries,
   onQuarterDataChange,
+  onFlushQuarterSaves,
   onInitiativeFieldChange,
   onInitiativeGeoCostSplitChange,
   onAddInitiativeFromMatrix,
@@ -650,6 +652,7 @@ export function AdminPortfolioHubPanels({
               unit={unit}
               team={team}
               onQuarterDataChange={onQuarterDataChange}
+              onFlushQuarterSaves={onFlushQuarterSaves}
               compactChrome
             />
           ) : null}
