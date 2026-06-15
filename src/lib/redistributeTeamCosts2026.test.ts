@@ -4,6 +4,7 @@ import {
   buildQuarterlyCostsForTeam,
   frozenTeamQuarterTotals,
 } from '@/lib/redistributeTeamCosts2026';
+import { buildQuarterlyDataFromPreview } from '@/lib/adminQuickFlowRedistributeCosts';
 import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import { teamPeriodCostSum } from '@/lib/adminEffortTreemapPreviewModel';
 
@@ -75,5 +76,24 @@ describe('buildQuarterlyCostsForTeam', () => {
     const built = buildQuarterlyCostsForTeam(after, ['2026-Q1'], { fixedTqByQuarter: fixed });
     const total = (built.get('stub')!['2026-Q1']!.cost ?? 0);
     expect(total).toBe(10_000_000);
+  });
+});
+
+describe('buildQuarterlyDataFromPreview', () => {
+  it('keeps team total with explicit fixed Tq after row removed from list', () => {
+    const before = [
+      row('stub', 'stub', 7_000_000, 0, true),
+      row('a', 'A', 2_000_000, 20),
+      row('b', 'B', 1_000_000, 10),
+    ];
+    const afterDelete = [before[0], before[1]];
+    const fixed = frozenTeamQuarterTotals(before, ['2026-Q1']);
+    const built = buildQuarterlyDataFromPreview(afterDelete, ['2026-Q1'], { fixedTqByQuarter: fixed });
+    const total = [...built.values()].reduce(
+      (s, qd) => s + (qd['2026-Q1']?.cost ?? 0),
+      0
+    );
+    expect(total).toBe(10_000_000);
+    expect(built.get('stub')!['2026-Q1']!.costFinanceConfirmed).toBe(false);
   });
 });

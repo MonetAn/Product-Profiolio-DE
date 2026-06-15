@@ -60,6 +60,7 @@ import { useFilterParams } from '@/hooks/useFilterParams';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { compareQuarters, getCurrentQuarter } from '@/lib/quarterUtils';
 import { buildQuarterlyDataFromPreview } from '@/lib/adminQuickFlowRedistributeCosts';
+import { rowsAfterSimulatedDeletes } from '@/lib/adminEffortTreemapPreviewModel';
 import AdminQuickFlow from '@/components/admin/AdminQuickFlow';
 import InitiativeDetailDialog from '@/components/admin/InitiativeDetailDialog';
 import { AdminQuickFlowSetupScreen } from '@/components/admin/AdminQuickFlowSetupScreen';
@@ -895,7 +896,14 @@ const Admin = () => {
     const previewQs = [...quickFillQuarters].filter((q) => quarters.includes(q)).sort(compareQuarters);
     const previewById =
       previewQs.length > 0 && hubDisplayData.length > 0
-        ? buildQuarterlyDataFromPreview(hubDisplayData, previewQs)
+        ? hubDeletedIds.size > 0
+          ? new Map(
+              rowsAfterSimulatedDeletes(filteredData, hubDisplayData, previewQs).map((r) => [
+                r.id,
+                r.quarterlyData,
+              ])
+            )
+          : buildQuarterlyDataFromPreview(hubDisplayData, previewQs)
         : null;
 
     const needsStructural =
@@ -1994,6 +2002,12 @@ const Admin = () => {
       });
     } catch (err) {
       console.error('Failed to delete initiative:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Не удалось удалить',
+        description: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
   }, [rawData, deleteInitiative, toast]);
 

@@ -87,6 +87,8 @@ export function buildQuarterlyCostsForTeam(
     return teamQuarterCostSum(teamRows, q);
   };
 
+  const anchored = Boolean(options?.baseline) || Boolean(options?.fixedTqByQuarter);
+
   for (const q of sortedQ) {
     const Tq = resolveTq(q);
     if (Tq <= 0) {
@@ -98,7 +100,8 @@ export function buildQuarterlyCostsForTeam(
       continue;
     }
 
-    if (columnEffortSum(teamRows, q) > 100 + 1e-4) continue;
+    // Без якоря (baseline / frozen Tq) при Σeff>100% не пересчитываем — данные невалидны.
+    if (!anchored && columnEffortSum(teamRows, q) > 100 + 1e-4) continue;
 
     let nonStubCostOtherSum = 0;
     for (const r of teamRows) {
@@ -128,6 +131,11 @@ export function buildQuarterlyCostsForTeam(
         const extra = out.get(stubIds[i])![q] ?? createEmptyQuarterData();
         out.get(stubIds[i])![q] = { ...extra, cost: 0, effortCoefficient: 0, costFinanceConfirmed: true };
       }
+    } else if (anchored && stubResidual > 0 && !isAllocationRoundingDustRub(stubResidual)) {
+      // Якорь есть, stub не передан в teamRows — остаток теряется; caller должен создать stub в БД.
+      throw new Error(
+        `buildQuarterlyCostsForTeam: нет заглушки команды, остаток ${stubResidual} ₽ в ${q}`
+      );
     }
   }
 
@@ -397,7 +405,28 @@ export async function redistributeTeamCosts2026InDb(
 
   await syncTeamSplitFromQuarterly(unit, team);
 
+  const yearTargetFinal = resolveTeamYearTarget(baseline, options?.frozenTqByQuarter);
+  if (yearTargetFinal > 0) {
+    await assertTeamYearTotalMatchesTarget(unit, team, yearTargetFinal);
+  }
+
   return { updatedRowIds, usedBaseline: Boolean(baseline) };
+}
+
+/** После redistribute: годовой cost+other команды = target (± tolerance). */
+export async function assertTeamYearTotalMatchesTarget(
+  unit: string,
+  team: string,
+  targetYearRub: number,
+  toleranceRub = 1000
+): Promise<void> {
+  const live = await teamYearCostLive(unit, team);
+  const gap = Math.round(targetYearRub) - live;
+  if (Math.abs(gap) > toleranceRub) {
+    throw new Error(
+      `Тотал команды ${unit} / ${team}: live=${live}, цель=${Math.round(targetYearRub)}, gap=${gap}`
+    );
+  }
 }
 
 export function teamBaselineFromMap(

@@ -21,7 +21,6 @@ import { Person } from '@/lib/peopleDataManager';
 import {
   frozenTeamTotalsForTeam,
   redistributeTeamCosts2026InDb,
-  zeroInitiative2026BudgetInDb,
 } from '@/lib/redistributeTeamCosts2026';
 import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
@@ -269,10 +268,6 @@ export function useInitiativeMutations() {
         frozenTq = await frozenTeamTotalsForTeam(unit, team);
       }
 
-      if (row && !isStub) {
-        await zeroInitiative2026BudgetInDb(id);
-      }
-
       const { error } = await supabase
         .from('initiatives')
         .update({ deleted_at: new Date().toISOString() })
@@ -282,6 +277,8 @@ export function useInitiativeMutations() {
 
       if (!isStub && unit && team) {
         await redistributeTeamCosts2026InDb(unit, team, { frozenTqByQuarter: frozenTq });
+      } else if (row && !isStub && (!unit || !team)) {
+        throw new Error('Удаление без unit/team — перераспределение бюджета невозможно');
       }
     },
     onMutate: async (id) => {

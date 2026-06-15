@@ -1,18 +1,14 @@
 -- Одна команда: пересчёт cost 2026 по % усилия + baseline (после сбоя delete в UI).
--- Измените unit / team в merge_stub_cfg, Run целиком, preview → COMMIT.
+-- Измените cfg_unit / cfg_team в DO-блоке ниже. Run файл ЦЕЛИКОМ (один Run).
+-- Preview: ROLLBACK в конце. Запись: замените ROLLBACK на COMMIT.
 
 BEGIN;
 
-DROP TABLE IF EXISTS merge_stub_cfg;
-CREATE TEMP TABLE merge_stub_cfg (merge_unit text, merge_team text);
-INSERT INTO merge_stub_cfg VALUES ('Tech Platform', 'Process Core Team');
-
--- До
+-- До (unit/team — те же, что cfg_* в DO)
 SELECT b.unit, b.team, b.rub_all AS baseline,
   coalesce(t.live, 0)::bigint AS live,
   (b.rub_all - coalesce(t.live, 0))::bigint AS gap
 FROM public.team_budget_baseline_2026 b
-CROSS JOIN merge_stub_cfg c
 LEFT JOIN (
   SELECT i.unit, i.team,
     round(sum(
@@ -25,11 +21,12 @@ LEFT JOIN (
   WHERE i.deleted_at IS NULL
   GROUP BY i.unit, i.team
 ) t ON t.unit = b.unit AND t.team = b.team
-WHERE b.unit = c.merge_unit AND b.team = c.merge_team;
+WHERE b.unit = 'Tech Platform' AND b.team = 'Process Core Team';
 
--- Тот же алгоритм, что budget_2026_redistribute_all_teams_by_effort.sql, одна команда:
 DO $$
 DECLARE
+  cfg_unit text := 'Tech Platform';
+  cfg_team text := 'Process Core Team';
   tr record;
   ir record;
   stub_id uuid;
@@ -46,11 +43,10 @@ BEGIN
   SELECT b.unit, b.team, b.rub_all::numeric, b.q1::numeric, b.q2::numeric, b.q3::numeric, b.q4::numeric
   INTO tr
   FROM public.team_budget_baseline_2026 b
-  CROSS JOIN merge_stub_cfg c
-  WHERE b.unit = c.merge_unit AND b.team = c.merge_team;
+  WHERE b.unit = cfg_unit AND b.team = cfg_team;
 
   IF tr IS NULL THEN
-    RAISE EXCEPTION 'Нет baseline для команды из merge_stub_cfg';
+    RAISE EXCEPTION 'Нет baseline для % / %', cfg_unit, cfg_team;
   END IF;
 
   team_rub_all := tr.rub_all;
@@ -115,6 +111,8 @@ BEGIN
       coalesce(qd -> '2026-Q4', '{}'::jsonb) || jsonb_build_object('cost', greatest(0, q4_cost), 'otherCosts', 0, 'effortCoefficient', 0, 'costFinanceConfirmed', true), true);
     UPDATE public.initiatives SET quarterly_data = qd, updated_at = timezone('utc'::text, now()) WHERE id = stub_id;
   END IF;
+
+  RAISE NOTICE 'redistribute_one_team: % / % dust=%', cfg_unit, cfg_team, dust;
 END $$;
 
 -- После
@@ -122,7 +120,6 @@ SELECT b.unit, b.team, b.rub_all AS baseline,
   coalesce(t.live, 0)::bigint AS live,
   (b.rub_all - coalesce(t.live, 0))::bigint AS gap
 FROM public.team_budget_baseline_2026 b
-CROSS JOIN merge_stub_cfg c
 LEFT JOIN (
   SELECT i.unit, i.team,
     round(sum(
@@ -135,7 +132,7 @@ LEFT JOIN (
   WHERE i.deleted_at IS NULL
   GROUP BY i.unit, i.team
 ) t ON t.unit = b.unit AND t.team = b.team
-WHERE b.unit = c.merge_unit AND b.team = c.merge_team;
+WHERE b.unit = 'Tech Platform' AND b.team = 'Process Core Team';
 
 ROLLBACK;
 -- COMMIT;

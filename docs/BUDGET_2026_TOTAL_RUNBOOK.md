@@ -109,12 +109,13 @@ Apply: `scripts/sql/merge_duplicate_team_stubs_apply.sql` (`dry_run := false`)
 
 ---
 
-## Поведение приложения (после push `0c8e188`, доработка delete ≥ следующий коммит)
+## Поведение приложения (delete-safe, deploy после fix hub+delete)
 
 | Действие | БД |
 |----------|-----|
-| Удалить инициативу в админке | soft-delete; **снимок Tq до zero** → пересчёт команды по baseline + %; стаб создаётся при необходимости; доводка до `rub_all` |
-| Сохранить % в Quick Flow | `buildQuarterlyDataFromPreview` → cost по Tq команды |
+| Удалить инициативу | soft-delete → redistribute; cost строки не обнуляем отдельно |
+| Сохранить Hub с удалениями | delete → `rowsAfterSimulatedDeletes` для preview cost |
+| Quick Flow / % | `buildQuarterlyDataFromPreview` = `buildQuarterlyCostsForTeam` |
 
 **Если удалили и тотал упал:**
 
