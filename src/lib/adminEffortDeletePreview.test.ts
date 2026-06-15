@@ -30,7 +30,7 @@ function row(
 }
 
 describe('rowsAfterSimulatedDeletes', () => {
-  it('moves deleted row cost onto stub and keeps team total in treemap preview', () => {
+  it('keeps team total and puts unreassigned share on stub when remaining rows have no effort', () => {
     const baseline = [
       row('stub', 'Стоимость команды T', 8_000_000, 0, true),
       row('a', 'A', 2_000_000, 0),
@@ -38,13 +38,13 @@ describe('rowsAfterSimulatedDeletes', () => {
     ];
     const current = [baseline[0], baseline[2]];
     const qs = ['2026-Q1'];
-    const beforeTotal = teamPeriodCostSum(baseline, qs[0]);
+    const beforeTotal = teamPeriodCostSum(baseline, qs);
     const afterRows = rowsAfterSimulatedDeletes(baseline, current, qs);
-    const afterTotal = teamPeriodCostSum(afterRows, qs[0]);
+    const afterTotal = teamPeriodCostSum(afterRows, qs);
     expect(afterTotal).toBe(beforeTotal);
 
     const stub = afterRows.find((r) => r.isTimelineStub);
-    expect(stub?.quarterlyData['2026-Q1']?.cost).toBe(9_000_000);
+    expect(stub?.quarterlyData['2026-Q1']?.cost).toBe(11_000_000);
 
     const beforeModel = buildEffortTreemapPreviewModel(baseline, qs);
     const afterModel = buildEffortTreemapPreviewModel(afterRows, qs, {

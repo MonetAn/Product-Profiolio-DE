@@ -18,7 +18,10 @@ import {
 } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
-import { transferInitiativeBudgetToTeamStub } from '@/lib/transferInitiativeBudgetToTeamStub';
+import {
+  redistributeTeamCosts2026InDb,
+  zeroInitiative2026BudgetInDb,
+} from '@/lib/redistributeTeamCosts2026';
 import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
 
@@ -248,14 +251,32 @@ export function useInitiativeMutations() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await transferInitiativeBudgetToTeamStub(id);
+      const { data: row, error: readErr } = await supabase
+        .from('initiatives')
+        .select('id, unit, team, is_timeline_stub')
+        .eq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (readErr) throw readErr;
+
+      const unit = (row?.unit ?? '').trim();
+      const team = (row?.team ?? '').trim();
+      const isStub = Boolean(row?.is_timeline_stub);
+
+      if (row && !isStub) {
+        await zeroInitiative2026BudgetInDb(id);
+      }
+
       const { error } = await supabase
         .from('initiatives')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id)
-        // Не запрашивать строку после PATCH: иначе PostgREST может проверить SELECT на new row с deleted_at.
         .setHeader('Prefer', 'return=minimal');
       if (error) throw error;
+
+      if (!isStub && unit && team) {
+        await redistributeTeamCosts2026InDb(unit, team);
+      }
     },
     onMutate: async (id) => {
       setSyncStatus('saving');
@@ -481,10 +502,17 @@ export function useInitiativeMutations() {
 
       const prevQ = currentRow.quarterlyData[quarter] || createEmptyQuarterData();
       if (valuesEqual(prevQ[field], value)) return;
-      const nextQuarter =
+      let nextQuarter: AdminQuarterData =
         field === 'costFinanceConfirmed'
           ? { ...prevQ, [field]: value as boolean }
           : { ...prevQ, [field]: value, costFinanceConfirmed: true };
+      if (
+        field === 'revenueRub' &&
+        (value === undefined || value === 0 || value === null)
+      ) {
+        const { revenueRub: _removed, ...rest } = nextQuarter;
+        nextQuarter = rest as AdminQuarterData;
+      }
       const updatedQuarterlyData = {
         ...currentRow.quarterlyData,
         [quarter]: nextQuarter,

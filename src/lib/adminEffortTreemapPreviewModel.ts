@@ -4,6 +4,11 @@ import {
   getStubResidualLabel,
   isAllocationRoundingDustRub,
 } from '@/lib/adminDataManager';
+import {
+  buildQuarterlyCostsForTeam,
+  frozenTeamQuarterTotals,
+} from '@/lib/redistributeTeamCosts2026';
+import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import type { TreeNode } from '@/lib/dataManager';
 import { getUnitColor, mixHexWithNeutralGray } from '@/lib/dataManager';
 import { compareQuarters } from '@/lib/quarterUtils';
@@ -35,30 +40,15 @@ function createPreviewStubRow(unit: string, team: string): AdminDataRow {
   };
 }
 
-/** Сколько «перенести» с удаляемой строки в превью (cost или доля по % от Tq до удаления). */
-function previewTransferAddForQuarter(
-  delRow: AdminDataRow,
-  quarter: string,
-  teamBeforeDelete: AdminDataRow[]
-): number {
-  const qd = delRow.quarterlyData[quarter] ?? createEmptyQuarterData();
-  const fromCost = Math.max(0, toNum(qd.cost) + toNum(qd.otherCosts));
-  if (fromCost > 0) return fromCost;
-  const eff = Math.max(0, Math.min(100, toNum(qd.effortCoefficient)));
-  if (eff <= 0) return 0;
-  const Tq = teamQuarterCostSum(teamBeforeDelete, quarter);
-  if (Tq <= 0) return 0;
-  return Math.max(0, Math.round((eff / 100) * Tq) - toNum(qd.otherCosts));
-}
-
 /**
- * Черновик удаления в хабе/quick flow: бюджет убранных строк переносится на стаб «Не распределено»
- * только для UI (до «Сохранить»). В БД — отдельно через transferInitiativeBudgetToTeamStub.
+ * Черновик удаления: пересчёт cost по % усилия при фиксированном Tq команды (снимок «до»).
+ * В БД — redistributeTeamCosts2026InDb после soft-delete.
  */
 export function rowsAfterSimulatedDeletes(
   baselineRows: AdminDataRow[],
   currentRows: AdminDataRow[],
-  previewQuarters: string[]
+  previewQuarters: string[],
+  options?: { baseline?: TeamBaselineRow | null }
 ): AdminDataRow[] {
   const qs = previewQuarters.filter(Boolean);
   if (qs.length === 0 || baselineRows.length === 0) return currentRows;
@@ -67,34 +57,31 @@ export function rowsAfterSimulatedDeletes(
   const deleted = baselineRows.filter((r) => !currentIds.has(r.id) && !r.isTimelineStub);
   if (deleted.length === 0) return currentRows;
 
-  const rows = structuredClone(currentRows);
+  let rows = structuredClone(currentRows);
   const unit = rows.find((r) => r.unit)?.unit ?? baselineRows.find((r) => r.unit)?.unit ?? '';
   const team = rows.find((r) => r.team)?.team ?? baselineRows.find((r) => r.team)?.team ?? '';
 
-  let stubIdx = rows.findIndex((r) => r.isTimelineStub);
-  if (stubIdx < 0) {
-    rows.push(createPreviewStubRow(unit, team));
-    stubIdx = rows.length - 1;
+  if (!rows.some((r) => r.isTimelineStub)) {
+    rows = [...rows, createPreviewStubRow(unit, team)];
   }
 
-  const stub = rows[stubIdx];
-  const quarterlyData = structuredClone(stub.quarterlyData);
+  const fixedTq = frozenTeamQuarterTotals(baselineRows, qs);
+  const costsById = buildQuarterlyCostsForTeam(rows, qs, {
+    baseline: options?.baseline ?? null,
+    fixedTqByQuarter: fixedTq,
+  });
 
-  for (const del of deleted) {
+  return rows.map((row) => {
+    const patch = costsById.get(row.id);
+    if (!patch) return row;
+    const quarterlyData = { ...row.quarterlyData };
     for (const q of qs) {
-      const add = previewTransferAddForQuarter(del, q, baselineRows);
-      if (add <= 0) continue;
-      const cur = quarterlyData[q] ?? createEmptyQuarterData();
-      quarterlyData[q] = {
-        ...cur,
-        cost: Math.max(0, toNum(cur.cost) + add),
-        effortCoefficient: 0,
-      };
+      if (patch[q]) {
+        quarterlyData[q] = { ...(quarterlyData[q] ?? createEmptyQuarterData()), ...patch[q] };
+      }
     }
-  }
-
-  rows[stubIdx] = { ...stub, quarterlyData };
-  return rows;
+    return { ...row, quarterlyData };
+  });
 }
 
 export type EffortTreemapPreviewOptions = {
