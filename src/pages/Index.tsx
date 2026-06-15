@@ -120,6 +120,7 @@ const Index = () => {
   const { dynamicForAll } = useTreemapLayoutConfig();
   const [personalDynamicTreemap, setPersonalDynamicTreemap] = useState(readPersonalDynamicTreemap);
   const effectiveShowMoney = canViewMoney && showMoney;
+  const showInitiativePayback = hasEarlyAccess && effectiveShowMoney;
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
   const [clickedNodeName, setClickedNodeName] = useState<string | null>(null);
 
@@ -1207,6 +1208,7 @@ const Index = () => {
             resetZoomTrigger={resetZoomTrigger}
             initialFocusedPath={treemapFocusedPath}
             showMoney={effectiveShowMoney}
+            showInitiativePayback={showInitiativePayback}
             showPreliminaryWarnings={false}
             skipExitAnimation={treemapSkipExitAnimation}
             useStaticLayout={useStaticTreemapLayout}
@@ -1296,6 +1298,7 @@ const Index = () => {
             highlightedInitiative={highlightedInitiative}
             onResetFilters={resetFilters}
             showMoney={effectiveShowMoney}
+            showInitiativePayback={showInitiativePayback}
             includePreliminaryData={false}
             costSortOrder={costSortOrder}
             costFilterMin={costFilterMin}

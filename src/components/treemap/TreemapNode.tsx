@@ -5,6 +5,7 @@ import { motion, AnimatePresence, usePresence } from 'framer-motion';
 import { memo, type CSSProperties } from 'react';
 import { TreemapLayoutNode, AnimationType, getEffectiveDuration, TREEMAP_EASE, TEXT_OPACITY_TRANSITION_MS } from './types';
 import { formatBudget } from '@/lib/dataManager';
+import { InitiativePaybackLabel } from '@/components/InitiativePaybackLabel';
 
 // Calculate relative luminance for WCAG contrast
 function getLuminance(hex: string): number {
@@ -55,6 +56,8 @@ interface TreemapNodeProps {
   visibleNodeCount?: number;
   /** If false, only percentage is shown on leaf cells (no money) */
   showMoney?: boolean;
+  showInitiativePayback?: boolean;
+  selectedQuarters?: string[];
   /** When true (e.g. prefers-reduced-motion), use short fixed duration for enter/exit */
   reduceMotion?: boolean;
   /** Админ-превью: мгновенный unmount без exit — нет просветов удалённых листьев */
@@ -70,9 +73,11 @@ interface TreemapNodeContentProps {
   totalValue?: number;
   selectedUnitsCount?: number;
   showMoney?: boolean;
+  showInitiativePayback?: boolean;
+  selectedQuarters?: string[];
 }
 
-const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue = 0, selectedUnitsCount = 0, showMoney = true }: TreemapNodeContentProps) => {
+const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue = 0, selectedUnitsCount = 0, showMoney = true, showInitiativePayback = false, selectedQuarters = [] }: TreemapNodeContentProps) => {
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   const hasChildren = node.children && node.children.length > 0;
@@ -128,6 +133,15 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass, totalValue =
                 {formatBudget(node.value)}
               </div>
             )}
+            {showInitiativePayback && node.isInitiative && (
+              <InitiativePaybackLabel
+                quarterlyData={node.quarterlyData ?? node.data.quarterlyData}
+                selectedQuarters={selectedQuarters}
+                size={isSmall ? 'xs' : 'sm'}
+                variant="tile"
+                className="mt-0.5"
+              />
+            )}
           </>
         )}
       </div>
@@ -155,6 +169,8 @@ const TreemapNode = memo(({
   selectedUnitsCount = 0,
   visibleNodeCount,
   showMoney = true,
+  showInitiativePayback = false,
+  selectedQuarters = [],
   reduceMotion = false,
   skipExitAnimation = false,
   nodeCursor = 'pointer',
@@ -238,6 +254,8 @@ const TreemapNode = memo(({
       totalValue={totalValue}
       selectedUnitsCount={selectedUnitsCount}
       showMoney={showMoney}
+      showInitiativePayback={showInitiativePayback}
+      selectedQuarters={selectedQuarters}
     />
   );
 
@@ -301,6 +319,8 @@ const TreemapNode = memo(({
           totalValue={totalValue}
           selectedUnitsCount={selectedUnitsCount}
           showMoney={showMoney}
+          showInitiativePayback={showInitiativePayback}
+          selectedQuarters={selectedQuarters}
           nodeCursor={nodeCursor}
         />
       ))}

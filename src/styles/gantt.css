@@ -246,8 +246,15 @@
 
 .gantt-row-costs {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
   margin-top: 2px;
+}
+
+.gantt-payback-label {
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .gantt-cost-total {

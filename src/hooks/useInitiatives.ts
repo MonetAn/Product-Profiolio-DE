@@ -55,6 +55,8 @@ export function parseAdminQuarterFromJson(
     comment: typeof qData.comment === 'string' ? qData.comment : '',
     effortCoefficient: typeof qData.effortCoefficient === 'number' ? qData.effortCoefficient : 0,
     costFinanceConfirmed: cfc === false ? false : true,
+    revenueRub:
+      typeof qData.revenueRub === 'number' && qData.revenueRub > 0 ? qData.revenueRub : undefined,
   };
 }
 
@@ -115,6 +117,9 @@ function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
     };
     if (value.costFinanceConfirmed === false) {
       row.costFinanceConfirmed = false;
+    }
+    if (typeof value.revenueRub === 'number' && value.revenueRub > 0) {
+      row.revenueRub = value.revenueRub;
     }
     result[key] = row;
   });

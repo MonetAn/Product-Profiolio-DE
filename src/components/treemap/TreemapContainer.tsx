@@ -50,6 +50,8 @@ interface TreemapContainerProps {
   showDistributionInTooltip?: boolean;
   /** If false, only percentages are shown on cells (no money) */
   showMoney?: boolean;
+  /** Early access: коэффициент окупаемости на листьях-инициативах */
+  showInitiativePayback?: boolean;
   /** When this key changes (e.g. support/off-track/stub filter), use same animation as filter toggle (smooth rebuild) */
   contentKey?: string;
   /** Quick flow treemap: упрощённый тултип листа (описание + документация) */
@@ -98,6 +100,7 @@ const TreemapContainer = ({
   viewKey,
   showDistributionInTooltip = true,
   showMoney = true,
+  showInitiativePayback = false,
   contentKey,
   tooltipInitiativeVariant = 'default',
   treemapQuarterCatalog,
@@ -592,6 +595,8 @@ const TreemapContainer = ({
         totalValue={totalValue}
         showDistributionInTooltip={showDistributionInTooltip}
         showMoney={showMoney}
+        showInitiativePayback={showInitiativePayback}
+        selectedQuarters={selectedQuarters}
         tooltipInitiativeVariant={tooltipInitiativeVariant}
         docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
         showPreliminaryWarnings={showPreliminaryWarnings}
@@ -631,6 +636,8 @@ const TreemapContainer = ({
                 totalValue={totalValue}
                 selectedUnitsCount={selectedUnitsCount}
                 showMoney={showMoney}
+                showInitiativePayback={showInitiativePayback}
+                selectedQuarters={selectedQuarters}
                 nodeCursor={nodeCursor}
               />
             ))}

@@ -31,6 +31,7 @@ interface BudgetTreemapProps {
   initialFocusedPath?: string[];
   viewKey?: string;
   showMoney?: boolean;
+  showInitiativePayback?: boolean;
   /** When support/off-track/stub filter changes, use filter animation (same speed as filter toggles) */
   contentKey?: string;
   /** По умолчанию true (главная страница); для встроенных мини-превью — false */
@@ -65,6 +66,7 @@ const BudgetTreemap = ({
   initialFocusedPath,
   viewKey,
   showMoney = true,
+  showInitiativePayback = false,
   contentKey,
   showUploadButton = true,
   showPreliminaryWarnings = false,
@@ -77,6 +79,7 @@ const BudgetTreemap = ({
     showTeams,
     showInitiatives,
     showMoney,
+    showInitiativePayback,
     onNavigateBack,
     canNavigateBack,
     onInitiativeClick,

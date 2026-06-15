@@ -38,6 +38,8 @@ import { useMarketCountries } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { compareQuarters, isCalendarPastQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
+import { useAccess } from '@/hooks/useAccess';
+import { RubAmountInput } from '@/components/admin/RubAmountInput';
 import { Button } from '@/components/ui/button';
 
 // Required field label component
@@ -160,6 +162,11 @@ const QuarterFields = ({
   const metricFact = useBlurField(qData.metricFact, save('metricFact'), blurCommit);
   const comment = useBlurField(qData.comment, save('comment'), blurCommit);
   const effort = useBlurField(qData.effortCoefficient || 0, save('effortCoefficient'), blurCommit);
+  const saveRevenueRub = (value: number) => {
+    onQuarterDataChange(initiativeId, quarter, 'revenueRub', value > 0 ? value : undefined);
+  };
+  const revenueRub = useBlurField(qData.revenueRub ?? 0, saveRevenueRub, blurCommit);
+  const { hasEarlyAccess } = useAccess();
 
   const totalCost = (qData.cost ?? 0) + qData.otherCosts;
   const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
@@ -238,6 +245,7 @@ const QuarterFields = ({
       metricPlan.value !== (qData.metricPlan ?? '') ||
       metricFact.value !== (qData.metricFact ?? '') ||
       comment.value !== (qData.comment ?? '') ||
+      revenueRub.value !== (qData.revenueRub ?? 0) ||
       draftOnTrack !== qData.onTrack ||
       supportDraft !== committedSupport
     );
@@ -246,10 +254,12 @@ const QuarterFields = ({
     metricPlan.value,
     metricFact.value,
     comment.value,
+    revenueRub.value,
     draftOnTrack,
     qData.metricPlan,
     qData.metricFact,
     qData.comment,
+    qData.revenueRub,
     qData.onTrack,
     supportDraft,
     supportToggleValue,
@@ -272,6 +282,7 @@ const QuarterFields = ({
     metricPlan.commit();
     metricFact.commit();
     comment.commit();
+    revenueRub.commit();
     if (draftOnTrack !== qData.onTrack) {
       onQuarterDataChange(initiativeId, quarter, 'onTrack', draftOnTrack);
     }
@@ -294,6 +305,7 @@ const QuarterFields = ({
     metricPlan,
     metricFact,
     comment,
+    revenueRub,
     draftOnTrack,
     qData.onTrack,
     supportDraft,
@@ -482,6 +494,24 @@ const QuarterFields = ({
                 <p className="mt-3 text-xs text-muted-foreground">
                   Факт метрики заполняется после окончания квартала; для текущего и будущих кварталов поле скрыто.
                 </p>
+              ) : null}
+              {hasEarlyAccess ? (
+                <div className="mt-4 space-y-1.5 border-t border-border/60 pt-4">
+                  <Label className="text-xs text-muted-foreground">
+                    Заработок (₽){' '}
+                    <span className="font-normal text-muted-foreground/80">необязательно</span>
+                  </Label>
+                  <RubAmountInput
+                    value={revenueRub.value}
+                    onChange={revenueRub.onChange}
+                    onBlur={revenueRub.onBlur}
+                    placeholder="Сколько заработала фича за квартал"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Суммируется на дашборде по выбранному периоду; окупаемость считается только по кварталам с
+                    заполненным заработком.
+                  </p>
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -712,6 +742,21 @@ const QuarterFields = ({
             className={`min-h-[120px] resize-y ${requiresMetricFact && !qData.metricFact?.trim() ? 'ring-2 ring-primary/55' : ''}`}
           />
         </div>
+
+        {hasEarlyAccess ? (
+          <div className="space-y-1 col-span-2">
+            <Label className="text-xs text-muted-foreground">
+              Заработок (₽){' '}
+              <span className="font-normal text-muted-foreground/80">необязательно</span>
+            </Label>
+            <RubAmountInput
+              value={revenueRub.value}
+              onChange={revenueRub.onChange}
+              onBlur={revenueRub.onBlur}
+              placeholder="Сколько заработала фича за квартал"
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* Comment */}

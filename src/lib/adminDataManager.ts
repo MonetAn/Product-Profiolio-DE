@@ -37,6 +37,8 @@ export interface AdminQuarterData {
   effortCoefficient: number; // 0-100% effort for this quarter
   /** false — предварительная стоимость (Quick Flow); true/undefined — подтверждено финансами */
   costFinanceConfirmed?: boolean;
+  /** Заработок инициативы за квартал, ₽ (опционально, early access) */
+  revenueRub?: number;
 }
 
 // Available stakeholders (кластеры; IT убран)

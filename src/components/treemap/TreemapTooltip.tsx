@@ -9,6 +9,10 @@ import {
   formatQuarterRange,
   PRELIMINARY_COST_USER_MESSAGE,
 } from '@/lib/dataManager';
+import {
+  computeInitiativePayback,
+  formatPaybackRatio,
+} from '@/lib/initiativePayback';
 import { cn } from '@/lib/utils';
 
 interface TreemapTooltipProps {
@@ -23,6 +27,9 @@ interface TreemapTooltipProps {
   showDistributionInTooltip?: boolean;
   /** If false, hide budget amounts (show only percentages where applicable) */
   showMoney?: boolean;
+  /** Early access: окупаемость инициативы в тултипе */
+  showInitiativePayback?: boolean;
+  selectedQuarters?: string[];
   /** Quick flow: только название, стоимость за период, описание и ссылка на документацию */
   tooltipInitiativeVariant?: 'default' | 'descriptionDocReview';
   /** Для descriptionDocReview: показывать «за выбранный период» у суммы (false — выбран весь каталог кварталов). */
@@ -66,6 +73,8 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
     totalValue,
     showDistributionInTooltip = true,
     showMoney = true,
+    showInitiativePayback = false,
+    selectedQuarters = [],
     tooltipInitiativeVariant = 'default',
     docReviewShowCostPeriodNote = true,
     showPreliminaryWarnings = false,
@@ -211,6 +220,22 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
         if (totalValue > 0) {
           const pct = ((budgetAmount / totalValue) * 100).toFixed(1);
           html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${pct}%</span></div>`;
+        }
+      }
+      if (showInitiativePayback && showMoney && !node.isTimelineStub) {
+        const payback = computeInitiativePayback(
+          node.quarterlyData ?? node.data.quarterlyData,
+          selectedQuarters
+        );
+        if (payback) {
+          const paybackColor = payback.isPaidOff ? '#059669' : '#d97706';
+          if (payback.ratio != null) {
+            html += `<div class="tooltip-row"><span class="tooltip-label">Окупаемость</span><span class="tooltip-value" style="color:${paybackColor};font-weight:600">${formatPaybackRatio(payback.ratio)} · ${payback.isPaidOff ? 'окупилась' : 'не окупилась'}</span></div>`;
+          }
+          html += `<div class="tooltip-row"><span class="tooltip-label">Заработок</span><span class="tooltip-value">${formatBudget(payback.periodRevenue)}</span></div>`;
+          if (payback.periodCost > 0) {
+            html += `<div class="tooltip-row"><span class="tooltip-label">Стоимость (кварталы с данными)</span><span class="tooltip-value">${formatBudget(payback.periodCost)}</span></div>`;
+          }
         }
       }
       const quarterRange = formatQuarterRange(node.data.quarterlyData);

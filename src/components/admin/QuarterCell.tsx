@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/tooltip';
 import { AdminQuarterData } from '@/lib/adminDataManager';
 import { formatBudgetShort } from '@/lib/dataManager';
+import { useAccess } from '@/hooks/useAccess';
+import { RubAmountInput } from '@/components/admin/RubAmountInput';
 
 interface QuarterCellProps {
   quarter: string;
@@ -54,6 +56,8 @@ const QuarterCell = ({
   const [localMetricFact, setLocalMetricFact] = useState(data.metricFact || '');
   const [localOtherCosts, setLocalOtherCosts] = useState(data.otherCosts || 0);
   const [localComment, setLocalComment] = useState(data.comment || '');
+  const [localRevenueRub, setLocalRevenueRub] = useState(data.revenueRub || 0);
+  const { hasEarlyAccess } = useAccess();
 
   // Sync local state when external data changes (e.g. different row)
   useEffect(() => { setLocalEffort(data.effortCoefficient || 0); }, [data.effortCoefficient]);
@@ -61,6 +65,7 @@ const QuarterCell = ({
   useEffect(() => { setLocalMetricFact(data.metricFact || ''); }, [data.metricFact]);
   useEffect(() => { setLocalOtherCosts(data.otherCosts || 0); }, [data.otherCosts]);
   useEffect(() => { setLocalComment(data.comment || ''); }, [data.comment]);
+  useEffect(() => { setLocalRevenueRub(data.revenueRub || 0); }, [data.revenueRub]);
 
   const effortValue = localEffort;
 
@@ -240,6 +245,22 @@ const QuarterCell = ({
                     placeholder="..."
                   />
                 </div>
+
+                {hasEarlyAccess ? (
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Заработок (₽)</span>
+                    <RubAmountInput
+                      value={localRevenueRub}
+                      onChange={setLocalRevenueRub}
+                      onBlur={() =>
+                        onChange('revenueRub', localRevenueRub > 0 ? localRevenueRub : 0)
+                      }
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-7 text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                ) : null}
 
                 {/* Other Costs */}
                 <div className="space-y-1">

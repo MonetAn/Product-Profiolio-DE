@@ -14,6 +14,7 @@ import {
   type PreliminaryQuarterBudgetMap,
   type SupportFilter
 } from '@/lib/dataManager';
+import { InitiativePaybackLabel } from '@/components/InitiativePaybackLabel';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 import { cn } from '@/lib/utils';
 import '@/styles/gantt.css';
@@ -52,6 +53,8 @@ interface GanttViewProps {
   onResetFilters?: () => void;
   /** If false, hide all budget/cost amounts (popups, row costs, cells, legend) */
   showMoney?: boolean;
+  /** Early access: коэффициент окупаемости рядом со стоимостью */
+  showInitiativePayback?: boolean;
   /** Super admin preview mode: учитывать предварительные стоимости */
   includePreliminaryData?: boolean;
   preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
@@ -81,6 +84,7 @@ const GanttView = ({
   highlightedInitiative,
   onResetFilters,
   showMoney = true,
+  showInitiativePayback = false,
   includePreliminaryData = false,
   preliminaryQuarterBudgetMap,
   costSortOrder = 'none',
@@ -599,6 +603,13 @@ const GanttView = ({
             {showPeriodCost && (
               <span className="period-cost">За период: {formatBudget(periodCost)}</span>
             )}
+            {showInitiativePayback && (
+              <InitiativePaybackLabel
+                quarterlyData={row.quarterlyData}
+                selectedQuarters={selectedQuarters}
+                className="gantt-payback-label"
+              />
+            )}
           </div>
         )}
 
@@ -688,6 +699,13 @@ const GanttView = ({
             <div className="gantt-detail-panel-costs">
               <span>Всего: {formatBudget(totalCost)}</span>
               {showPeriodCost && <span className="period-cost">За период: {formatBudget(periodCost)}</span>}
+              {showInitiativePayback && (
+                <InitiativePaybackLabel
+                  quarterlyData={row.quarterlyData}
+                  selectedQuarters={selectedQuarters}
+                  className="gantt-payback-label"
+                />
+              )}
             </div>
           )}
 
@@ -904,6 +922,14 @@ const GanttView = ({
                     <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
                     {showPeriodCost && (
                       <span className="gantt-cost-period">За выбранный период: {formatBudget(periodCost)}</span>
+                    )}
+                    {showInitiativePayback && (
+                      <InitiativePaybackLabel
+                        quarterlyData={row.quarterlyData}
+                        selectedQuarters={selectedQuarters}
+                        size="xs"
+                        className="gantt-payback-label"
+                      />
                     )}
                   </div>
                 )}

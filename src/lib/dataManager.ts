@@ -31,6 +31,8 @@ export interface QuarterData {
   effortCoefficient?: number;
   /** false — предварительная стоимость квартала (например после Quick Flow) */
   costFinanceConfirmed?: boolean;
+  /** Заработок инициативы за квартал, ₽ (опционально) */
+  revenueRub?: number;
 }
 
 export interface RawDataRow {
@@ -190,6 +192,10 @@ export function convertFromDB(
         comment: adminQData.comment || '',
         effortCoefficient: adminQData.effortCoefficient ?? 0,
         ...(adminQData.costFinanceConfirmed === false ? { costFinanceConfirmed: false } : {}),
+        ...(typeof adminQData.revenueRub === 'number' &&
+        adminQData.revenueRub > 0
+          ? { revenueRub: adminQData.revenueRub }
+          : {}),
       };
     });
 

@@ -51,6 +51,8 @@ export interface StaticTreemapContainerProps {
   showDistributionInTooltip?: boolean;
   /** If false, only percentages are shown on cells (no money) */
   showMoney?: boolean;
+  /** Early access: коэффициент окупаемости на листьях-инициативах */
+  showInitiativePayback?: boolean;
   /** When this key changes (e.g. support/off-track/stub filter), use same animation as filter toggle (smooth rebuild) */
   contentKey?: string;
   /** Quick flow treemap: упрощённый тултип листа (описание + документация) */
@@ -128,6 +130,7 @@ const StaticTreemapContainer = ({
   viewKey,
   showDistributionInTooltip = true,
   showMoney = true,
+  showInitiativePayback = false,
   contentKey,
   tooltipInitiativeVariant = 'default',
   treemapQuarterCatalog,
@@ -486,6 +489,8 @@ const StaticTreemapContainer = ({
         totalValue={totalValue}
         showDistributionInTooltip={showDistributionInTooltip}
         showMoney={showMoney}
+        showInitiativePayback={showInitiativePayback}
+        selectedQuarters={selectedQuarters}
         tooltipInitiativeVariant={tooltipInitiativeVariant}
         docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
         showPreliminaryWarnings={showPreliminaryWarnings}
@@ -518,6 +523,8 @@ const StaticTreemapContainer = ({
               renderDepth={renderDepth}
               totalValue={totalValue}
               showMoney={showMoney}
+              showInitiativePayback={showInitiativePayback}
+              selectedQuarters={selectedQuarters}
               nodeCursor={nodeCursor}
               linkDragOverId={linkDragOverId}
               onInitiativeLinkDragStart={onInitiativeLinkDragStart}

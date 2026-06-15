@@ -3,6 +3,7 @@
 import { memo, type CSSProperties } from 'react';
 import type { TreemapLayoutNode } from './types';
 import { formatBudget } from '@/lib/dataManager';
+import { InitiativePaybackLabel } from '@/components/InitiativePaybackLabel';
 import { getTreemapUnitIcon } from '@/lib/treemapUnitIcons';
 import { SemanticUnitNodeContent } from './SemanticUnitNodeContent';
 
@@ -36,6 +37,8 @@ interface StaticTreemapNodeContentProps {
   textColorClass: string;
   totalValue?: number;
   showMoney?: boolean;
+  showInitiativePayback?: boolean;
+  selectedQuarters?: string[];
   focusedPath: string[];
 }
 
@@ -45,6 +48,8 @@ const StaticTreemapNodeContent = memo(({
   textColorClass,
   totalValue = 0,
   showMoney = true,
+  showInitiativePayback = false,
+  selectedQuarters = [],
   focusedPath,
 }: StaticTreemapNodeContentProps) => {
   const isTiny = node.width < 60 || node.height < 40;
@@ -107,6 +112,8 @@ const StaticTreemapNodeContent = memo(({
       showValue={showValue}
       totalValue={totalValue}
       showMoney={showMoney}
+      showInitiativePayback={showInitiativePayback}
+      selectedQuarters={selectedQuarters}
       node={node}
     />
   );
@@ -129,6 +136,8 @@ function LeafCellContent({
   showValue,
   totalValue,
   showMoney,
+  showInitiativePayback,
+  selectedQuarters,
   node,
 }: {
   textColorClass: string;
@@ -138,6 +147,8 @@ function LeafCellContent({
   showValue: boolean;
   totalValue: number;
   showMoney: boolean;
+  showInitiativePayback: boolean;
+  selectedQuarters: string[];
   node: TreemapLayoutNode;
 }) {
   const shadow = textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none';
@@ -173,6 +184,19 @@ function LeafCellContent({
             {formatBudget(moneyLabel)}
           </div>
         )}
+        {showValue &&
+          showInitiativePayback &&
+          node.isInitiative &&
+          node.height > 40 &&
+          !isTiny && (
+            <InitiativePaybackLabel
+              quarterlyData={node.quarterlyData ?? node.data.quarterlyData}
+              selectedQuarters={selectedQuarters}
+              size={isSmall ? 'xs' : 'sm'}
+              variant="tile"
+              className="mt-0.5"
+            />
+          )}
       </div>
     </div>
   );
@@ -191,6 +215,8 @@ interface StaticTreemapNodeProps {
   renderDepth?: number;
   totalValue?: number;
   showMoney?: boolean;
+  showInitiativePayback?: boolean;
+  selectedQuarters?: string[];
   nodeCursor?: CSSProperties['cursor'];
   /** Режим «Объединение»: перетаскивание листьев-инициатив для линковки. */
   linkDragOverId?: string | null;
@@ -214,6 +240,8 @@ const StaticTreemapNode = memo(({
   renderDepth = 3,
   totalValue = 0,
   showMoney = true,
+  showInitiativePayback = false,
+  selectedQuarters = [],
   nodeCursor = 'pointer',
   linkDragOverId = null,
   onInitiativeLinkDragStart,
@@ -354,6 +382,8 @@ const StaticTreemapNode = memo(({
         textColorClass={textColorClass}
         totalValue={totalValue}
         showMoney={showMoney}
+        showInitiativePayback={showInitiativePayback}
+        selectedQuarters={selectedQuarters}
         focusedPath={focusedPath}
       />
       {shouldRenderChildren && showChildren && node.children?.map((child) => (
@@ -371,6 +401,8 @@ const StaticTreemapNode = memo(({
           renderDepth={renderDepth}
           totalValue={totalValue}
           showMoney={showMoney}
+          showInitiativePayback={showInitiativePayback}
+          selectedQuarters={selectedQuarters}
           nodeCursor={nodeCursor}
           linkDragOverId={linkDragOverId}
           onInitiativeLinkDragStart={onInitiativeLinkDragStart}
