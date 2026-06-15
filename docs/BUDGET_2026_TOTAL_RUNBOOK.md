@@ -109,14 +109,20 @@ Apply: `scripts/sql/merge_duplicate_team_stubs_apply.sql` (`dry_run := false`)
 
 ---
 
-## Поведение приложения (после push `0c8e188`)
+## Поведение приложения (после push `0c8e188`, доработка delete ≥ следующий коммит)
 
 | Действие | БД |
 |----------|-----|
-| Удалить инициативу в админке | soft-delete (`deleted_at`); cost обнуляется у строки; **вся команда** → `redistributeTeamCosts2026InDb` |
+| Удалить инициативу в админке | soft-delete; **снимок Tq до zero** → пересчёт команды по baseline + %; стаб создаётся при необходимости; доводка до `rub_all` |
 | Сохранить % в Quick Flow | `buildQuarterlyDataFromPreview` → cost по Tq команды |
 
-Локальный тест: `npm run dev` → удалить инициативу с cost → тотал портфеля **не должен упасть**.
+**Если удалили и тотал упал:**
+
+1. Старый фронт без fix (не задеплоен / localhost без pull) — перераспределения не было.
+2. Fix v1 без стaba / без frozen Tq — остаток % удалённой строки «пропал».
+3. **Восстановить:** `scripts/sql/redistribute_one_team_by_effort.sql` (unit/team) или полный `budget_2026_redistribute_all_teams_by_effort.sql` → COMMIT.
+
+Локальный тест: `git pull` → `npm run dev` → удалить тестовую инициативу → тотал команды и портфеля **не падает**.
 
 ---
 
@@ -150,7 +156,8 @@ WHERE deleted_at IS NULL AND NOT is_timeline_stub
 |--------|------|
 | Runbook (этот файл) | `docs/BUDGET_2026_TOTAL_RUNBOOK.md` |
 | Диагностика gap | `scripts/sql/diag_gap_2111_detail.sql` |
-| Fix: % усилия + baseline | `scripts/sql/budget_2026_redistribute_all_teams_by_effort.sql` |
+| Fix: одна команда после delete | `scripts/sql/redistribute_one_team_by_effort.sql` |
+| Fix: все команды (% + baseline) | `scripts/sql/budget_2026_redistribute_all_teams_by_effort.sql` |
 | Fix: масштаб до якоря | `scripts/sql/budget_2026_reconcile_to_list1_anchor.sql` |
 | Delete → save total (код) | `src/lib/redistributeTeamCosts2026.ts` |
 | Delete mutation | `src/hooks/useInitiativeMutations.ts` |

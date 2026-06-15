@@ -277,7 +277,7 @@ async function zeroInitiative2026Costs(initiativeId: string): Promise<void> {
   if (error) throw error;
 }
 
-async function findOrCreateTeamStub(unit: string, team: string): Promise<string> {
+export async function findOrCreateTeamStub(unit: string, team: string): Promise<string> {
   const { data: stubs, error } = await supabase
     .from('initiatives')
     .select('id, initiative, created_at')

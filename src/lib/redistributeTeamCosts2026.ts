@@ -13,11 +13,21 @@ import {
   teamBaselineKey,
 } from '@/lib/budgetTruth2026';
 import { compareQuarters } from '@/lib/quarterUtils';
+import { findOrCreateTeamStub } from '@/lib/transferInitiativeBudgetToTeamStub';
 
 const Y2026_QUARTERS = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'] as const;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
+
+function toNum(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
 
 function effortInQuarter(row: AdminDataRow, quarter: string): number {
   const qd = row.quarterlyData[quarter] ?? createEmptyQuarterData();
@@ -68,12 +78,12 @@ export function buildQuarterlyCostsForTeam(
   const stubIds = teamRows.filter((r) => r.isTimelineStub).map((r) => r.id);
 
   const resolveTq = (q: string): number => {
-    const fixed = options?.fixedTqByQuarter?.get(q);
-    if (fixed !== undefined && fixed > 0) return fixed;
     if (options?.baseline) {
       const bt = baselineTq(options.baseline, q);
       if (bt > 0) return bt;
     }
+    const fixed = options?.fixedTqByQuarter?.get(q);
+    if (fixed !== undefined && fixed > 0) return fixed;
     return teamQuarterCostSum(teamRows, q);
   };
 
@@ -225,6 +235,121 @@ async function syncTeamSplitFromQuarterly(unit: string, team: string): Promise<v
   }
 }
 
+/** Снимок Tq команды из БД (до удаления — вызывать до zero/soft-delete). */
+export async function frozenTeamTotalsForTeam(
+  unit: string,
+  team: string
+): Promise<Map<string, number>> {
+  const rows = await fetchLiveTeamRows(unit, team);
+  return frozenTeamQuarterTotals(rows, [...Y2026_QUARTERS]);
+}
+
+export type RedistributeTeamOptions = {
+  /** Снимок Tq по кварталам до удаления (если baseline нет или q=0). */
+  frozenTqByQuarter?: ReadonlyMap<string, number>;
+};
+
+async function teamYearCostLive(unit: string, team: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('initiatives')
+    .select('quarterly_data')
+    .eq('unit', unit)
+    .eq('team', team)
+    .is('deleted_at', null);
+  if (error) throw error;
+  let sum = 0;
+  for (const raw of data ?? []) {
+    const qd = quarterlyJsonToAdminRecord(raw.quarterly_data);
+    for (const q of Y2026_QUARTERS) {
+      sum += toNum(qd[q]?.cost) + toNum(qd[q]?.otherCosts);
+    }
+  }
+  return Math.round(sum);
+}
+
+function resolveTeamYearTarget(
+  baseline: TeamBaselineRow | null,
+  frozenTqByQuarter?: ReadonlyMap<string, number>
+): number {
+  if (baseline && baseline.rubAll > 0) return Math.round(baseline.rubAll);
+  if (frozenTqByQuarter) {
+    let s = 0;
+    for (const q of Y2026_QUARTERS) s += frozenTqByQuarter.get(q) ?? 0;
+    if (s > 0) return Math.round(s);
+  }
+  return 0;
+}
+
+/** Доводка до rub_all (или frozen year): пыль → Q4 стaba / крупнейшая инициатива. */
+async function applyTeamYearDust(
+  unit: string,
+  team: string,
+  targetYearRub: number
+): Promise<void> {
+  if (targetYearRub <= 0) return;
+  const live = await teamYearCostLive(unit, team);
+  const dust = Math.round(targetYearRub) - live;
+  if (dust === 0) return;
+
+  const stubId = await findOrCreateTeamStub(unit, team);
+  const { data: initRow, error: readErr } = await supabase
+    .from('initiatives')
+    .select('quarterly_data')
+    .eq('id', stubId)
+    .single();
+  if (readErr) throw readErr;
+
+  const qd = quarterlyJsonToAdminRecord(initRow?.quarterly_data);
+  const q4 = qd['2026-Q4'] ?? createEmptyQuarterData();
+  qd['2026-Q4'] = {
+    ...q4,
+    cost: Math.max(0, toNum(q4.cost) + dust),
+    effortCoefficient: 0,
+    costFinanceConfirmed: true,
+  };
+
+  const { error } = await supabase
+    .from('initiatives')
+    .update({ quarterly_data: quarterlyDataToJson(qd) as Json })
+    .eq('id', stubId);
+  if (error) throw error;
+
+  const liveAfter = await teamYearCostLive(unit, team);
+  const dust2 = Math.round(targetYearRub) - liveAfter;
+  if (dust2 === 0) return;
+
+  const { data: rows, error: listErr } = await supabase
+    .from('initiatives')
+    .select('id, quarterly_data')
+    .eq('unit', unit)
+    .eq('team', team)
+    .is('deleted_at', null)
+    .eq('is_timeline_stub', false);
+  if (listErr) throw listErr;
+  if (!rows?.length) return;
+
+  const top = [...rows].sort((a, b) => {
+    const sum = (raw: { quarterly_data: unknown }) => {
+      const qx = quarterlyJsonToAdminRecord(raw.quarterly_data as Json);
+      return Y2026_QUARTERS.reduce((s, q) => s + toNum(qx[q]?.cost), 0);
+    };
+    return sum(b) - sum(a);
+  })[0]!;
+
+  const topQd = quarterlyJsonToAdminRecord(top.quarterly_data);
+  const t4 = topQd['2026-Q4'] ?? createEmptyQuarterData();
+  topQd['2026-Q4'] = {
+    ...t4,
+    cost: Math.max(0, toNum(t4.cost) + dust2),
+    costFinanceConfirmed: true,
+  };
+  const { error: upErr } = await supabase
+    .from('initiatives')
+    .update({ quarterly_data: quarterlyDataToJson(topQd) as Json })
+    .eq('id', top.id);
+  if (upErr) throw upErr;
+}
+
 export type RedistributeTeamResult = {
   updatedRowIds: string[];
   usedBaseline: boolean;
@@ -236,15 +361,22 @@ export type RedistributeTeamResult = {
  */
 export async function redistributeTeamCosts2026InDb(
   unit: string,
-  team: string
+  team: string,
+  options?: RedistributeTeamOptions
 ): Promise<RedistributeTeamResult> {
   const baseline = await fetchTeamBaseline(unit, team);
-  const teamRows = await fetchLiveTeamRows(unit, team);
+  let teamRows = await fetchLiveTeamRows(unit, team);
   if (teamRows.length === 0) {
     return { updatedRowIds: [], usedBaseline: Boolean(baseline) };
   }
 
-  const dataById = buildQuarterlyCostsForTeam(teamRows, [...Y2026_QUARTERS], { baseline });
+  if (!teamRows.some((r) => r.isTimelineStub)) {
+    await findOrCreateTeamStub(unit, team);
+    teamRows = await fetchLiveTeamRows(unit, team);
+  }
+
+  const buildOpts = { baseline, fixedTqByQuarter: options?.frozenTqByQuarter };
+  const dataById = buildQuarterlyCostsForTeam(teamRows, [...Y2026_QUARTERS], buildOpts);
   const updatedRowIds: string[] = [];
 
   for (const row of teamRows) {
@@ -258,6 +390,11 @@ export async function redistributeTeamCosts2026InDb(
     updatedRowIds.push(row.id);
   }
 
+  const yearTarget = resolveTeamYearTarget(baseline, options?.frozenTqByQuarter);
+  if (yearTarget > 0) {
+    await applyTeamYearDust(unit, team, yearTarget);
+  }
+
   await syncTeamSplitFromQuarterly(unit, team);
 
   return { updatedRowIds, usedBaseline: Boolean(baseline) };
@@ -269,15 +406,6 @@ export function teamBaselineFromMap(
   baselineByTeam: Map<string, TeamBaselineRow> | undefined
 ): TeamBaselineRow | null {
   return baselineByTeam?.get(teamBaselineKey(unit, team)) ?? null;
-}
-
-function toNum(v: unknown): number {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string') {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
 }
 
 /** Обнулить cost 2026 у удаляемой строки и её split (до soft-delete). */

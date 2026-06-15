@@ -19,6 +19,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
 import {
+  frozenTeamTotalsForTeam,
   redistributeTeamCosts2026InDb,
   zeroInitiative2026BudgetInDb,
 } from '@/lib/redistributeTeamCosts2026';
@@ -263,6 +264,11 @@ export function useInitiativeMutations() {
       const team = (row?.team ?? '').trim();
       const isStub = Boolean(row?.is_timeline_stub);
 
+      let frozenTq: Map<string, number> | undefined;
+      if (row && !isStub && unit && team) {
+        frozenTq = await frozenTeamTotalsForTeam(unit, team);
+      }
+
       if (row && !isStub) {
         await zeroInitiative2026BudgetInDb(id);
       }
@@ -275,7 +281,7 @@ export function useInitiativeMutations() {
       if (error) throw error;
 
       if (!isStub && unit && team) {
-        await redistributeTeamCosts2026InDb(unit, team);
+        await redistributeTeamCosts2026InDb(unit, team, { frozenTqByQuarter: frozenTq });
       }
     },
     onMutate: async (id) => {
