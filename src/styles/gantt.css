@@ -153,6 +153,7 @@
   position: sticky;
   left: 0;
   z-index: 10;
+  min-width: 0;
   padding: 8px 16px;
   display: flex;
   flex-direction: column;
@@ -191,10 +192,13 @@
 .gantt-row-name {
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.35;
   color: hsl(var(--foreground));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   cursor: pointer;
 }
 

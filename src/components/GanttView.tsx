@@ -885,6 +885,7 @@ const GanttView = ({
             >
               <div
                 className="gantt-row-label gantt-row-label-clickable"
+                style={{ zIndex: 10 + idx }}
                 onClick={(e) => handleNameClick(e, row)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
