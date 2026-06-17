@@ -6,6 +6,8 @@ import {
   calculateBudget,
   calculateTotalBudget,
   timelineVisiblePeriodCost,
+  formatVisibleBudgetSharePercent,
+  VISIBLE_BUDGET_SHARE_LABEL,
   getInitiativeQuarters,
   formatBudgetShort,
   formatBudget,
@@ -203,6 +205,34 @@ const GanttView = ({
 
     return result;
   }, [rawData, timelineFilterOptions, costSortOrder, costType, selectedQuarters, includePreliminaryData, preliminaryQuarterBudgetMap]);
+
+  const periodCostOpts = useMemo(
+    () => ({ includePreliminaryData, preliminaryQuarterBudgetMap }),
+    [includePreliminaryData, preliminaryQuarterBudgetMap]
+  );
+
+  /** Сумма бюджета за выбранный период по видимым строкам (как в ячейках таймлайна). */
+  const visiblePeriodTotal = useMemo(
+    () =>
+      filteredData.reduce(
+        (sum, row) => sum + timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts),
+        0
+      ),
+    [filteredData, selectedQuarters, periodCostOpts]
+  );
+
+  const visibleSharePercentForRow = useCallback(
+    (row: RawDataRow) =>
+      formatVisibleBudgetSharePercent(
+        timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts),
+        visiblePeriodTotal
+      ),
+    [selectedQuarters, periodCostOpts, visiblePeriodTotal]
+  );
+
+  /** % имеет смысл при сужении охвата (юнит/команда/стейкхолдер), не на общем портфеле. */
+  const showBudgetSharePercent =
+    selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0;
 
   // Scroll to highlighted initiative
   useEffect(() => {
@@ -548,6 +578,7 @@ const GanttView = ({
     });
     const allQuarters = getInitiativeQuarters(row);
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
+    const sharePercent = visibleSharePercentForRow(row);
     const descriptionLong = row.description && row.description.length > 450;
 
     // Dynamic sizing: use measured size or fallback
@@ -602,6 +633,11 @@ const GanttView = ({
             <span>Всего: {formatBudget(totalCost)}</span>
             {showPeriodCost && (
               <span className="period-cost">За период: {formatBudget(periodCost)}</span>
+            )}
+            {showBudgetSharePercent && sharePercent && (
+              <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
+                {sharePercent}
+              </span>
             )}
             {showInitiativePayback && (
               <InitiativePaybackLabel
@@ -664,6 +700,7 @@ const GanttView = ({
     });
     const allQuarters = getInitiativeQuarters(row);
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
+    const sharePercent = visibleSharePercentForRow(row);
 
     const quartersWithData = selectedQuarters.filter((q) => {
       const qData = row.quarterlyData[q];
@@ -699,6 +736,11 @@ const GanttView = ({
             <div className="gantt-detail-panel-costs">
               <span>Всего: {formatBudget(totalCost)}</span>
               {showPeriodCost && <span className="period-cost">За период: {formatBudget(periodCost)}</span>}
+              {showBudgetSharePercent && sharePercent && (
+                <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
+                  {sharePercent}
+                </span>
+              )}
               {showInitiativePayback && (
                 <InitiativePaybackLabel
                   quarterlyData={row.quarterlyData}
@@ -874,6 +916,7 @@ const GanttView = ({
           });
           const allQuarters = getInitiativeQuarters(row);
           const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
+          const sharePercent = visibleSharePercentForRow(row);
           const isHighlighted = highlightedInitiative === row.initiative;
           const isDetailSelected = isDetailPanelOpenForRow(row);
 
@@ -923,6 +966,11 @@ const GanttView = ({
                     <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
                     {showPeriodCost && (
                       <span className="gantt-cost-period">За выбранный период: {formatBudget(periodCost)}</span>
+                    )}
+                    {showBudgetSharePercent && sharePercent && (
+                      <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
+                        {sharePercent}
+                      </span>
                     )}
                     {showInitiativePayback && (
                       <InitiativePaybackLabel

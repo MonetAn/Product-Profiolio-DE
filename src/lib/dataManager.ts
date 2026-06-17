@@ -653,6 +653,15 @@ export function timelineVisiblePeriodCost(
   return sumQuarterlyDataBudgetForQuarters(row, selectedQuarters);
 }
 
+/** Подпись для доли бюджета на таймлайне / в тултипе тремапа. */
+export const VISIBLE_BUDGET_SHARE_LABEL = '% от бюджета выбранного на экране';
+
+/** Доля part от total в процентах (1 знак), как на листьях treemap. */
+export function formatVisibleBudgetSharePercent(part: number, total: number): string | null {
+  if (total <= 0 || part <= 0) return null;
+  return `${((part / total) * 100).toFixed(1)}%`;
+}
+
 /** Есть ли на таймлайне ненулевой бюджет за выбранные кварталы (как в ячейках). */
 export function hasTimelineVisibleBudgetInPeriod(
   row: RawDataRow,
