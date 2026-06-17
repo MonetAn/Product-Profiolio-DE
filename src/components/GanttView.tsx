@@ -3,7 +3,6 @@ import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, Pencil,
 import { Button } from '@/components/ui/button';
 import {
   RawDataRow,
-  calculateBudget,
   calculateTotalBudget,
   timelineVisiblePeriodCost,
   formatVisibleBudgetSharePercent,
@@ -572,10 +571,7 @@ const GanttView = ({
 
     const { row, x, y, pinned } = namePopup;
     const totalCost = calculateTotalBudget(row);
-    const periodCost = calculateBudget(row, selectedQuarters, {
-      includePreliminaryData,
-      preliminaryQuarterBudgetMap,
-    });
+    const periodCost = timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts);
     const allQuarters = getInitiativeQuarters(row);
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const sharePercent = visibleSharePercentForRow(row);
@@ -694,10 +690,7 @@ const GanttView = ({
 
     const { row, focusQuarter } = detailPanel;
     const totalCost = calculateTotalBudget(row);
-    const periodCost = calculateBudget(row, selectedQuarters, {
-      includePreliminaryData,
-      preliminaryQuarterBudgetMap,
-    });
+    const periodCost = timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts);
     const allQuarters = getInitiativeQuarters(row);
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const sharePercent = visibleSharePercentForRow(row);
@@ -910,10 +903,7 @@ const GanttView = ({
           <div className="gantt-rows-block">
         {filteredData.map((row, idx) => {
           const totalCost = calculateTotalBudget(row);
-          const periodCost = calculateBudget(row, selectedQuarters, {
-            includePreliminaryData,
-            preliminaryQuarterBudgetMap,
-          });
+          const periodCost = timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts);
           const allQuarters = getInitiativeQuarters(row);
           const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
           const sharePercent = visibleSharePercentForRow(row);
