@@ -105,9 +105,25 @@ function normalizePortfolioRestNode(rest: TreeNode): TreeNode | null {
   };
 }
 
+function normalizeLocationRegionNode(region: TreeNode): TreeNode | null {
+  const units = (region.children ?? [])
+    .map(normalizeUnitNode)
+    .filter((u): u is TreeNode => u != null);
+  if (units.length === 0) return null;
+  const value = sumChildValues(units) || region.value || 0;
+  if (value <= 0) return null;
+  return {
+    ...region,
+    isLocationRegion: true,
+    value,
+    children: units,
+  };
+}
+
 function normalizeRootChild(child: TreeNode): TreeNode | null {
   if (child.isCrossInitiative) return normalizeCrossInitiativeNode(child);
   if (child.isPortfolioRest) return normalizePortfolioRestNode(child);
+  if (child.isLocationRegion) return normalizeLocationRegionNode(child);
   return normalizeUnitNode(child);
 }
 

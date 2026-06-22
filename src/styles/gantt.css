@@ -273,6 +273,62 @@
   font-weight: 500;
 }
 
+.gantt-cost-region {
+  font-size: 11px;
+  color: hsl(var(--chart-2, var(--primary)));
+  font-weight: 600;
+}
+
+.gantt-cost-region-zero {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.gantt-region-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+  width: 100%;
+}
+
+.gantt-region-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.25;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: hsl(var(--muted) / 0.4);
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-region-chip-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gantt-region-chip-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gantt-region-chip-active {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--foreground));
+}
+
+.gantt-region-chip-active .gantt-region-chip-value {
+  color: hsl(var(--chart-2, var(--primary)));
+}
+
+.gantt-region-chip-zero .gantt-region-chip-value {
+  font-weight: 500;
+  opacity: 0.55;
+}
+
 .gantt-cost-share {
   font-size: 11px;
   font-weight: 600;
@@ -757,14 +813,42 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
   color: hsl(var(--destructive));
 }
 
+.gantt-quarter-popup-budget-block {
+  margin-bottom: 12px;
+}
+
 .gantt-quarter-popup-budget {
   font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground));
-  margin-bottom: 12px;
   padding: 8px 12px;
   background: hsl(var(--secondary));
   border-radius: 6px;
+}
+
+.gantt-quarter-popup-budget-block .gantt-quarter-popup-budget {
+  margin-bottom: 0;
+}
+
+.gantt-quarter-popup-profit {
+  background: hsl(var(--primary) / 0.08);
+}
+
+.gantt-quarter-history {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 4px;
+}
+
+.gantt-quarter-history-item {
+  font-size: 11px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+  padding: 2px 0;
+}
+
+.gantt-quarter-history-meta {
+  color: hsl(var(--muted-foreground) / 0.85);
 }
 
 .gantt-quarter-popup-section {
@@ -1174,6 +1258,179 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
   border-top: 1px solid hsl(var(--border));
 }
 
+.gantt-detail-payback-history {
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--secondary) / 0.35);
+}
+
+.gantt-detail-payback-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gantt-detail-payback-history-block {
+  border: 1px solid hsl(var(--border) / 0.8);
+  border-radius: 8px;
+  background: hsl(var(--background));
+  overflow: hidden;
+}
+
+.gantt-detail-payback-history-trigger {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.gantt-detail-payback-history-trigger:hover {
+  background: hsl(var(--muted) / 0.35);
+}
+
+.gantt-detail-payback-history-trigger-expanded {
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+}
+
+.gantt-detail-payback-history-trigger-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-detail-payback-history-trigger-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gantt-detail-payback-history-totals {
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-detail-payback-history-totals strong {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+.gantt-detail-payback-history-totals-sep {
+  margin: 0 4px;
+  opacity: 0.55;
+}
+
+.gantt-detail-payback-history-ratio {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 14px;
+}
+
+.gantt-detail-payback-breakdown {
+  padding: 8px 10px 10px 30px;
+  background: hsl(var(--secondary) / 0.25);
+}
+
+.gantt-detail-payback-breakdown-title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-detail-payback-breakdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gantt-detail-payback-breakdown-row {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.gantt-detail-payback-breakdown-q {
+  display: block;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 2px;
+}
+
+.gantt-detail-payback-breakdown-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.gantt-detail-payback-breakdown-values strong {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+.gantt-detail-payback-breakdown-delta {
+  margin: 3px 0 0;
+  font-size: 10px;
+  color: hsl(var(--primary));
+}
+
+.gantt-detail-payback-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.gantt-detail-payback-history-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gantt-detail-payback-history-profit {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-detail-payback-history-live {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: lowercase;
+  color: hsl(var(--primary));
+}
+
+.gantt-detail-payback-history-quarter {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.gantt-payback-revenue-total {
+  white-space: nowrap;
+}
+
 .gantt-detail-panel-quarters > .gantt-detail-panel-label {
   margin-bottom: 10px;
 }
@@ -1227,4 +1484,34 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid hsl(var(--border));
+}
+
+/* Фиксированная панель на странице аллокаций (поверх скролла страницы) */
+.gantt-detail-panel-fixed {
+  position: fixed;
+  top: 3.5rem;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  width: min(400px, 100vw);
+  max-width: 420px;
+  border-left: 1px solid hsl(var(--border));
+  box-shadow: -10px 0 32px hsl(var(--foreground) / 0.07);
+}
+
+/* Алокации: вертикальный скролл страницы, горизонтальный — внутри листа */
+.location-allocation-gantt .gantt-container {
+  height: auto;
+  overflow: visible;
+}
+
+.location-allocation-gantt .gantt-main {
+  overflow: visible;
+}
+
+.location-allocation-gantt .gantt-unified-scroll {
+  flex: none;
+  max-height: none !important;
+  overflow-x: auto;
+  overflow-y: visible;
 }

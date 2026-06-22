@@ -59,6 +59,8 @@ type Props = {
   bulkAddQuarterLabel?: string;
   /** Нельзя менять рынок в строке — только удалить или добавить через «Добавить рынки» (новые строки сверху). */
   lockMarketSelection?: boolean;
+  /** Только ручной ввод % по рынкам: без драйверов и пресетов Global. */
+  hideDrivers?: boolean;
 };
 
 function emptySplit(): GeoCostSplit {
@@ -346,6 +348,7 @@ export function GeoCostSplitEditor({
   hidePercentTotalLine = false,
   bulkAddQuarterLabel,
   lockMarketSelection = false,
+  hideDrivers = false,
 }: Props) {
   const split = value?.entries?.length ? value : emptySplit();
   const totalPct = geoCostSplitPercentsTotal(split.entries);
@@ -440,6 +443,8 @@ export function GeoCostSplitEditor({
       : 'Справочное количество в пресете; проценты в сплите — по долям пресета в % (не из этих штук). Справа — ₽ квартала.';
   }, [activeDriverDef]);
 
+  const driverColumnVisible = !hideDrivers && driverQuantityColumnVisible && Boolean(activeDriverDef);
+
   const commitSplit = useCallback(
     (entries: GeoCostSplitEntry[], options?: { clearDriver?: boolean }) => {
       const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
@@ -448,7 +453,7 @@ export function GeoCostSplitEditor({
         return;
       }
       const driverFields =
-        options?.clearDriver || !value?.driverKey
+        hideDrivers || options?.clearDriver || !value?.driverKey
           ? {}
           : {
               ...(typeof value.driverKey === 'string' && value.driverKey.trim()
@@ -464,7 +469,7 @@ export function GeoCostSplitEditor({
         ...(keepNote ? { note: keepNote } : {}),
       });
     },
-    [onChange, value?.note, value?.driverKey, value?.driverLabel]
+    [hideDrivers, onChange, value?.note, value?.driverKey, value?.driverLabel]
   );
 
   const updateSplitNote = useCallback(
@@ -639,36 +644,42 @@ export function GeoCostSplitEditor({
           <Plus className="h-3.5 w-3.5" />
           Добавить рынки
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={globalRevenuePresetPressed.plusDrinkit ? 'secondary' : 'outline'}
-          className={cn(
-            globalRevenuePresetPressed.plusDrinkit && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
-          )}
-          disabled={disabled || !revenueDriverDef}
-          aria-pressed={globalRevenuePresetPressed.plusDrinkit}
-          onClick={() => applyGlobalRevenuePreset(true)}
-        >
-          Global: Pizza + Drinkit
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={globalRevenuePresetPressed.pizzaOnly ? 'secondary' : 'outline'}
-          className={cn(
-            globalRevenuePresetPressed.pizzaOnly && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
-          )}
-          disabled={disabled || !revenueDriverDef}
-          aria-pressed={globalRevenuePresetPressed.pizzaOnly}
-          onClick={() => applyGlobalRevenuePreset(false)}
-        >
-          Global: Pizza only
-        </Button>
+        {!hideDrivers ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant={globalRevenuePresetPressed.plusDrinkit ? 'secondary' : 'outline'}
+              className={cn(
+                globalRevenuePresetPressed.plusDrinkit && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
+              )}
+              disabled={disabled || !revenueDriverDef}
+              aria-pressed={globalRevenuePresetPressed.plusDrinkit}
+              onClick={() => applyGlobalRevenuePreset(true)}
+            >
+              Global: Pizza + Drinkit
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={globalRevenuePresetPressed.pizzaOnly ? 'secondary' : 'outline'}
+              className={cn(
+                globalRevenuePresetPressed.pizzaOnly && 'border-primary/50 bg-primary/10 shadow-sm ring-1 ring-primary/35'
+              )}
+              disabled={disabled || !revenueDriverDef}
+              aria-pressed={globalRevenuePresetPressed.pizzaOnly}
+              onClick={() => applyGlobalRevenuePreset(false)}
+            >
+              Global: Pizza only
+            </Button>
+          </>
+        ) : null}
       </div>
 
       {split.entries.length > 0 ? (
         <div className="space-y-2">
+          {!hideDrivers ? (
+            <>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-xs text-muted-foreground">По драйверам:</span>
             {GEO_ALLOCATION_DRIVERS.map((d) => {
@@ -757,6 +768,8 @@ export function GeoCostSplitEditor({
               </Collapsible>
             </div>
           ) : null}
+            </>
+          ) : null}
           <Button
             type="button"
             size="sm"
@@ -796,7 +809,7 @@ export function GeoCostSplitEditor({
         <div className="rounded-lg border border-border/70 bg-muted/15">
           <div className="flex items-center gap-2 border-b border-border/60 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             <span className="min-w-0 flex-1">Страна / рынок</span>
-            {driverQuantityColumnVisible && activeDriverDef ? (
+            {driverColumnVisible ? (
               <span
                 className={cn(
                   'flex items-center justify-end pr-0.5 text-violet-600 dark:text-violet-400',
@@ -813,7 +826,7 @@ export function GeoCostSplitEditor({
             >
               %
             </span>
-            <span className="flex w-[5.5rem] shrink-0 items-center justify-end" title="Рубли по стоимости квартала">
+            <span className="flex w-[5.5rem] shrink-0 items-center justify-end" title={hideDrivers ? 'Рубли по стоимости инициативы' : 'Рубли по стоимости квартала'}>
               ₽
             </span>
             <span className="inline-flex w-7 shrink-0 justify-center" aria-hidden>
@@ -827,8 +840,8 @@ export function GeoCostSplitEditor({
                 e.kind === 'cluster' && e.clusterKey === 'Drinkit' && !drinkitRowId;
               const rowLabelRu = labelRuForGeoEntry(e, countries, drinkitRowId);
               const driverQty =
-                driverQuantityColumnVisible && activeDriverDef
-                  ? getDriverQuantityForLabel(activeDriverDef, rowLabelRu)
+                driverColumnVisible
+                  ? getDriverQuantityForLabel(activeDriverDef!, rowLabelRu)
                   : undefined;
               return (
                 <li
@@ -880,7 +893,7 @@ export function GeoCostSplitEditor({
                         </>
                       )}
                     </div>
-                    {driverQuantityColumnVisible && activeDriverDef ? (
+                    {driverColumnVisible ? (
                       <div
                         className={cn(
                           'flex h-9 shrink-0 items-center justify-end rounded-md border border-violet-500/30 bg-violet-500/[0.08] px-1.5 py-0 dark:bg-violet-500/15',
@@ -993,7 +1006,8 @@ export function GeoCostSplitEditor({
           ) : null}
           {!hideFooterCostLine ? (
             <span className="text-muted-foreground">
-              Стоимость квартала: {Math.round(cost).toLocaleString('ru-RU')} ₽
+              {hideDrivers ? 'Стоимость инициативы' : 'Стоимость квартала'}:{' '}
+              {Math.round(cost).toLocaleString('ru-RU')} ₽
             </span>
           ) : null}
         </div>

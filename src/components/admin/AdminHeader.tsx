@@ -8,6 +8,7 @@ import {
   Globe2,
   ShieldAlert,
   Link2,
+  Split,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
@@ -20,6 +21,7 @@ import { AdminBuildStamp } from './AdminBuildStamp';
 
 export type ViewMode =
   | 'initiatives'
+  | 'locationAllocations'
   | 'fillAnalytics'
   | 'people'
   | 'markets'
@@ -84,6 +86,8 @@ const AdminHeader = ({
     return queryString ? `/?${queryString}` : '/';
   }, [searchParams]);
 
+  const locationAllocationsUrl = '/admin/location-allocations';
+
   const marketsUrl = '/admin/markets';
 
   const accessUrl = '/admin/access';
@@ -117,6 +121,15 @@ const AdminHeader = ({
             >
               <ClipboardList className="h-4 w-4" />
               <span className="hidden sm:inline">Заполнение</span>
+            </ToggleGroupItem>
+          </Link>
+          <Link to={locationAllocationsUrl}>
+            <ToggleGroupItem
+              value="locationAllocations"
+              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <Split className="h-4 w-4" />
+              <span className="hidden sm:inline">Алокации</span>
             </ToggleGroupItem>
           </Link>
           {showUnification && (

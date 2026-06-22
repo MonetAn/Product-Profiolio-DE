@@ -40,6 +40,10 @@ import { compareQuarters, isCalendarPastQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
 import { useAccess } from '@/hooks/useAccess';
 import { RubAmountInput } from '@/components/admin/RubAmountInput';
+import {
+  AdminQuarterCostHistory,
+  AdminQuarterMoneyHistory,
+} from '@/components/admin/AdminQuarterValueHistory';
 import { Button } from '@/components/ui/button';
 
 // Required field label component
@@ -498,7 +502,7 @@ const QuarterFields = ({
               {hasEarlyAccess ? (
                 <div className="mt-4 space-y-1.5 border-t border-border/60 pt-4">
                   <Label className="text-xs text-muted-foreground">
-                    Заработок (₽){' '}
+                    Прибыль (₽){' '}
                     <span className="font-normal text-muted-foreground/80">необязательно</span>
                   </Label>
                   <RubAmountInput
@@ -511,6 +515,7 @@ const QuarterFields = ({
                     Суммируется на дашборде по выбранному периоду; окупаемость считается только по кварталам с
                     заполненным заработком.
                   </p>
+                  <AdminQuarterMoneyHistory entries={qData.revenueRubHistory} />
                 </div>
               ) : null}
             </div>
@@ -711,6 +716,10 @@ const QuarterFields = ({
           />
         </div>
 
+        <div className="col-span-2">
+          <AdminQuarterCostHistory entries={qData.costHistory} />
+        </div>
+
         {/* Metric Plan */}
         <div className="space-y-1">
           {requiresMetricPlan ? (
@@ -746,7 +755,7 @@ const QuarterFields = ({
         {hasEarlyAccess ? (
           <div className="space-y-1 col-span-2">
             <Label className="text-xs text-muted-foreground">
-              Заработок (₽){' '}
+              Прибыль (₽){' '}
               <span className="font-normal text-muted-foreground/80">необязательно</span>
             </Label>
             <RubAmountInput
@@ -755,6 +764,7 @@ const QuarterFields = ({
               onBlur={revenueRub.onBlur}
               placeholder="Сколько заработала фича за квартал"
             />
+            <AdminQuarterMoneyHistory entries={qData.revenueRubHistory} />
           </div>
         ) : null}
       </div>

@@ -94,6 +94,8 @@ interface FilterBarProps {
   stakeholderFilterMode?: 'multi' | 'single';
 
   baselineByTeam?: Map<string, TeamBaselineRow>;
+  /** Встроенный режим (админ-страницы): без fixed-позиционирования под хедером */
+  embedded?: boolean;
 }
 
 /** Доли 0–100 для трёх ведёр; сумма всегда 100 при total > 0 (метод наибольших дробных частей). */
@@ -166,6 +168,7 @@ const FilterBar = ({
   sensitiveTreemapToggleVisible = false,
   stakeholderFilterMode = 'multi',
   baselineByTeam,
+  embedded = false,
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -501,7 +504,13 @@ const FilterBar = ({
   };
 
   return (
-    <div className="bg-header border-b border-border fixed top-14 left-0 right-0 z-40">
+    <div
+      className={
+        embedded
+          ? 'bg-header border border-border rounded-t-xl'
+          : 'bg-header border-b border-border fixed top-14 left-0 right-0 z-40'
+      }
+    >
       <div className="px-4 py-2 flex flex-col gap-2">
         {/* Строка 1: период и срез данных */}
         <div className="flex flex-wrap items-center gap-2 min-h-[36px]">

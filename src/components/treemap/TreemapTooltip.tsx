@@ -10,8 +10,7 @@ import {
   PRELIMINARY_COST_USER_MESSAGE,
 } from '@/lib/dataManager';
 import {
-  computeInitiativePayback,
-  formatPaybackRatio,
+  renderInitiativePaybackTooltipHtml,
 } from '@/lib/initiativePayback';
 import { cn } from '@/lib/utils';
 
@@ -133,6 +132,15 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
       html += `<div class="tooltip-status ${node.offTrack ? 'off-track' : 'on-track'}"></div>`;
     }
     html += `</div>`;
+
+    const initiativeQuarterlyData = node.quarterlyData ?? node.data.quarterlyData;
+    const paybackTooltipHtml =
+      showInitiativePayback && showMoney && isInitiative && !node.isTimelineStub
+        ? renderInitiativePaybackTooltipHtml(initiativeQuarterlyData)
+        : '';
+    if (paybackTooltipHtml) {
+      html += paybackTooltipHtml;
+    }
     
     // Unit or Team (or Stakeholder group): show distribution (header + mini-bar + 2 rows)
     if (showDistribution) {
@@ -215,32 +223,14 @@ const TreemapTooltip = memo<TreemapTooltipProps>(
         typeof node.data?.displayBudget === 'number' && node.data.displayBudget > 0
           ? node.data.displayBudget
           : node.value;
-      if (showMoney && !node.isTimelineStub && budgetAmount > 0) {
+      if (showMoney && !node.isTimelineStub && budgetAmount > 0 && !paybackTooltipHtml) {
         html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет за период</span><span class="tooltip-value">${formatBudget(budgetAmount)}</span></div>`;
-        if (totalValue > 0) {
-          const pct = ((budgetAmount / totalValue) * 100).toFixed(1);
-          html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${pct}%</span></div>`;
-        }
       }
-      if (showInitiativePayback && showMoney && !node.isTimelineStub) {
-        const payback = computeInitiativePayback(
-          node.quarterlyData ?? node.data.quarterlyData,
-          selectedQuarters
-        );
-        if (payback) {
-          const paybackColor = payback.isPaidOff ? '#059669' : '#d97706';
-          if (payback.ratio != null) {
-            html += `<div class="tooltip-row"><span class="tooltip-label">Окупаемость</span><span class="tooltip-value" style="color:${paybackColor};font-weight:600">${formatPaybackRatio(payback.ratio)} · ${payback.isPaidOff ? 'окупилась' : 'не окупилась'}</span></div>`;
-          }
-          html += `<div class="tooltip-row"><span class="tooltip-label">Заработок</span><span class="tooltip-value">${formatBudget(payback.periodRevenue)}</span></div>`;
-          if (payback.periodCost > 0) {
-            html += `<div class="tooltip-row"><span class="tooltip-label">Стоимость (кварталы с данными)</span><span class="tooltip-value">${formatBudget(payback.periodCost)}</span></div>`;
-          }
+      if (!paybackTooltipHtml) {
+        const quarterRange = formatQuarterRange(node.data.quarterlyData);
+        if (quarterRange) {
+          html += `<div class="tooltip-quarters">${escapeHtml(quarterRange)}</div>`;
         }
-      }
-      const quarterRange = formatQuarterRange(node.data.quarterlyData);
-      if (quarterRange) {
-        html += `<div class="tooltip-quarters">${escapeHtml(quarterRange)}</div>`;
       }
       
       // Quarter metrics for initiatives (plan/fact last quarter)

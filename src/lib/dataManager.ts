@@ -19,6 +19,8 @@ export {
   isDisplayRoundingDustRub,
 } from './budgetDisplayRub';
 
+import type { QuarterCostHistoryEntry, QuarterMoneyHistoryEntry } from './quarterValueHistory';
+
 // ===== DATA TYPES =====
 export interface QuarterData {
   budget: number;
@@ -31,8 +33,10 @@ export interface QuarterData {
   effortCoefficient?: number;
   /** false — предварительная стоимость квартала (например после Quick Flow) */
   costFinanceConfirmed?: boolean;
-  /** Заработок инициативы за квартал, ₽ (опционально) */
+  /** Прибыль инициативы за квартал, ₽ (опционально) */
   revenueRub?: number;
+  revenueRubHistory?: QuarterMoneyHistoryEntry[];
+  costHistory?: QuarterCostHistoryEntry[];
 }
 
 export interface RawDataRow {
@@ -114,6 +118,8 @@ export interface TreeNode {
   isPortfolioUnit?: boolean;
   /** Блок «Остальное»: инициативы вне кросс-инициатив (юнит → команда → инициатива). */
   isPortfolioRest?: boolean;
+  /** Аллокации по локациям: верхний уровень региона (Domestic / International / Drinkit). */
+  isLocationRegion?: boolean;
   /** Сумма бюджета инициатив юнита, отнесённая в кросс-инициативы (для подсветки плитки). */
   crossAllocatedValue?: number;
 }
@@ -196,6 +202,10 @@ export function convertFromDB(
         adminQData.revenueRub > 0
           ? { revenueRub: adminQData.revenueRub }
           : {}),
+        ...(adminQData.revenueRubHistory?.length
+          ? { revenueRubHistory: adminQData.revenueRubHistory }
+          : {}),
+        ...(adminQData.costHistory?.length ? { costHistory: adminQData.costHistory } : {}),
       };
     });
 

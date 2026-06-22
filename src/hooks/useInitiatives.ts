@@ -8,6 +8,10 @@ import {
   normalizeSupportCascade,
   parseGeoCostSplit,
 } from '@/lib/adminDataManager';
+import {
+  parseCostHistoryFromJson,
+  parseRevenueRubHistoryFromJson,
+} from '@/lib/quarterValueHistory';
 import { Tables, Json } from '@/integrations/supabase/types';
 
 type DBInitiative = Pick<
@@ -57,6 +61,8 @@ export function parseAdminQuarterFromJson(
     costFinanceConfirmed: cfc === false ? false : true,
     revenueRub:
       typeof qData.revenueRub === 'number' && qData.revenueRub > 0 ? qData.revenueRub : undefined,
+    revenueRubHistory: parseRevenueRubHistoryFromJson(qData.revenueRubHistory),
+    costHistory: parseCostHistoryFromJson(qData.costHistory),
   };
 }
 
@@ -120,6 +126,12 @@ function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
     }
     if (typeof value.revenueRub === 'number' && value.revenueRub > 0) {
       row.revenueRub = value.revenueRub;
+    }
+    if (value.revenueRubHistory?.length) {
+      row.revenueRubHistory = value.revenueRubHistory;
+    }
+    if (value.costHistory?.length) {
+      row.costHistory = value.costHistory;
     }
     result[key] = row;
   });

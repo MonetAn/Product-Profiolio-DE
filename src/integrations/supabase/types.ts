@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      initiative_geo_market_feedback_events: {
+        Row: {
+          id: string
+          initiative_id: string
+          cluster_key: string
+          status: string
+          comment: string
+          author_email: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          initiative_id: string
+          cluster_key: string
+          status: string
+          comment?: string
+          author_email: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          initiative_id?: string
+          cluster_key?: string
+          status?: string
+          comment?: string
+          author_email?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "initiative_geo_market_feedback_events_initiative_id_fkey"
+            columns: ["initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       initiative_history: {
         Row: {
           change_type: string
@@ -62,6 +100,7 @@ export type Database = {
           description: string | null
           documentation_link: string | null
           geo_cost_split: Json | null
+          proposed_geo_cost_split: Json | null
           id: string
           initiative: string
           is_timeline_stub: boolean
@@ -79,6 +118,7 @@ export type Database = {
           description?: string | null
           documentation_link?: string | null
           geo_cost_split?: Json | null
+          proposed_geo_cost_split?: Json | null
           id?: string
           initiative: string
           is_timeline_stub?: boolean
@@ -96,6 +136,7 @@ export type Database = {
           description?: string | null
           documentation_link?: string | null
           geo_cost_split?: Json | null
+          proposed_geo_cost_split?: Json | null
           id?: string
           initiative?: string
           is_timeline_stub?: boolean

@@ -1,6 +1,15 @@
 // Статичный тримап (слайдовая раскладка) — отдельно от динамического TreemapContainer.
 
-import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, type CSSProperties } from 'react';
+import {
+  useRef,
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import StaticTreemapNode from './StaticTreemapNode';
 import TreemapTooltip from './TreemapTooltip';
@@ -95,6 +104,11 @@ export interface StaticTreemapContainerProps {
   focusedPath?: string[];
   /** Клик по плитке кросс-инициативы (до зума). */
   onCrossInitiativeClick?: (crossId: string) => void;
+  /** Кастомный тултип вместо TreemapTooltip (например аллокации по регионам). */
+  renderTooltip?: (props: {
+    data: { node: TreemapLayoutNode; position: { x: number; y: number } } | null;
+    totalValue: number;
+  }) => ReactNode;
 }
 
 const StaticTreemapContainer = ({
@@ -150,6 +164,7 @@ const StaticTreemapContainer = ({
   getCrossInitiativeTooltipMembers,
   focusedPath: focusedPathProp,
   onCrossInitiativeClick,
+  renderTooltip,
 }: StaticTreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -300,14 +315,18 @@ const StaticTreemapContainer = ({
     }
     
     // If node is a non-leaf (unit/team/stakeholder), zoom into it
-    const isNonLeaf = node.data.isUnit || node.data.isTeam || node.data.isStakeholder;
+    const isNonLeaf =
+      node.data.isLocationRegion ||
+      node.data.isUnit ||
+      node.data.isTeam ||
+      node.data.isStakeholder;
     
     if (isNonLeaf) {
       if (node.data.isCrossInitiative && node.data.crossInitiativeId) {
         onCrossInitiativeClick?.(node.data.crossInitiativeId);
       }
       if (!disableAutoEnableLevels) {
-        if (node.data.isCrossInitiative) {
+        if (node.data.isCrossInitiative || node.data.isLocationRegion) {
           onAutoEnableUnits?.();
         } else if (node.data.isUnit || node.data.isStakeholder) {
           onAutoEnableTeams?.();
@@ -482,21 +501,25 @@ const StaticTreemapContainer = ({
       </button>
       
       {/* Tooltip */}
-      <TreemapTooltip
-        data={tooltipData}
-        lastQuarter={lastQuarter}
-        selectedUnitsCount={selectedUnitsCount}
-        totalValue={totalValue}
-        showDistributionInTooltip={showDistributionInTooltip}
-        showMoney={showMoney}
-        showInitiativePayback={showInitiativePayback}
-        selectedQuarters={selectedQuarters}
-        tooltipInitiativeVariant={tooltipInitiativeVariant}
-        docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
-        showPreliminaryWarnings={showPreliminaryWarnings}
-        getInitiativeCrossNames={getInitiativeCrossNames}
-        getCrossInitiativeTooltipMembers={getCrossInitiativeTooltipMembers}
-      />
+      {renderTooltip ? (
+        renderTooltip({ data: tooltipData, totalValue })
+      ) : (
+        <TreemapTooltip
+          data={tooltipData}
+          lastQuarter={lastQuarter}
+          selectedUnitsCount={selectedUnitsCount}
+          totalValue={totalValue}
+          showDistributionInTooltip={showDistributionInTooltip}
+          showMoney={showMoney}
+          showInitiativePayback={showInitiativePayback}
+          selectedQuarters={selectedQuarters}
+          tooltipInitiativeVariant={tooltipInitiativeVariant}
+          docReviewShowCostPeriodNote={docReviewShowCostPeriodNote}
+          showPreliminaryWarnings={showPreliminaryWarnings}
+          getInitiativeCrossNames={getInitiativeCrossNames}
+          getCrossInitiativeTooltipMembers={getCrossInitiativeTooltipMembers}
+        />
+      )}
       
       {!isEmpty && dimensions.width > 0 && (
         <div

@@ -16,6 +16,7 @@ import AdminActivity from "./pages/AdminActivity";
 import AdminSensitive from "./pages/AdminSensitive";
 import AdminPeopleEffortFill from "./pages/AdminPeopleEffortFill";
 import AdminFillAnalytics from "./pages/AdminFillAnalytics";
+import AdminLocationAllocations from "./pages/AdminLocationAllocations";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import PeoplePlatformAllocationsMock from "./pages/PeoplePlatformAllocationsMock";
@@ -53,6 +54,13 @@ const App = () => (
               <ProtectedRoute>
                 <AdminRoute>
                   <Admin />
+                </AdminRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/location-allocations" element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <AdminLocationAllocations />
                 </AdminRoute>
               </ProtectedRoute>
             } />

@@ -1321,6 +1321,8 @@ const Index = () => {
         selectedQuarters={selectedQuarters}
         showMoney={effectiveShowMoney}
         includePreliminaryData={false}
+        includeNonPnlBudgets={!showOnlyPnlIt}
+        baselineByTeam={budgetTruth2026?.baselineByTeam}
         onGoToTimeline={(initiativeName) => {
           setHighlightedInitiative(initiativeName);
           setCurrentView('timeline');

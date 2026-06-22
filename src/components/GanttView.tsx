@@ -1,4 +1,5 @@
-import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
+import { useMemo, useEffect, useRef, useState, useCallback, type ReactNode, type MutableRefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, Pencil, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +17,14 @@ import {
   type SupportFilter
 } from '@/lib/dataManager';
 import { InitiativePaybackLabel } from '@/components/InitiativePaybackLabel';
+import {
+  InitiativePaybackQuarterHistoryPanel,
+  InitiativePaybackRevenueTotal,
+} from '@/components/InitiativePaybackQuarterHistory';
+import {
+  QuarterCostHistoryList,
+  QuarterMoneyHistoryList,
+} from '@/components/gantt/QuarterMoneyHistoryList';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 import { cn } from '@/lib/utils';
 import '@/styles/gantt.css';
@@ -69,7 +78,33 @@ interface GanttViewProps {
   /** Quick flow: в закреплённом попапе имени — карточка инициативы */
   adminOnEditInitiativeCard?: (adminRowId: string) => void;
   /** Quick flow только: подсветка сегментов с незаполненными обязательными полями */
-  adminTimelineQuarterWarnings?: (adminRowId: string, quarter: string) => string[];
+  /** Платёж выбранного региона за инициативу (год), если задан regionLabel. */
+  regionPayment?: {
+    regionLabel: string;
+    getRegionRubForRow: (row: RawDataRow) => number;
+  };
+  /** Локации: платёж всех регионов в компактной строке слева. */
+  regionPaymentsAll?: {
+    regions: readonly { label: string; shortLabel: string }[];
+    activeRegion?: string | null;
+    getRegionRub: (row: RawDataRow, regionLabel: string) => number;
+  };
+  /** Локации: показывать все строки из rawData без фильтров таймлайна (support, нулевой период). */
+  bypassTimelineFilters?: boolean;
+  /** Кастомная сортировка по стоимости (например, платёж региона). */
+  sortByCost?: (row: RawDataRow) => number;
+  /** Фиксированная панель справа относительно окна (не внутри скролла таймлайна). */
+  fixedDetailPanel?: boolean;
+  /** Кастомное содержимое панели деталей (заголовок и закрытие — в GanttView). */
+  renderDetailPanelBody?: (ctx: {
+    row: RawDataRow;
+    focusQuarter?: string;
+  }) => ReactNode;
+  /** Проверка несохранённых изменений перед закрытием панели (страница аллокаций). */
+  detailPanelCloseGuardRef?: MutableRefObject<{
+    hasUnsavedChanges: () => boolean;
+    confirmDiscard: (onProceed: () => void) => void;
+  } | null>;
 }
 
 const GanttView = ({
@@ -95,6 +130,13 @@ const GanttView = ({
   adminOnEditQuarter,
   adminOnEditInitiativeCard,
   adminTimelineQuarterWarnings,
+  regionPayment,
+  regionPaymentsAll,
+  bypassTimelineFilters = false,
+  sortByCost,
+  fixedDetailPanel = false,
+  renderDetailPanelBody,
+  detailPanelCloseGuardRef,
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
@@ -182,9 +224,21 @@ const GanttView = ({
     const periodCost = (row: RawDataRow) =>
       timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts);
 
-    let result = rawData.filter((row) => rowPassesTimelineFilters(row, timelineFilterOptions));
+    let result = bypassTimelineFilters
+      ? rawData
+      : rawData.filter((row) => rowPassesTimelineFilters(row, timelineFilterOptions));
 
-    if (costSortOrder !== 'none') {
+    if (sortByCost) {
+      result = [...result].sort((a, b) => {
+        const costA = sortByCost(a);
+        const costB = sortByCost(b);
+        if (costA !== costB) return costB - costA;
+        const totalA = calculateTotalBudget(a);
+        const totalB = calculateTotalBudget(b);
+        if (totalA !== totalB) return totalB - totalA;
+        return (a.initiative || '').localeCompare(b.initiative || '', 'ru');
+      });
+    } else if (costSortOrder !== 'none') {
       const dir = costSortOrder === 'asc' ? 1 : -1;
       result = [...result].sort((a, b) => {
         const costA = costType === 'period' ? periodCost(a) : calculateTotalBudget(a);
@@ -203,7 +257,7 @@ const GanttView = ({
     result = [...nonStubs, ...stubs];
 
     return result;
-  }, [rawData, timelineFilterOptions, costSortOrder, costType, selectedQuarters, includePreliminaryData, preliminaryQuarterBudgetMap]);
+  }, [rawData, timelineFilterOptions, bypassTimelineFilters, sortByCost, costSortOrder, costType, selectedQuarters, includePreliminaryData, preliminaryQuarterBudgetMap]);
 
   const periodCostOpts = useMemo(
     () => ({ includePreliminaryData, preliminaryQuarterBudgetMap }),
@@ -242,17 +296,43 @@ const GanttView = ({
 
   const quarterWidth = 160;
 
-  const openDetailPanel = useCallback((row: RawDataRow, focusQuarter?: string) => {
-    setDetailPanel({ row, focusQuarter });
-    setQuarterPopup(null);
-    setNamePopup(null);
-    setExpandedSections({});
-    setNameExpandedSections({});
-  }, []);
-
   const closeDetailPanel = useCallback(() => {
     setDetailPanel(null);
   }, []);
+
+  const requestCloseDetailPanel = useCallback(() => {
+    const guard = detailPanelCloseGuardRef?.current;
+    if (guard?.hasUnsavedChanges()) {
+      guard.confirmDiscard(() => closeDetailPanel());
+      return;
+    }
+    closeDetailPanel();
+  }, [detailPanelCloseGuardRef, closeDetailPanel]);
+
+  const openDetailPanel = useCallback(
+    (row: RawDataRow, focusQuarter?: string) => {
+      const applyOpen = () => {
+        setDetailPanel({ row, focusQuarter });
+        setQuarterPopup(null);
+        setNamePopup(null);
+        setExpandedSections({});
+        setNameExpandedSections({});
+      };
+
+      const guard = detailPanelCloseGuardRef?.current;
+      if (
+        detailPanel &&
+        guard?.hasUnsavedChanges() &&
+        !isSameGanttRow(detailPanel.row, row)
+      ) {
+        guard.confirmDiscard(applyOpen);
+        return;
+      }
+
+      applyOpen();
+    },
+    [detailPanel, detailPanelCloseGuardRef]
+  );
 
   useEffect(() => {
     if (!detailPanel?.focusQuarter || !focusQuarterRef.current || !detailPanelScrollRef.current) return;
@@ -284,7 +364,7 @@ const GanttView = ({
   const handleNameClick = (e: React.MouseEvent, row: RawDataRow) => {
     e.stopPropagation();
     if (detailPanel && isSameGanttRow(detailPanel.row, row) && !detailPanel.focusQuarter) {
-      closeDetailPanel();
+      requestCloseDetailPanel();
       return;
     }
     openDetailPanel(row);
@@ -335,7 +415,12 @@ const GanttView = ({
   // Empty state
   if (rawData.length === 0) {
     return (
-      <div className={cn('gantt-container', detailPanel && 'gantt-container-with-panel')}>
+      <div
+      className={cn(
+        'gantt-container',
+        detailPanel && !fixedDetailPanel && 'gantt-container-with-panel'
+      )}
+    >
         <div className="gantt-empty-state">
           <div className="gantt-empty-icon">
             <FileText size={32} />
@@ -485,10 +570,23 @@ const GanttView = ({
         </div>
 
         {showMoney && (
-          <div className="gantt-quarter-popup-budget">
-            Бюджет: {formatBudget(qData.budget)}
+          <div className="gantt-quarter-popup-budget-block">
+            <div className="gantt-quarter-popup-budget">
+              Бюджет: {formatBudget(qData.budget)}
+            </div>
+            <QuarterCostHistoryList entries={qData.costHistory} />
           </div>
         )}
+
+        {showInitiativePayback && (qData.revenueRub || qData.revenueRubHistory?.length) ? (
+          <div className="gantt-quarter-popup-budget-block">
+            <div className="gantt-quarter-popup-budget gantt-quarter-popup-profit">
+              Прибыль:{' '}
+              {qData.revenueRub ? formatBudget(qData.revenueRub) : '—'}
+            </div>
+            <QuarterMoneyHistoryList entries={qData.revenueRubHistory} />
+          </div>
+        ) : null}
 
         {qData.metricPlan && (
           <div className="gantt-quarter-popup-section">
@@ -630,10 +728,19 @@ const GanttView = ({
             {showPeriodCost && (
               <span className="period-cost">За период: {formatBudget(periodCost)}</span>
             )}
-            {showBudgetSharePercent && sharePercent && (
-              <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
-                {sharePercent}
-              </span>
+            {showInitiativePayback ? (
+              <InitiativePaybackRevenueTotal
+                quarterlyData={row.quarterlyData}
+                selectedQuarters={selectedQuarters}
+                className="gantt-payback-revenue-total"
+              />
+            ) : (
+              showBudgetSharePercent &&
+              sharePercent && (
+                <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
+                  {sharePercent}
+                </span>
+              )
             )}
             {showInitiativePayback && (
               <InitiativePaybackLabel
@@ -707,20 +814,33 @@ const GanttView = ({
     });
 
     return (
-      <aside className="gantt-detail-panel" aria-label="Детали инициативы">
+      <aside
+        className={cn('gantt-detail-panel', fixedDetailPanel && 'gantt-detail-panel-fixed')}
+        aria-label="Детали инициативы"
+      >
         <div className="gantt-detail-panel-header">
           <h2 className="gantt-detail-panel-title">{row.initiative}</h2>
           <button
             type="button"
             className="gantt-detail-panel-close"
-            onClick={closeDetailPanel}
+            onClick={requestCloseDetailPanel}
             aria-label="Закрыть панель"
           >
             <X size={16} aria-hidden />
           </button>
         </div>
 
-        <div ref={detailPanelScrollRef} className="gantt-detail-panel-body">
+        <div
+          ref={detailPanelScrollRef}
+          className={cn(
+            'gantt-detail-panel-body',
+            renderDetailPanelBody && 'flex min-h-0 flex-1 flex-col p-0'
+          )}
+        >
+          {renderDetailPanelBody ? (
+            renderDetailPanelBody({ row, focusQuarter })
+          ) : (
+            <>
           <div className="gantt-detail-panel-meta">
             {row.unit} › {row.team || 'Без команды'}
           </div>
@@ -729,10 +849,19 @@ const GanttView = ({
             <div className="gantt-detail-panel-costs">
               <span>Всего: {formatBudget(totalCost)}</span>
               {showPeriodCost && <span className="period-cost">За период: {formatBudget(periodCost)}</span>}
-              {showBudgetSharePercent && sharePercent && (
-                <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
-                  {sharePercent}
-                </span>
+              {showInitiativePayback ? (
+                <InitiativePaybackRevenueTotal
+                  quarterlyData={row.quarterlyData}
+                  selectedQuarters={selectedQuarters}
+                  className="gantt-payback-revenue-total"
+                />
+              ) : (
+                showBudgetSharePercent &&
+                sharePercent && (
+                  <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
+                    {sharePercent}
+                  </span>
+                )
               )}
               {showInitiativePayback && (
                 <InitiativePaybackLabel
@@ -743,6 +872,13 @@ const GanttView = ({
               )}
             </div>
           )}
+
+          {showInitiativePayback ? (
+            <InitiativePaybackQuarterHistoryPanel
+              quarterlyData={row.quarterlyData}
+              selectedQuarters={selectedQuarters}
+            />
+          ) : null}
 
           {row.description ? (
             <div className="gantt-detail-panel-section">
@@ -869,15 +1005,26 @@ const GanttView = ({
               </Button>
             </div>
           ) : null}
+            </>
+          )}
         </div>
       </aside>
     );
   };
 
+  const detailPanelNode = renderDetailPanel();
+  const detailPanelPortal =
+    fixedDetailPanel && detailPanelNode ? createPortal(detailPanelNode, document.body) : null;
+
   const sheetMinWidth = 320 + selectedQuarters.length * quarterWidth;
 
   return (
-    <div className={cn('gantt-container', detailPanel && 'gantt-container-with-panel')}>
+    <div
+      className={cn(
+        'gantt-container',
+        detailPanel && !fixedDetailPanel && 'gantt-container-with-panel'
+      )}
+    >
       <div className="gantt-main">
       <div className="gantt-unified-scroll" ref={unifiedScrollRef}>
         <div
@@ -954,13 +1101,65 @@ const GanttView = ({
                 {showMoney && (
                   <div className="gantt-row-costs">
                     <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
+                    {regionPaymentsAll ? (
+                      <div className="gantt-region-breakdown">
+                        {regionPaymentsAll.regions.map(({ label, shortLabel }) => {
+                          const regionRub = regionPaymentsAll.getRegionRub(row, label);
+                          const active = regionPaymentsAll.activeRegion === label;
+                          return (
+                            <span
+                              key={label}
+                              className={cn(
+                                'gantt-region-chip',
+                                active && 'gantt-region-chip-active',
+                                regionRub <= 0 && 'gantt-region-chip-zero'
+                              )}
+                              title={`${label}: ${regionRub > 0 ? formatBudget(regionRub) : '—'}`}
+                            >
+                              <span className="gantt-region-chip-label">{shortLabel}</span>
+                              <span className="gantt-region-chip-value">
+                                {regionRub > 0 ? formatBudgetShort(regionRub) : '—'}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : regionPayment ? (() => {
+                      const regionRub = regionPayment.getRegionRubForRow(row);
+                      return (
+                        <span
+                          className={cn(
+                            'gantt-cost-region',
+                            regionRub <= 0 && 'gantt-cost-region-zero'
+                          )}
+                          title={
+                            regionRub > 0
+                              ? 'Платёж выбранного региона за год'
+                              : 'Регион не платит за эту инициативу'
+                          }
+                        >
+                          {regionPayment.regionLabel}:{' '}
+                          {regionRub > 0 ? formatBudget(regionRub) : '—'}
+                        </span>
+                      );
+                    })() : null}
                     {showPeriodCost && (
                       <span className="gantt-cost-period">За выбранный период: {formatBudget(periodCost)}</span>
                     )}
-                    {showBudgetSharePercent && sharePercent && (
-                      <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
-                        {sharePercent}
-                      </span>
+                    {showInitiativePayback ? (
+                      <InitiativePaybackRevenueTotal
+                        quarterlyData={row.quarterlyData}
+                        selectedQuarters={selectedQuarters}
+                        size="xs"
+                        className="gantt-payback-revenue-total"
+                      />
+                    ) : (
+                      showBudgetSharePercent &&
+                      sharePercent && (
+                        <span className="gantt-cost-share" title={VISIBLE_BUDGET_SHARE_LABEL}>
+                          {sharePercent}
+                        </span>
+                      )
                     )}
                     {showInitiativePayback && (
                       <InitiativePaybackLabel
@@ -1080,7 +1279,8 @@ const GanttView = ({
       {renderQuarterPopup()}
       </div>
 
-      {renderDetailPanel()}
+      {!fixedDetailPanel ? renderDetailPanel() : null}
+      {detailPanelPortal}
     </div>
   );
 };

@@ -15,6 +15,7 @@ import {
   PRELIMINARY_COST_USER_MESSAGE,
   type PreliminaryQuarterBudgetMap,
 } from '@/lib/dataManager';
+import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import { AlertCircle, CheckCircle2, ExternalLink, Pencil } from 'lucide-react';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
 
@@ -28,6 +29,9 @@ interface InitiativePeekModalProps {
   /** Super admin preview mode: учитывать предварительные стоимости */
   includePreliminaryData?: boolean;
   preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  /** Как в treemap: все бюджеты vs только PnL IT (2026). */
+  includeNonPnlBudgets?: boolean;
+  baselineByTeam?: Map<string, TeamBaselineRow>;
   /** С дашборда: перейти на вкладку таймлайна */
   onGoToTimeline?: (initiativeName: string) => void;
   /** Quick flow: после просмотра как у пользователя — открыть редактирование карточки */
@@ -47,6 +51,8 @@ export function InitiativePeekModal({
   showMoney = true,
   includePreliminaryData = false,
   preliminaryQuarterBudgetMap,
+  includeNonPnlBudgets = false,
+  baselineByTeam,
   onGoToTimeline,
   onEditCard,
   missingCardFields,
@@ -65,6 +71,16 @@ export function InitiativePeekModal({
 
   const fieldLabel = (code: string) =>
     code === 'Тип' ? 'тип инициативы' : code === 'Стейкх.' ? 'стейкхолдеры' : code === 'Описание' ? 'описание' : code;
+
+  const periodCost =
+    row && selectedQuarters.length > 0
+      ? calculateBudget(row, selectedQuarters, {
+          includePreliminaryData,
+          preliminaryQuarterBudgetMap,
+          includeNonPnlBudgets,
+          baselineByTeam,
+        })
+      : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -136,14 +152,7 @@ export function InitiativePeekModal({
                     Стоимость за выбранный период
                   </h3>
                   <p className="text-sm font-medium">
-                    {selectedQuarters.length > 0
-                      ? formatBudget(
-                          calculateBudget(row, selectedQuarters, {
-                            includePreliminaryData,
-                            preliminaryQuarterBudgetMap,
-                          })
-                        )
-                      : '—'}
+                    {selectedQuarters.length > 0 ? formatBudget(periodCost) : '—'}
                   </p>
                   {includePreliminaryData && hasPreliminaryQuarterInPeriod(row, selectedQuarters) ? (
                     <p className="mt-1 text-xs text-muted-foreground">{PRELIMINARY_COST_USER_MESSAGE}</p>

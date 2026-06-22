@@ -248,7 +248,7 @@ const QuarterCell = ({
 
                 {hasEarlyAccess ? (
                   <div className="space-y-1">
-                    <span className="text-xs text-muted-foreground">Заработок (₽)</span>
+                    <span className="text-xs text-muted-foreground">Прибыль (₽)</span>
                     <RubAmountInput
                       value={localRevenueRub}
                       onChange={setLocalRevenueRub}

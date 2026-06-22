@@ -1,0 +1,215 @@
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { formatBudget } from '@/lib/dataManager';
+import {
+  computeInitiativePayback,
+  computeInitiativePlanningForecastSeries,
+  computePlanningForecastBreakdown,
+  formatPaybackRatio,
+  formatQuarterHuman,
+  paybackSummaryTitle,
+  paybackToneClass,
+  type InitiativePaybackQuarter,
+  type PlanningForecastQuarterLine,
+} from '@/lib/initiativePayback';
+import { cn } from '@/lib/utils';
+
+interface InitiativePaybackRevenueTotalProps {
+  quarterlyData?: Record<string, InitiativePaybackQuarter>;
+  selectedQuarters: string[];
+  className?: string;
+  size?: 'xs' | 'sm';
+}
+
+/** Сумма прибыли за выбранный период (вместо % от бюджета на экране). */
+export function InitiativePaybackRevenueTotal({
+  quarterlyData,
+  selectedQuarters,
+  className,
+  size = 'sm',
+}: InitiativePaybackRevenueTotalProps) {
+  const summary = useMemo(
+    () => computeInitiativePayback(quarterlyData, selectedQuarters),
+    [quarterlyData, selectedQuarters]
+  );
+
+  if (!summary || summary.periodRevenue <= 0) return null;
+
+  const sizeClass = size === 'xs' ? 'text-[10px]' : 'text-[12px]';
+  const title = paybackSummaryTitle(summary);
+
+  return (
+    <span
+      className={cn('gantt-payback-revenue-total font-medium text-emerald-700 dark:text-emerald-400', sizeClass, className)}
+      title={title}
+    >
+      +{formatBudget(summary.periodRevenue)}
+    </span>
+  );
+}
+
+function formatDeltaHint(delta: number, label: string): string | null {
+  if (delta === 0) return null;
+  const sign = delta > 0 ? '+' : '−';
+  return `${label} ${sign}${formatBudget(Math.abs(delta))}`;
+}
+
+interface ForecastBreakdownProps {
+  lines: PlanningForecastQuarterLine[];
+  previousLines: PlanningForecastQuarterLine[] | null;
+  planningQuarterLabel: string;
+}
+
+function ForecastBreakdown({ lines, previousLines, planningQuarterLabel }: ForecastBreakdownProps) {
+  const prevByTarget = useMemo(() => {
+    const map = new Map<string, PlanningForecastQuarterLine>();
+    for (const line of previousLines ?? []) {
+      map.set(line.targetQuarter, line);
+    }
+    return map;
+  }, [previousLines]);
+
+  return (
+    <div className="gantt-detail-payback-breakdown">
+      <p className="gantt-detail-payback-breakdown-title">
+        Из чего складывался прогноз на конец {planningQuarterLabel}
+      </p>
+      <ul className="gantt-detail-payback-breakdown-list">
+        {lines.map((line) => {
+          const prev = prevByTarget.get(line.targetQuarter);
+          const revenueDelta = prev ? line.revenueRub - prev.revenueRub : null;
+          const costDelta = prev ? line.costRub - prev.costRub : null;
+          const isNew = !prev;
+
+          return (
+            <li key={line.targetQuarter} className="gantt-detail-payback-breakdown-row">
+              <span className="gantt-detail-payback-breakdown-q">{formatQuarterHuman(line.targetQuarter)}</span>
+              <div className="gantt-detail-payback-breakdown-values">
+                <span>
+                  затраты <strong>{formatBudget(line.costRub)}</strong>
+                </span>
+                <span>
+                  прибыль <strong>{formatBudget(line.revenueRub)}</strong>
+                </span>
+              </div>
+              {(isNew || revenueDelta !== 0 || costDelta !== 0) && previousLines ? (
+                <p className="gantt-detail-payback-breakdown-delta">
+                  {isNew
+                    ? 'впервые заложили в этом квартале'
+                    : `${[
+                        formatDeltaHint(revenueDelta ?? 0, 'прибыль'),
+                        formatDeltaHint(costDelta ?? 0, 'затраты'),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')} к прошлому прогнозу`}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+interface InitiativePaybackQuarterHistoryPanelProps {
+  quarterlyData?: Record<string, InitiativePaybackQuarter>;
+  selectedQuarters: string[];
+  className?: string;
+}
+
+/** Прогноз окупаемости на конец каждого квартала планирования. */
+export function InitiativePaybackQuarterHistoryPanel({
+  quarterlyData,
+  selectedQuarters,
+  className,
+}: InitiativePaybackQuarterHistoryPanelProps) {
+  const [expandedPlanningQuarter, setExpandedPlanningQuarter] = useState<string | null>(null);
+
+  const points = useMemo(
+    () => computeInitiativePlanningForecastSeries(quarterlyData, selectedQuarters),
+    [quarterlyData, selectedQuarters]
+  );
+
+  if (points.length === 0) return null;
+
+  return (
+    <div className={cn('gantt-detail-panel-section gantt-detail-payback-history', className)}>
+      <div className="gantt-detail-panel-label">История факта/плана на конец каждого квартала</div>
+      <ul className="gantt-detail-payback-history-list">
+        {points.map((point, index) => {
+          const { planningQuarter, summary, isCurrentPlanningQuarter } = point;
+          const expanded = expandedPlanningQuarter === planningQuarter;
+          const ratioLabel =
+            summary.ratio != null ? formatPaybackRatio(summary.ratio) : '—';
+          const planningLabel = formatQuarterHuman(planningQuarter);
+
+          const breakdown = expanded
+            ? computePlanningForecastBreakdown(quarterlyData, selectedQuarters, planningQuarter, {
+                isLivePlanningQuarter: isCurrentPlanningQuarter,
+              })
+            : null;
+
+          const previousPoint = index > 0 ? points[index - 1] : null;
+          const previousBreakdown =
+            expanded && breakdown && previousPoint
+              ? computePlanningForecastBreakdown(
+                  quarterlyData,
+                  selectedQuarters,
+                  previousPoint.planningQuarter,
+                  { isLivePlanningQuarter: previousPoint.isCurrentPlanningQuarter }
+                )
+              : null;
+
+          return (
+            <li key={planningQuarter} className="gantt-detail-payback-history-block">
+              <button
+                type="button"
+                className={cn(
+                  'gantt-detail-payback-history-trigger',
+                  expanded && 'gantt-detail-payback-history-trigger-expanded'
+                )}
+                onClick={() =>
+                  setExpandedPlanningQuarter(expanded ? null : planningQuarter)
+                }
+                aria-expanded={expanded}
+              >
+                <span className="gantt-detail-payback-history-trigger-icon" aria-hidden>
+                  {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </span>
+                <span className="gantt-detail-payback-history-trigger-main">
+                  <span className="gantt-detail-payback-history-quarter">
+                    {planningLabel}
+                    {isCurrentPlanningQuarter ? (
+                      <span className="gantt-detail-payback-history-live">сейчас</span>
+                    ) : null}
+                  </span>
+                  <span className="gantt-detail-payback-history-totals">
+                    Стоимость <strong>{formatBudget(summary.periodCost)}</strong>
+                    <span className="gantt-detail-payback-history-totals-sep">·</span>
+                    Прибыль <strong>{formatBudget(summary.periodRevenue)}</strong>
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    'gantt-detail-payback-history-ratio font-semibold tabular-nums',
+                    summary.ratio != null && paybackToneClass(summary.isPaidOff)
+                  )}
+                >
+                  {ratioLabel}
+                </span>
+              </button>
+              {expanded && breakdown ? (
+                <ForecastBreakdown
+                  lines={breakdown.lines}
+                  previousLines={previousBreakdown?.lines ?? null}
+                  planningQuarterLabel={planningLabel}
+                />
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}

@@ -25,6 +25,8 @@ export interface GeoCostSplit {
   driverLabel?: string;
 }
 
+import type { QuarterCostHistoryEntry, QuarterMoneyHistoryEntry } from './quarterValueHistory';
+
 // ===== ADMIN DATA TYPES =====
 export interface AdminQuarterData {
   cost: number;           // Read-only (из CSV)
@@ -37,8 +39,12 @@ export interface AdminQuarterData {
   effortCoefficient: number; // 0-100% effort for this quarter
   /** false — предварительная стоимость (Quick Flow); true/undefined — подтверждено финансами */
   costFinanceConfirmed?: boolean;
-  /** Заработок инициативы за квартал, ₽ (опционально, early access) */
+  /** Прибыль инициативы за квартал, ₽ (опционально, early access) */
   revenueRub?: number;
+  /** История изменений прибыли за квартал */
+  revenueRubHistory?: QuarterMoneyHistoryEntry[];
+  /** История изменений бюджета (cost + otherCosts) за квартал */
+  costHistory?: QuarterCostHistoryEntry[];
 }
 
 // Available stakeholders (кластеры; IT убран)
@@ -336,6 +342,8 @@ export interface AdminDataRow {
   quarterlyData: Record<string, AdminQuarterData>;
   /** Распределение стоимости по рынкам (на инициативу; сумма 100%). */
   initiativeGeoCostSplit?: GeoCostSplit;
+  /** Предложение продуктов (hint, не источник истины). */
+  initiativeProposedGeoCostSplit?: GeoCostSplit;
   isTimelineStub?: boolean;
   isNew?: boolean;
   isModified?: boolean;

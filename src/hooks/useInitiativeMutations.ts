@@ -22,6 +22,9 @@ import {
   frozenTeamTotalsForTeam,
   redistributeTeamCosts2026InDb,
 } from '@/lib/redistributeTeamCosts2026';
+import { appendCostHistory, appendRevenueRubHistory, type QuarterHistorySaver } from '@/lib/quarterValueHistory';
+import { getCurrentQuarter } from '@/lib/quarterUtils';
+import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
 import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
 
@@ -129,6 +132,13 @@ export function useInitiativeMutations() {
   const [pendingCount, setPendingCount] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [lastError, setLastError] = useState<string | null>(null);
+  const historySaverRef = useRef<QuarterHistorySaver>({ id: null, name: 'Пользователь' });
+
+  useEffect(() => {
+    void getCurrentUserDisplayName().then((saver) => {
+      historySaverRef.current = saver;
+    });
+  }, []);
 
   useEffect(() => {
     setPendingCount(debounceTimers.current.size);
@@ -516,6 +526,27 @@ export function useInitiativeMutations() {
         const { revenueRub: _removed, ...rest } = nextQuarter;
         nextQuarter = rest as AdminQuarterData;
       }
+
+      const setInQuarter = getCurrentQuarter();
+      const saver = historySaverRef.current;
+      if (field === 'cost' || field === 'otherCosts') {
+        const nextCost = field === 'cost' ? (value as number) : (prevQ.cost ?? 0);
+        const nextOtherCosts =
+          field === 'otherCosts' ? (value as number) : (prevQ.otherCosts ?? 0);
+        nextQuarter = {
+          ...nextQuarter,
+          costHistory: appendCostHistory(prevQ, nextCost, nextOtherCosts, setInQuarter, saver),
+        };
+      }
+      if (field === 'revenueRub') {
+        const nextRevenue =
+          typeof value === 'number' && value > 0 ? value : undefined;
+        nextQuarter = {
+          ...nextQuarter,
+          revenueRubHistory: appendRevenueRubHistory(prevQ, nextRevenue, setInQuarter, saver),
+        };
+      }
+
       const updatedQuarterlyData = {
         ...currentRow.quarterlyData,
         [quarter]: nextQuarter,
