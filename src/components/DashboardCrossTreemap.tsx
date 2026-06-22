@@ -50,7 +50,7 @@ interface DashboardCrossTreemapProps {
   onAutoDisableTeams: () => void;
   onAutoDisableInitiatives: () => void;
   onLevelStateReset: () => void;
-  onInitiativeClick: (initiativeName: string, path: string) => void;
+  onInitiativeClick: (initiativeName: string, path: string, initiativeRowId?: string) => void;
   contentKey: string;
   resetZoomTrigger: number;
 }

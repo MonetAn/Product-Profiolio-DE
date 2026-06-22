@@ -45,7 +45,7 @@ interface StakeholdersTreemapProps {
   canNavigateBack?: boolean;
   selectedQuarters?: string[];
   hasData?: boolean;
-  onInitiativeClick?: (initiativeName: string, path: string) => void;
+  onInitiativeClick?: (initiativeName: string, path: string, initiativeRowId?: string) => void;
   onResetFilters?: () => void;
   selectedUnitsCount?: number;
   clickedNodeName?: string | null;

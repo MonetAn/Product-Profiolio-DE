@@ -12,6 +12,7 @@ import {
   type TeamBaselineRow,
 } from './budgetTruth2026';
 import { getCurrentQuarter } from './quarterUtils';
+import { splitTreemapEncodedPath } from './treemapPathCodec';
 
 export {
   budgetRubForDisplay,
@@ -1041,6 +1042,7 @@ function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNo
       quarterlyData: row.quarterlyData,
       isInitiative: true,
       isTimelineStub: row.isTimelineStub ?? false,
+      adminInitiativeRowId: row.adminInitiativeRowId,
       hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
@@ -1083,6 +1085,7 @@ function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOpti
       quarterlyData: row.quarterlyData,
       isInitiative: true,
       isTimelineStub: row.isTimelineStub ?? false,
+      adminInitiativeRowId: row.adminInitiativeRowId,
       hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
@@ -1420,6 +1423,7 @@ function buildClusterStakeholdersFullTree(
       quarterlyData: row.quarterlyData,
       isInitiative: true,
       isTimelineStub: row.isTimelineStub ?? false,
+      adminInitiativeRowId: row.adminInitiativeRowId,
       hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
@@ -1465,6 +1469,7 @@ function buildClusterStakeholdersUnitsInitiativesTree(
       quarterlyData: row.quarterlyData,
       isInitiative: true,
       isTimelineStub: row.isTimelineStub ?? false,
+      adminInitiativeRowId: row.adminInitiativeRowId,
       hasPreliminaryQuarterInPeriod: hasPreliminaryQuarterInPeriod(row, options.selectedQuarters),
     });
   });
@@ -1496,4 +1501,77 @@ export function buildStakeholdersTree(rawData: RawDataRow[], options: BuildTreeO
 
   if (!inner.children || inner.children.length === 0) return emptyRoot;
   return { name: 'Все стейкхолдеры', children: [inner], isRoot: true };
+}
+
+/** Строка инициативы для peek-модалки: сначала по UUID, затем по пути treemap. */
+export function resolveInitiativeRowFromTreemapPath(
+  path: string,
+  rows: RawDataRow[],
+  options: {
+    currentView: 'budget' | 'stakeholders' | 'timeline' | 'crossInitiatives';
+    rowId?: string | null;
+    unitHint?: string | null;
+    teamHint?: string | null;
+  }
+): RawDataRow | null {
+  if (options.rowId) {
+    const byId = rows.find((r) => r.adminInitiativeRowId === options.rowId);
+    if (byId) return byId;
+  }
+
+  const parts = splitTreemapEncodedPath(path);
+  let unit = '';
+  let team = '';
+  let initiative = '';
+
+  if (
+    parts.length === 2 &&
+    (options.currentView === 'budget' || options.currentView === 'crossInitiatives')
+  ) {
+    const noTeamRow = rows.find(
+      (r) => r.unit === parts[0] && r.initiative === parts[1] && !(r.team || '').trim()
+    );
+    if (noTeamRow) return noTeamRow;
+    const teamInitMatches = rows.filter(
+      (r) => r.initiative === parts[1] && (r.team || 'Без команды') === parts[0]
+    );
+    if (teamInitMatches.length === 1) return teamInitMatches[0];
+    unit = parts[0];
+    initiative = parts[1];
+    if (options.teamHint) team = options.teamHint;
+    else if (options.unitHint && parts[0] === options.unitHint) {
+      /* unit/initiative без команды в пути — teamHint ниже */
+    }
+  } else if (
+    parts.length === 3 &&
+    (options.currentView === 'budget' || options.currentView === 'crossInitiatives')
+  ) {
+    const teamRaw = parts[1];
+    unit = parts[0];
+    team = teamRaw === 'Без команды' ? '' : teamRaw;
+    initiative = parts[2];
+  } else if (parts.length === 3 && options.currentView === 'stakeholders') {
+    unit = parts[1];
+    initiative = parts[2];
+  } else if (parts.length >= 4) {
+    const teamRaw = parts[2];
+    unit = parts[1];
+    team = teamRaw === 'Без команды' ? '' : teamRaw;
+    initiative = parts[3];
+  }
+
+  if (!unit && !initiative) return null;
+
+  const teamFilter = team || options.teamHint || '';
+  const unitFilter = unit || options.unitHint || '';
+
+  const matches = rows.filter(
+    (r) =>
+      (unitFilter ? r.unit === unitFilter : true) &&
+      r.initiative === initiative &&
+      (teamFilter ? (r.team || 'Без команды') === (teamFilter || 'Без команды') : true)
+  );
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1 && teamFilter) return matches[0];
+  return matches[0] ?? null;
 }

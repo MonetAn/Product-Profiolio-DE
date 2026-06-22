@@ -16,7 +16,7 @@ interface BudgetTreemapProps {
   onNodeClick?: (node: TreeNode) => void;
   onNavigateBack?: () => void;
   canNavigateBack?: boolean;
-  onInitiativeClick?: (initiativeName: string, path: string) => void;
+  onInitiativeClick?: (initiativeName: string, path: string, initiativeRowId?: string) => void;
   onFileDrop?: (file: File) => void;
   hasData?: boolean;
   onResetFilters?: () => void;

@@ -13,11 +13,14 @@ import {
   formatBudget,
   hasPreliminaryQuarterInPeriod,
   PRELIMINARY_COST_USER_MESSAGE,
+  treemapLeafValue,
   type PreliminaryQuarterBudgetMap,
 } from '@/lib/dataManager';
 import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import { AlertCircle, CheckCircle2, ExternalLink, Pencil } from 'lucide-react';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
+import { InitiativePaybackInfoSection } from '@/components/InitiativePaybackQuarterHistory';
+import type { InitiativePaybackQuarter } from '@/lib/initiativePayback';
 
 interface InitiativePeekModalProps {
   open: boolean;
@@ -26,6 +29,8 @@ interface InitiativePeekModalProps {
   selectedQuarters: string[];
   /** If false, hide the cost section */
   showMoney?: boolean;
+  /** Early access: блок окупаемости (текущий прогноз + история) */
+  showInitiativePayback?: boolean;
   /** Super admin preview mode: учитывать предварительные стоимости */
   includePreliminaryData?: boolean;
   preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
@@ -49,6 +54,7 @@ export function InitiativePeekModal({
   row,
   selectedQuarters,
   showMoney = true,
+  showInitiativePayback = false,
   includePreliminaryData = false,
   preliminaryQuarterBudgetMap,
   includeNonPnlBudgets = false,
@@ -74,18 +80,23 @@ export function InitiativePeekModal({
 
   const periodCost =
     row && selectedQuarters.length > 0
-      ? calculateBudget(row, selectedQuarters, {
-          includePreliminaryData,
-          preliminaryQuarterBudgetMap,
-          includeNonPnlBudgets,
-          baselineByTeam,
-        })
+      ? (() => {
+          const budgetOpts = {
+            includePreliminaryData,
+            preliminaryQuarterBudgetMap,
+            includeNonPnlBudgets,
+            baselineByTeam,
+          };
+          const fromBudget = calculateBudget(row, selectedQuarters, budgetOpts);
+          if (fromBudget > 0) return fromBudget;
+          return treemapLeafValue(row, selectedQuarters, budgetOpts);
+        })()
       : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-lg max-h-[85vh] flex flex-col p-0 gap-0"
+        className="max-w-lg max-h-[90vh] flex flex-col p-0 gap-0"
       >
         <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
           <DialogTitle className="text-xl pr-8">
@@ -159,6 +170,14 @@ export function InitiativePeekModal({
                   ) : null}
                 </section>
               )}
+
+              {showInitiativePayback && showMoney ? (
+                <InitiativePaybackInfoSection
+                  quarterlyData={row.quarterlyData as Record<string, InitiativePaybackQuarter>}
+                  selectedQuarters={selectedQuarters}
+                  variant="peek"
+                />
+              ) : null}
 
               {/* Description */}
               <section>

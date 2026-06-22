@@ -25,9 +25,9 @@ import {
   calculateBudget,
   isInitiativeOffTrack,
   rowPassesTimelineFilters,
+  resolveInitiativeRowFromTreemapPath,
   type SupportFilter,
 } from '@/lib/dataManager';
-import { splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import { prepareStaticTreemapTree } from '@/lib/staticTreemapData';
 import { useTreemapLayoutConfig } from '@/hooks/useTreemapLayoutConfig';
 import {
@@ -134,7 +134,10 @@ const Index = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showOfftrackModal, setShowOfftrackModal] = useState(false);
-  const [initiativePeekPath, setInitiativePeekPath] = useState<string | null>(null);
+  const [initiativePeekTarget, setInitiativePeekTarget] = useState<{
+    path: string;
+    rowId?: string;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragging, setIsDragging] = useState(false);
 
@@ -281,7 +284,7 @@ const Index = () => {
     setShowSearch(false);
     setShowShortcuts(false);
     setShowOfftrackModal(false);
-    setInitiativePeekPath(null);
+    setInitiativePeekTarget(null);
     setSearchQuery('');
     setResetZoomTrigger(prev => prev + 1);
     autoEnabledRef.current = { teams: false, initiatives: false };
@@ -726,51 +729,15 @@ const Index = () => {
     budgetTruth2026?.baselineByTeam,
   ]);
 
-  // Resolve initiative row from treemap path (Unit/Team/Initiative or Stakeholder/Unit/Team/Initiative)
-  const initiativePeekRow = (() => {
-    if (!initiativePeekPath || displayData.length === 0) return null;
-    const parts = splitTreemapEncodedPath(initiativePeekPath);
-    let unit = '';
-    let team = '';
-    let initiative = '';
-    if (parts.length === 2 && (currentView === 'budget' || currentView === 'crossInitiatives')) {
-      const noTeamRow = displayData.find(
-        (r) => r.unit === parts[0] && r.initiative === parts[1] && !(r.team || '').trim()
-      );
-      if (noTeamRow) return noTeamRow;
-      const teamInitMatches = displayData.filter(
-        (r) => r.initiative === parts[1] && (r.team || 'Без команды') === parts[0]
-      );
-      if (teamInitMatches.length === 1) return teamInitMatches[0];
-      unit = parts[0];
-      initiative = parts[1];
-    } else if (parts.length === 3 && (currentView === 'budget' || currentView === 'crossInitiatives')) {
-      // Budget: Unit/Team/Initiative
-      const teamRaw = parts[1];
-      unit = parts[0];
-      team = teamRaw === 'Без команды' ? '' : teamRaw;
-      initiative = parts[2];
-    } else if (parts.length === 3 && currentView === 'stakeholders') {
-      // Stakeholders: Stakeholder/Unit/Initiative (no teams)
-      unit = parts[1];
-      initiative = parts[2];
-    } else if (parts.length >= 4) {
-      // Stakeholders: Stakeholder/Unit/Team/Initiative
-      const teamRaw = parts[2];
-      unit = parts[1];
-      team = teamRaw === 'Без команды' ? '' : teamRaw;
-      initiative = parts[3];
-    }
-    if (!unit && !initiative) return null;
-    return (
-      displayData.find(
-        (r) =>
-          (unit ? r.unit === unit : true) &&
-          r.initiative === initiative &&
-          (team !== '' ? (r.team || 'Без команды') === (team || 'Без команды') : true)
-      ) ?? null
-    );
-  })();
+  const initiativePeekRow = useMemo(() => {
+    if (!initiativePeekTarget || displayData.length === 0) return null;
+    return resolveInitiativeRowFromTreemapPath(initiativePeekTarget.path, displayData, {
+      currentView,
+      rowId: initiativePeekTarget.rowId,
+      unitHint: selectedUnits.length === 1 ? selectedUnits[0] : null,
+      teamHint: selectedTeams.length === 1 ? selectedTeams[0] : null,
+    });
+  }, [initiativePeekTarget, displayData, currentView, selectedUnits, selectedTeams]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1192,8 +1159,8 @@ const Index = () => {
             selectedQuarters={selectedQuarters}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
-            onInitiativeClick={(name, path) => {
-              setInitiativePeekPath(path);
+            onInitiativeClick={(name, path, rowId) => {
+              setInitiativePeekTarget({ path, rowId });
             }}
             onFileDrop={processCSVFile}
             hasData={displayData.length > 0}
@@ -1233,8 +1200,8 @@ const Index = () => {
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
             selectedQuarters={selectedQuarters}
             hasData={displayData.length > 0}
-            onInitiativeClick={(name, path) => {
-              setInitiativePeekPath(path);
+            onInitiativeClick={(name, path, rowId) => {
+              setInitiativePeekTarget({ path, rowId });
             }}
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
@@ -1278,7 +1245,9 @@ const Index = () => {
             onAutoDisableTeams={handleAutoDisableTeams}
             onAutoDisableInitiatives={handleCrossAutoDisableInitiativesInside}
             onLevelStateReset={handleCrossLevelStateReset}
-            onInitiativeClick={(_name, path) => setInitiativePeekPath(path)}
+            onInitiativeClick={(_name, path, rowId) =>
+              setInitiativePeekTarget({ path, rowId })
+            }
             contentKey={crossTreemapContentKey}
             resetZoomTrigger={resetZoomTrigger}
           />
@@ -1315,18 +1284,19 @@ const Index = () => {
 
       {/* Initiative peek modal (from treemap click) */}
       <InitiativePeekModal
-        open={initiativePeekPath !== null}
-        onOpenChange={(open) => !open && setInitiativePeekPath(null)}
+        open={initiativePeekTarget !== null}
+        onOpenChange={(open) => !open && setInitiativePeekTarget(null)}
         row={initiativePeekRow}
         selectedQuarters={selectedQuarters}
         showMoney={effectiveShowMoney}
+        showInitiativePayback={showInitiativePayback}
         includePreliminaryData={false}
         includeNonPnlBudgets={!showOnlyPnlIt}
         baselineByTeam={budgetTruth2026?.baselineByTeam}
         onGoToTimeline={(initiativeName) => {
           setHighlightedInitiative(initiativeName);
           setCurrentView('timeline');
-          setInitiativePeekPath(null);
+          setInitiativePeekTarget(null);
         }}
       />
 

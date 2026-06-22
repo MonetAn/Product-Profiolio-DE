@@ -28,7 +28,7 @@ export interface StaticTreemapContainerProps {
   onNodeClick?: (node: TreeNode) => void;
   onNavigateBack?: () => void;
   canNavigateBack?: boolean;
-  onInitiativeClick?: (initiativeName: string, path: string) => void;
+  onInitiativeClick?: (initiativeName: string, path: string, initiativeRowId?: string) => void;
   /** Если задано, клик по листу с adminInitiativeRowId открывает обзор вместо стандартного peek (quick flow). */
   onAdminInitiativeRowClick?: (rowId: string, node: TreeNode) => void;
   selectedQuarters?: string[];
@@ -310,7 +310,7 @@ const StaticTreemapContainer = ({
 
     // Initiative click → open peek modal (parent may navigate to Gantt from there)
     if (node.data.isInitiative && onInitiativeClick) {
-      onInitiativeClick(node.data.name, node.path);
+      onInitiativeClick(node.data.name, node.path, node.data.adminInitiativeRowId);
       return;
     }
     
