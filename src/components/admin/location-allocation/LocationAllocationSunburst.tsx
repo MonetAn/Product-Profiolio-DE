@@ -115,6 +115,7 @@ type Props = {
   year: number;
   unitFilter: string | null;
   teamFilter: LocationTeamFilter | null;
+  marketCountry?: MarketCountryRow | null;
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
 };
@@ -124,6 +125,7 @@ export function LocationAllocationSunburst({
   year,
   unitFilter,
   teamFilter,
+  marketCountry = null,
   countries,
   countryIdToClusterKey,
 }: Props) {
@@ -145,10 +147,11 @@ export function LocationAllocationSunburst({
         region: null,
         unit: unitFilter,
         team: teamFilter,
+        marketCountry,
         countries,
         countryIdToClusterKey,
       }),
-    [initiatives, year, unitFilter, teamFilter, countries, countryIdToClusterKey]
+    [initiatives, year, unitFilter, teamFilter, marketCountry, countries, countryIdToClusterKey]
   );
 
   const yearQuarters = useMemo(

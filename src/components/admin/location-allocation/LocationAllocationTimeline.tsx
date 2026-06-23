@@ -22,6 +22,7 @@ type Props = {
   regionFilter: TopRegionLabel | null;
   unitFilter: string | null;
   teamFilter: LocationTeamFilter | null;
+  marketCountry?: MarketCountryRow | null;
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
@@ -37,6 +38,7 @@ export function LocationAllocationTimeline({
   regionFilter,
   unitFilter,
   teamFilter,
+  marketCountry = null,
   countries,
   countryIdToClusterKey,
   onGeoCostSplitSave,
@@ -49,10 +51,11 @@ export function LocationAllocationTimeline({
         region: regionFilter,
         unit: unitFilter,
         team: teamFilter,
+        marketCountry,
         countries,
         countryIdToClusterKey,
       }),
-    [initiatives, year, regionFilter, unitFilter, teamFilter, countries, countryIdToClusterKey]
+    [initiatives, year, regionFilter, unitFilter, teamFilter, marketCountry, countries, countryIdToClusterKey]
   );
 
   const yearQuarters = useMemo(

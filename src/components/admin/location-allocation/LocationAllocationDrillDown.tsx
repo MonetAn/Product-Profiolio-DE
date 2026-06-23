@@ -13,10 +13,12 @@ import {
   buildTeamRegionDetailRows,
   buildUnitOverviewDetailRows,
   buildUnitRegionDetailRows,
+  countryBelongsToTopRegion,
   type LocationTeamFilter,
   type TeamRegionDetailRow,
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
+import { LocationAllocationMarketSection } from '@/components/admin/location-allocation/LocationAllocationMarketSection';
 import { LocationAllocationTreemap } from '@/components/admin/location-allocation/LocationAllocationTreemap';
 import { LocationAllocationSunburst } from '@/components/admin/location-allocation/LocationAllocationSunburst';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
@@ -48,6 +50,8 @@ type Props = {
   onUnitFilterChange: (unit: string | null) => void;
   teamFilter: string | null;
   onTeamFilterChange: (team: string | null, unit?: string | null) => void;
+  marketCountry: MarketCountryRow | null;
+  onMarketFilterChange: (country: MarketCountryRow | null) => void;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
 };
 
@@ -62,6 +66,8 @@ export function LocationAllocationDrillDown({
   onUnitFilterChange,
   teamFilter,
   onTeamFilterChange,
+  marketCountry,
+  onMarketFilterChange,
   onGeoCostSplitSave,
 }: Props) {
   const [initiativeDetailView, setInitiativeDetailView] =
@@ -103,15 +109,17 @@ export function LocationAllocationDrillDown({
             year,
             regionFilter,
             countries,
-            countryIdToClusterKey
+            countryIdToClusterKey,
+            marketCountry
           )
         : buildUnitOverviewDetailRows(
             visibleInitiatives,
             year,
             countries,
-            countryIdToClusterKey
+            countryIdToClusterKey,
+            marketCountry
           ),
-    [visibleInitiatives, year, regionFilter, countries, countryIdToClusterKey]
+    [visibleInitiatives, year, regionFilter, countries, countryIdToClusterKey, marketCountry]
   );
 
   const effectiveUnitFilter = useMemo(() => {
@@ -128,14 +136,16 @@ export function LocationAllocationDrillDown({
             regionFilter,
             effectiveUnitFilter,
             countries,
-            countryIdToClusterKey
+            countryIdToClusterKey,
+            marketCountry
           )
         : buildTeamOverviewDetailRows(
             visibleInitiatives,
             year,
             effectiveUnitFilter,
             countries,
-            countryIdToClusterKey
+            countryIdToClusterKey,
+            marketCountry
           ),
     [
       visibleInitiatives,
@@ -144,6 +154,7 @@ export function LocationAllocationDrillDown({
       effectiveUnitFilter,
       countries,
       countryIdToClusterKey,
+      marketCountry,
     ]
   );
 
@@ -166,6 +177,16 @@ export function LocationAllocationDrillDown({
       onTeamFilterChange(null);
     }
   }, [teamFilter, effectiveTeamFilter, onTeamFilterChange]);
+
+  useEffect(() => {
+    if (
+      marketCountry &&
+      regionFilter &&
+      !countryBelongsToTopRegion(marketCountry, regionFilter, countryIdToClusterKey)
+    ) {
+      onMarketFilterChange(null);
+    }
+  }, [marketCountry, regionFilter, countryIdToClusterKey, onMarketFilterChange]);
 
   const handleTeamSelect = useCallback(
     (row: TeamRegionDetailRow) => {
@@ -213,6 +234,16 @@ export function LocationAllocationDrillDown({
         rows={regionRows}
         selectedRegion={regionFilter}
         onSelectRegion={onRegionFilterChange}
+      />
+
+      <LocationAllocationMarketSection
+        initiatives={visibleInitiatives}
+        year={year}
+        regionFilter={regionFilter}
+        marketCountry={marketCountry}
+        countries={countries}
+        countryIdToClusterKey={countryIdToClusterKey}
+        onMarketSelect={onMarketFilterChange}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
@@ -286,8 +317,10 @@ export function LocationAllocationDrillDown({
             <LocationAllocationTreemap
               initiatives={visibleInitiatives}
               year={year}
+              regionFilter={regionFilter}
               unitFilter={effectiveUnitFilter}
               teamFilter={effectiveTeamFilter}
+              marketCountry={marketCountry}
               countries={countries}
               countryIdToClusterKey={countryIdToClusterKey}
               onGeoCostSplitSave={onGeoCostSplitSave}
@@ -301,6 +334,7 @@ export function LocationAllocationDrillDown({
               regionFilter={regionFilter}
               unitFilter={effectiveUnitFilter}
               teamFilter={effectiveTeamFilter}
+              marketCountry={marketCountry}
               countries={countries}
               countryIdToClusterKey={countryIdToClusterKey}
               onGeoCostSplitSave={onGeoCostSplitSave}
@@ -313,6 +347,7 @@ export function LocationAllocationDrillDown({
               year={year}
               unitFilter={effectiveUnitFilter}
               teamFilter={effectiveTeamFilter}
+              marketCountry={marketCountry}
               countries={countries}
               countryIdToClusterKey={countryIdToClusterKey}
             />

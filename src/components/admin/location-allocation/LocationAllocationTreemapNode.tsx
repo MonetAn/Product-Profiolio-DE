@@ -1,15 +1,19 @@
 import { memo, useMemo } from 'react';
 import { Pencil } from 'lucide-react';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
-import type { LocationAllocationTreemapMeta } from '@/lib/locationAllocationTreemap';
+import type { LocationAllocationTreemapMeta, LocationAllocationTreemapScope } from '@/lib/locationAllocationTreemap';
 import {
   collectLocationTreemapInitiativeIds,
   resolveLocationTreemapNodeYearCost,
+  resolveLocationTreemapNodeScopedCost,
   sumLocationTreemapRegionBreakdown,
+  treemapScopeLabel,
 } from '@/lib/locationAllocationTreemap';
+import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
   TOP_REGION_ORDER,
   TOP_REGION_SHORT_LABELS,
+  type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
 
@@ -62,6 +66,9 @@ const ParentHeader = memo(function ParentHeader({
 type CellCenterStackProps = {
   node: TreemapLayoutNode;
   meta: LocationAllocationTreemapMeta;
+  treemapScope: LocationAllocationTreemapScope;
+  countries: MarketCountryRow[];
+  countryIdToClusterKey: Map<string, string>;
   textColorClass: string;
   isTiny: boolean;
   isSmall: boolean;
@@ -71,6 +78,9 @@ type CellCenterStackProps = {
 const CellCenterStack = memo(function CellCenterStack({
   node,
   meta,
+  treemapScope,
+  countries,
+  countryIdToClusterKey,
   textColorClass,
   isTiny,
   isSmall,
@@ -84,14 +94,31 @@ const CellCenterStack = memo(function CellCenterStack({
     () => resolveLocationTreemapNodeYearCost(node, meta),
     [node, meta]
   );
+  const scopedCost = useMemo(
+    () =>
+      resolveLocationTreemapNodeScopedCost(
+        node,
+        meta,
+        treemapScope,
+        countries,
+        countryIdToClusterKey
+      ),
+    [node, meta, treemapScope, countries, countryIdToClusterKey]
+  );
   const regionBreakdown = useMemo(
     () => sumLocationTreemapRegionBreakdown(initiativeIds, meta),
     [initiativeIds, meta]
   );
 
-  const regionRows = useMemo(
-    () =>
-      TOP_REGION_ORDER.map((region) => {
+  const isFiltered = treemapScope.kind !== 'all';
+  const primaryCost = isFiltered ? scopedCost : fullCost;
+
+  const regionRows = useMemo(() => {
+    if (isFiltered) {
+      const excluded =
+        treemapScope.kind === 'region' ? new Set<TopRegionLabel>([treemapScope.region]) : null;
+      return TOP_REGION_ORDER.map((region) => {
+        if (excluded?.has(region)) return null;
         const rub = regionBreakdown.get(region) ?? 0;
         if (rub <= 0) return null;
         return {
@@ -99,9 +126,21 @@ const CellCenterStack = memo(function CellCenterStack({
           rub,
           pct: fullCost > 0 ? (rub / fullCost) * 100 : 0,
         };
-      }).filter((r): r is NonNullable<typeof r> => r != null),
-    [regionBreakdown, fullCost]
-  );
+      }).filter((r): r is NonNullable<typeof r> => r != null);
+    }
+
+    return TOP_REGION_ORDER.map((region) => {
+      const rub = regionBreakdown.get(region) ?? 0;
+      if (rub <= 0) return null;
+      return {
+        region,
+        rub,
+        pct: fullCost > 0 ? (rub / fullCost) * 100 : 0,
+      };
+    }).filter((r): r is NonNullable<typeof r> => r != null);
+  }, [regionBreakdown, fullCost, isFiltered, treemapScope]);
+
+  const scopeLabel = treemapScopeLabel(treemapScope);
 
   if (node.height < 30) return null;
 
@@ -126,16 +165,30 @@ const CellCenterStack = memo(function CellCenterStack({
         {node.name}
       </div>
 
-      {showMoney && fullCost > 0 && !isTiny ? (
+      {showMoney && primaryCost > 0 && !isTiny ? (
         <div className={`mt-0.5 tabular-nums leading-tight ${labelClass} ${totalSize}`}>
-          {formatLocationCompactM(fullCost)}
+          {isFiltered && scopeLabel ? (
+            <span className="block text-[9px] font-normal opacity-90">{scopeLabel}</span>
+          ) : null}
+          {formatLocationCompactM(primaryCost)}
         </div>
       ) : null}
 
-      {regionRows.length > 0 && node.height >= 36 ? (
+      {isFiltered && showMoney && fullCost > 0 && !isTiny && primaryCost !== fullCost ? (
+        <div className={`mt-0.5 tabular-nums leading-tight ${mutedClass} ${regionSize}`}>
+          Всего {formatLocationCompactM(fullCost)}
+        </div>
+      ) : null}
+
+      {regionRows.length > 0 && node.height >= (isFiltered ? 44 : 36) ? (
         <div
           className={`mt-1 flex flex-col items-center justify-center gap-0.5 w-full min-w-0 ${regionSize} ${mutedClass}`}
         >
+          {isFiltered && regionRows.length > 0 ? (
+            <div className="max-w-full truncate leading-tight opacity-90">
+              {treemapScope.kind === 'market' ? 'Другие регионы' : 'Остальные регионы'}
+            </div>
+          ) : null}
           {regionRows.map(({ region, rub, pct }) => (
             <div
               key={region}
@@ -161,6 +214,9 @@ const CellCenterStack = memo(function CellCenterStack({
 export type LocationAllocationTreemapNodeProps = {
   node: TreemapLayoutNode;
   meta: LocationAllocationTreemapMeta;
+  treemapScope?: LocationAllocationTreemapScope;
+  countries?: MarketCountryRow[];
+  countryIdToClusterKey?: Map<string, string>;
   focusedPath?: string[];
   parentX?: number;
   parentY?: number;
@@ -178,6 +234,9 @@ export type LocationAllocationTreemapNodeProps = {
 export const LocationAllocationTreemapNode = memo(function LocationAllocationTreemapNode({
   node,
   meta,
+  treemapScope = { kind: 'all' },
+  countries = [],
+  countryIdToClusterKey = new Map(),
   focusedPath = [],
   parentX = 0,
   parentY = 0,
@@ -267,6 +326,9 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
         <CellCenterStack
           node={node}
           meta={meta}
+          treemapScope={treemapScope}
+          countries={countries}
+          countryIdToClusterKey={countryIdToClusterKey}
           textColorClass={textColorClass}
           isTiny={isTiny}
           isSmall={isSmall}
@@ -279,6 +341,9 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
               key={child.key}
               node={child}
               meta={meta}
+              treemapScope={treemapScope}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
               focusedPath={focusedPath}
               parentX={node.x0}
               parentY={node.y0}

@@ -6,10 +6,12 @@ import {
   buildLocationAllocationTreemapMeta,
   buildLocationAllocationTreemapTree,
   prepareLocationAllocationTreemapTree,
+  resolveLocationAllocationTreemapScope,
 } from '@/lib/locationAllocationTreemap';
 import {
   filterLocationTimelineInitiatives,
   type LocationTeamFilter,
+  type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { LocationAllocationTreemapContainer } from '@/components/admin/location-allocation/LocationAllocationTreemapContainer';
 import { LocationAllocationTreemapEditDialog } from '@/components/admin/location-allocation/LocationAllocationTreemapEditDialog';
@@ -26,8 +28,10 @@ import {
 type Props = {
   initiatives: AdminDataRow[];
   year: number;
+  regionFilter: TopRegionLabel | null;
   unitFilter: string | null;
   teamFilter: LocationTeamFilter | null;
+  marketCountry?: MarketCountryRow | null;
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
@@ -61,8 +65,10 @@ function NestingToggle({
 export function LocationAllocationTreemap({
   initiatives,
   year,
+  regionFilter,
   unitFilter,
   teamFilter,
+  marketCountry = null,
   countries,
   countryIdToClusterKey,
   onGeoCostSplitSave,
@@ -77,17 +83,32 @@ export function LocationAllocationTreemap({
 
   const autoEnabledRef = useRef({ teams: false, initiatives: false });
 
+  const treemapScope = useMemo(
+    () => resolveLocationAllocationTreemapScope(regionFilter, marketCountry),
+    [regionFilter, marketCountry]
+  );
+
   const filteredInitiatives = useMemo(
     () =>
       filterLocationTimelineInitiatives(initiatives, {
         year,
-        region: null,
+        region: regionFilter,
         unit: unitFilter,
         team: teamFilter,
+        marketCountry,
         countries,
         countryIdToClusterKey,
       }),
-    [initiatives, year, unitFilter, teamFilter, countries, countryIdToClusterKey]
+    [
+      initiatives,
+      year,
+      regionFilter,
+      unitFilter,
+      teamFilter,
+      marketCountry,
+      countries,
+      countryIdToClusterKey,
+    ]
   );
 
   const yearQuarters = useMemo(
@@ -114,12 +135,27 @@ export function LocationAllocationTreemap({
   const tree = useMemo(
     () =>
       prepareLocationAllocationTreemapTree(
-        buildLocationAllocationTreemapTree(filteredInitiatives, yearQuarters, {
-          showTeams,
-          showInitiatives,
-        })
+        buildLocationAllocationTreemapTree(
+          filteredInitiatives,
+          yearQuarters,
+          {
+            showTeams,
+            showInitiatives,
+          },
+          treemapScope,
+          countries,
+          countryIdToClusterKey
+        )
       ),
-    [filteredInitiatives, yearQuarters, showTeams, showInitiatives]
+    [
+      filteredInitiatives,
+      yearQuarters,
+      showTeams,
+      showInitiatives,
+      treemapScope,
+      countries,
+      countryIdToClusterKey,
+    ]
   );
 
   const totalValue = useMemo(
@@ -133,8 +169,13 @@ export function LocationAllocationTreemap({
         showTeams ? 'teams:1' : 'teams:0',
         showInitiatives ? 'initiatives:1' : 'initiatives:0',
         yearQuarters.join('|'),
+        treemapScope.kind === 'all'
+          ? 'scope:all'
+          : treemapScope.kind === 'region'
+            ? `scope:region:${treemapScope.region}`
+            : `scope:market:${treemapScope.country.id}`,
       ].join(';'),
-    [showTeams, showInitiatives, yearQuarters]
+    [showTeams, showInitiatives, yearQuarters, treemapScope]
   );
 
   const handleAutoEnableTeams = useCallback(() => {
@@ -209,7 +250,9 @@ export function LocationAllocationTreemap({
           <NestingToggle label="Деньги" checked={showMoney} onChange={setShowMoney} />
         ) : null}
         <p className="ml-auto text-[10px] text-muted-foreground hidden sm:block">
-          В ячейке — по регионам; наведите — по рынкам; ✎ — редактирование
+          {treemapScope.kind === 'all'
+            ? 'В ячейке — по регионам; наведите — по рынкам; ✎ — редактирование'
+            : 'В ячейке — доля фильтра и остальные регионы; наведите — рынки в фильтре'}
         </p>
       </div>
 
@@ -218,6 +261,9 @@ export function LocationAllocationTreemap({
           <LocationAllocationTreemapContainer
             data={tree}
             meta={meta}
+            treemapScope={treemapScope}
+            countries={countries}
+            countryIdToClusterKey={countryIdToClusterKey}
             contentKey={contentKey}
             showTeams={showTeams}
             showInitiatives={showInitiatives}

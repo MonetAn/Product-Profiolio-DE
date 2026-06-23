@@ -13,13 +13,17 @@ import type { ColorGetter, TreemapLayoutNode } from '@/components/treemap/types'
 import { useStaticTreemapLayout } from '@/components/treemap/useStaticTreemapLayout';
 import { LocationAllocationTreemapNode } from '@/components/admin/location-allocation/LocationAllocationTreemapNode';
 import { LocationAllocationTreemapTooltip } from '@/components/admin/location-allocation/LocationAllocationTreemapTooltip';
-import type { LocationAllocationTreemapMeta } from '@/lib/locationAllocationTreemap';
+import type { LocationAllocationTreemapMeta, LocationAllocationTreemapScope } from '@/lib/locationAllocationTreemap';
+import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { normalizeTreemapFocusPath, splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import '@/styles/treemap.css';
 
 type Props = {
   data: TreeNode;
   meta: LocationAllocationTreemapMeta;
+  treemapScope?: LocationAllocationTreemapScope;
+  countries?: MarketCountryRow[];
+  countryIdToClusterKey?: Map<string, string>;
   showTeams?: boolean;
   showInitiatives?: boolean;
   showMoney?: boolean;
@@ -36,6 +40,9 @@ type Props = {
 export function LocationAllocationTreemapContainer({
   data,
   meta,
+  treemapScope = { kind: 'all' },
+  countries = [],
+  countryIdToClusterKey = new Map(),
   showTeams = false,
   showInitiatives = false,
   showMoney = true,
@@ -208,6 +215,9 @@ export function LocationAllocationTreemapContainer({
       <LocationAllocationTreemapTooltip
         data={tooltipData}
         meta={meta}
+        treemapScope={treemapScope}
+        countries={countries}
+        countryIdToClusterKey={countryIdToClusterKey}
         showMoney={showMoney}
       />
 
@@ -228,6 +238,9 @@ export function LocationAllocationTreemapContainer({
               key={`${node.key}|d${targetRenderDepth}`}
               node={node}
               meta={meta}
+              treemapScope={treemapScope}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
               focusedPath={focusedPath}
               onClick={handleNodeClick}
               onMouseEnter={handleMouseEnter}

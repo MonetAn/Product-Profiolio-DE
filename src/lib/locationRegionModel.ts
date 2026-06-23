@@ -221,13 +221,76 @@ export type UnitRegionDetailRow = {
   entityRegionSharePct: number;
 };
 
+export type MarketDetailRow = UnitRegionDetailRow & {
+  countryId: string;
+  key: string;
+};
+
+export function countryBelongsToTopRegion(
+  country: MarketCountryRow,
+  region: TopRegionLabel | null,
+  countryIdToClusterKey: Map<string, string>
+): boolean {
+  if (!region) return true;
+  const clusterKey = countryIdToClusterKey.get(country.id) ?? country.cluster_key;
+  return clusterKeyToTopRegion(clusterKey) === region;
+}
+
+type InitiativeLocationAmounts = {
+  fact: number;
+  plan: number;
+  entityTotal: number;
+};
+
+function initiativeLocationAmounts(
+  row: AdminDataRow,
+  cost: number,
+  region: TopRegionLabel | null,
+  marketCountry: MarketCountryRow | null,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): InitiativeLocationAmounts {
+  if (marketCountry) {
+    const factFlat = initiativeFactFlatByMarket(cost, row, countries, countryIdToClusterKey);
+    const planFlat = initiativePlanFlatByMarket(cost, row, countries);
+    const entityTotal = [...factFlat.values()].reduce((s, v) => s + v, 0);
+    return {
+      fact: factFlat.get(marketCountry.label_ru) ?? 0,
+      plan: planFlat.get(marketCountry.label_ru) ?? 0,
+      entityTotal,
+    };
+  }
+
+  const factByRegion = allocateInitiativeFactByRegion(
+    cost,
+    row,
+    countries,
+    countryIdToClusterKey
+  );
+  const entityTotal = [...factByRegion.values()].reduce((s, v) => s + v, 0);
+  const fact = region != null ? (factByRegion.get(region) ?? 0) : entityTotal;
+
+  let plan = 0;
+  const scope = resolveUnitMarketScope(row.unit, row.team);
+  if (scope) {
+    const planByRegion = allocateInitiativeCostByRevenueScope(cost, scope, countries);
+    plan =
+      region != null
+        ? (planByRegion.get(region) ?? 0)
+        : [...planByRegion.values()].reduce((s, v) => s + v, 0);
+  }
+
+  return { fact, plan, entityTotal };
+}
+
 /** Детализация юнитов: выбранный регион или все регионы (overview). */
 export function buildUnitDetailRows(
   initiatives: AdminDataRow[],
   year: number,
   region: TopRegionLabel | null,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): UnitRegionDetailRow[] {
   const yearQuarters = quartersForYear(initiatives, year);
   type Acc = { fact: number; plan: number; entityTotal: number };
@@ -238,24 +301,14 @@ export function buildUnitDetailRows(
     if (cost <= 0) continue;
 
     const unit = row.unit.trim() || '—';
-    const factByRegion = allocateInitiativeFactByRegion(
-      cost,
+    const { fact, plan, entityTotal } = initiativeLocationAmounts(
       row,
+      cost,
+      region,
+      marketCountry,
       countries,
       countryIdToClusterKey
     );
-    const entityTotal = [...factByRegion.values()].reduce((s, v) => s + v, 0);
-    const fact = region != null ? (factByRegion.get(region) ?? 0) : entityTotal;
-
-    let plan = 0;
-    const scope = resolveUnitMarketScope(row.unit, row.team);
-    if (scope) {
-      const planByRegion = allocateInitiativeCostByRevenueScope(cost, scope, countries);
-      plan =
-        region != null
-          ? (planByRegion.get(region) ?? 0)
-          : [...planByRegion.values()].reduce((s, v) => s + v, 0);
-    }
 
     if (fact <= 0 && plan <= 0) continue;
 
@@ -290,18 +343,34 @@ export function buildUnitRegionDetailRows(
   year: number,
   region: TopRegionLabel,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): UnitRegionDetailRow[] {
-  return buildUnitDetailRows(initiatives, year, region, countries, countryIdToClusterKey);
+  return buildUnitDetailRows(
+    initiatives,
+    year,
+    region,
+    countries,
+    countryIdToClusterKey,
+    marketCountry
+  );
 }
 
 export function buildUnitOverviewDetailRows(
   initiatives: AdminDataRow[],
   year: number,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): UnitRegionDetailRow[] {
-  return buildUnitDetailRows(initiatives, year, null, countries, countryIdToClusterKey);
+  return buildUnitDetailRows(
+    initiatives,
+    year,
+    null,
+    countries,
+    countryIdToClusterKey,
+    marketCountry
+  );
 }
 
 export type TeamRegionDetailRow = UnitRegionDetailRow & {
@@ -317,7 +386,8 @@ export function buildTeamDetailRows(
   region: TopRegionLabel | null,
   unitFilter: string | null,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): TeamRegionDetailRow[] {
   const yearQuarters = quartersForYear(initiatives, year);
   type Acc = {
@@ -337,24 +407,14 @@ export function buildTeamDetailRows(
     const team = row.team.trim() || '—';
     if (unitFilter && unit !== unitFilter) continue;
 
-    const factByRegion = allocateInitiativeFactByRegion(
-      cost,
+    const { fact, plan, entityTotal } = initiativeLocationAmounts(
       row,
+      cost,
+      region,
+      marketCountry,
       countries,
       countryIdToClusterKey
     );
-    const entityTotal = [...factByRegion.values()].reduce((s, v) => s + v, 0);
-    const fact = region != null ? (factByRegion.get(region) ?? 0) : entityTotal;
-
-    let plan = 0;
-    const scope = resolveUnitMarketScope(row.unit, row.team);
-    if (scope) {
-      const planByRegion = allocateInitiativeCostByRevenueScope(cost, scope, countries);
-      plan =
-        region != null
-          ? (planByRegion.get(region) ?? 0)
-          : [...planByRegion.values()].reduce((s, v) => s + v, 0);
-    }
 
     if (fact <= 0 && plan <= 0) continue;
 
@@ -394,7 +454,8 @@ export function buildTeamRegionDetailRows(
   region: TopRegionLabel,
   unitFilter: string | null,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): TeamRegionDetailRow[] {
   return buildTeamDetailRows(
     initiatives,
@@ -402,7 +463,8 @@ export function buildTeamRegionDetailRows(
     region,
     unitFilter,
     countries,
-    countryIdToClusterKey
+    countryIdToClusterKey,
+    marketCountry
   );
 }
 
@@ -411,7 +473,8 @@ export function buildTeamOverviewDetailRows(
   year: number,
   unitFilter: string | null,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): TeamRegionDetailRow[] {
   return buildTeamDetailRows(
     initiatives,
@@ -419,8 +482,66 @@ export function buildTeamOverviewDetailRows(
     null,
     unitFilter,
     countries,
-    countryIdToClusterKey
+    countryIdToClusterKey,
+    marketCountry
   );
+}
+
+/** Стоимость ИТ по рынкам (странам): все рынки каталога в регионе или во всём портфеле. */
+export function buildMarketDetailRows(
+  initiatives: AdminDataRow[],
+  year: number,
+  region: TopRegionLabel | null,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): MarketDetailRow[] {
+  const yearQuarters = quartersForYear(initiatives, year);
+  const catalog = countries
+    .filter((c) => c.is_active && countryBelongsToTopRegion(c, region, countryIdToClusterKey))
+    .sort((a, b) => a.label_ru.localeCompare(b.label_ru, 'ru'));
+
+  type Acc = { fact: number; plan: number };
+  const accByCountryId = new Map<string, Acc>();
+  for (const country of catalog) {
+    accByCountryId.set(country.id, { fact: 0, plan: 0 });
+  }
+
+  for (const row of initiatives) {
+    const cost = initiativeYearCostRub(row, yearQuarters);
+    if (cost <= 0) continue;
+
+    const factFlat = initiativeFactFlatByMarket(cost, row, countries, countryIdToClusterKey);
+    const planFlat = initiativePlanFlatByMarket(cost, row, countries);
+
+    for (const country of catalog) {
+      const fact = factFlat.get(country.label_ru) ?? 0;
+      const plan = planFlat.get(country.label_ru) ?? 0;
+      if (fact <= 0 && plan <= 0) continue;
+      const prev = accByCountryId.get(country.id)!;
+      prev.fact += fact;
+      prev.plan += plan;
+    }
+  }
+
+  const factTotal = [...accByCountryId.values()].reduce((s, a) => s + a.fact, 0);
+
+  return catalog
+    .map((country) => {
+      const totals = accByCountryId.get(country.id)!;
+      return {
+        key: country.id,
+        countryId: country.id,
+        name: country.label_ru,
+        factRub: totals.fact,
+        planRub: totals.plan,
+        deltaRub: totals.fact - totals.plan,
+        entityTotalRub: totals.fact,
+        regionBudgetSharePct: factTotal > 0 ? (totals.fact / factTotal) * 100 : 0,
+        entityRegionSharePct: 100,
+      };
+    })
+    .filter((r) => r.factRub > 0 || r.planRub > 0)
+    .sort((a, b) => b.factRub - a.factRub || b.planRub - a.planRub || a.name.localeCompare(b.name, 'ru'));
 }
 
 /** Факт по командам: все регионы или один; опционально только выбранный юнит. */
@@ -816,6 +937,43 @@ function allocateInitiativeFactMarketsByCluster(
   return out;
 }
 
+export function initiativeFactFlatByMarket(
+  costRub: number,
+  row: AdminDataRow,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): Map<string, number> {
+  const nested = allocateInitiativeFactMarketsByCluster(
+    costRub,
+    row,
+    countries,
+    countryIdToClusterKey
+  );
+  const out = new Map<string, number>();
+  for (const markets of nested.values()) {
+    for (const [label, rub] of markets) {
+      if (rub <= 0) continue;
+      out.set(label, (out.get(label) ?? 0) + rub);
+    }
+  }
+  return out;
+}
+
+function initiativePlanFlatByMarket(
+  costRub: number,
+  row: AdminDataRow,
+  countries: MarketCountryRow[]
+): Map<string, number> {
+  const cost = Math.round(Number(costRub) || 0);
+  if (cost <= 0) return new Map();
+
+  const scope = resolveUnitMarketScope(row.unit, row.team);
+  if (!scope) return new Map();
+
+  const eligible = countries.filter((c) => c.is_active && countryMatchesScope(c, scope));
+  return distributeRubByRevenueToCountryLabels(cost, eligible);
+}
+
 function allocateInitiativeFactByCluster(
   costRub: number,
   row: AdminDataRow,
@@ -857,17 +1015,38 @@ export function filterLocationTimelineInitiatives(
     region: TopRegionLabel | null;
     unit: string | null;
     team: LocationTeamFilter | null;
+    marketCountry: MarketCountryRow | null;
     countries: MarketCountryRow[];
     countryIdToClusterKey: Map<string, string>;
   }
 ): AdminDataRow[] {
   const yearQuarters = quartersForYear(initiatives, filters.year);
   return initiatives.filter((row) => {
+    if (row.isPortfolioGhost) return false;
     if (filters.unit && row.unit !== filters.unit) return false;
     if (filters.team) {
       if (row.unit !== filters.team.unit || row.team !== filters.team.team) return false;
     }
-    if (initiativeYearCostRub(row, yearQuarters) <= 0) return false;
+    const cost = initiativeYearCostRub(row, yearQuarters);
+    if (cost <= 0) return false;
+    if (filters.region) {
+      const byRegion = allocateInitiativeFactByRegion(
+        cost,
+        row,
+        filters.countries,
+        filters.countryIdToClusterKey
+      );
+      if ((byRegion.get(filters.region) ?? 0) <= 0) return false;
+    }
+    if (filters.marketCountry) {
+      const factFlat = initiativeFactFlatByMarket(
+        cost,
+        row,
+        filters.countries,
+        filters.countryIdToClusterKey
+      );
+      if ((factFlat.get(filters.marketCountry.label_ru) ?? 0) <= 0) return false;
+    }
     return true;
   });
 }

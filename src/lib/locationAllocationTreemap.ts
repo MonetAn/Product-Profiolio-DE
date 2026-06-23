@@ -3,12 +3,53 @@ import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import type { TreeNode } from '@/lib/dataManager';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
 import {
+  allocateInitiativeFactByRegion,
+  countryBelongsToTopRegion,
+  initiativeFactFlatByMarket,
   initiativeFactMarketsByCluster,
   initiativeFactByAllRegions,
   TOP_REGION_ORDER,
+  TOP_REGION_DISPLAY_LABELS,
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { initiativeYearCostRub } from '@/lib/locationAllocationModel';
+
+export type LocationAllocationTreemapScope =
+  | { kind: 'all' }
+  | { kind: 'region'; region: TopRegionLabel }
+  | { kind: 'market'; country: MarketCountryRow };
+
+export function resolveLocationAllocationTreemapScope(
+  region: TopRegionLabel | null,
+  marketCountry: MarketCountryRow | null
+): LocationAllocationTreemapScope {
+  if (marketCountry) return { kind: 'market', country: marketCountry };
+  if (region) return { kind: 'region', region };
+  return { kind: 'all' };
+}
+
+export function initiativeScopedCostRub(
+  row: AdminDataRow,
+  fullCost: number,
+  scope: LocationAllocationTreemapScope,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): number {
+  if (fullCost <= 0) return 0;
+  if (scope.kind === 'market') {
+    const flat = initiativeFactFlatByMarket(fullCost, row, countries, countryIdToClusterKey);
+    return flat.get(scope.country.label_ru) ?? 0;
+  }
+  if (scope.kind === 'region') {
+    return allocateInitiativeFactByRegion(
+      fullCost,
+      row,
+      countries,
+      countryIdToClusterKey
+    ).get(scope.region) ?? 0;
+  }
+  return fullCost;
+}
 
 export type LocationAllocationTreemapMeta = {
   yearCostByInitiativeId: Map<string, number>;
@@ -41,11 +82,26 @@ function initiativeLeaf(row: AdminDataRow, cost: number): TreeNode {
   };
 }
 
-function rowsWithCost(initiatives: AdminDataRow[], yearQuarters: string[]): RowWithCost[] {
+function rowsWithCost(
+  initiatives: AdminDataRow[],
+  yearQuarters: string[],
+  scope: LocationAllocationTreemapScope,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): RowWithCost[] {
   const out: RowWithCost[] = [];
   for (const row of initiatives) {
-    const cost = initiativeYearCostRub(row, yearQuarters);
-    if (cost > 0) out.push({ row, cost });
+    const fullCost = initiativeYearCostRub(row, yearQuarters);
+    if (fullCost <= 0) continue;
+    const cost = initiativeScopedCostRub(
+      row,
+      fullCost,
+      scope,
+      countries,
+      countryIdToClusterKey
+    );
+    if (cost <= 0) continue;
+    out.push({ row, cost });
   }
   return out;
 }
@@ -192,9 +248,12 @@ function buildUnitsInitiativesTree(rows: RowWithCost[]): TreeNode {
 export function buildLocationAllocationTreemapTree(
   initiatives: AdminDataRow[],
   yearQuarters: string[],
-  options: { showTeams: boolean; showInitiatives: boolean }
+  options: { showTeams: boolean; showInitiatives: boolean },
+  scope: LocationAllocationTreemapScope = { kind: 'all' },
+  countries: MarketCountryRow[] = [],
+  countryIdToClusterKey: Map<string, string> = new Map()
 ): TreeNode {
-  const rows = rowsWithCost(initiatives, yearQuarters);
+  const rows = rowsWithCost(initiatives, yearQuarters, scope, countries, countryIdToClusterKey);
   const { showTeams, showInitiatives } = options;
 
   if (!showTeams && !showInitiatives) return buildUnitsOnlyTree(rows);
@@ -346,7 +405,12 @@ export type LocationTreemapClusterMarketGroup = {
 
 export function sumLocationTreemapClusterMarketBreakdown(
   ids: string[],
-  meta: LocationAllocationTreemapMeta
+  meta: LocationAllocationTreemapMeta,
+  filter?: {
+    scope: LocationAllocationTreemapScope;
+    countries: MarketCountryRow[];
+    countryIdToClusterKey: Map<string, string>;
+  }
 ): LocationTreemapClusterMarketGroup[] {
   const merged = new Map<string, Map<string, number>>();
 
@@ -361,6 +425,7 @@ export function sumLocationTreemapClusterMarketBreakdown(
       }
       for (const [marketLabel, rub] of markets) {
         if (rub <= 0) continue;
+        if (filter && !marketMatchesTreemapScope(marketLabel, filter)) continue;
         clusterMap.set(marketLabel, (clusterMap.get(marketLabel) ?? 0) + rub);
       }
     }
@@ -377,6 +442,67 @@ export function sumLocationTreemapClusterMarketBreakdown(
     })
     .filter((group) => group.markets.length > 0)
     .sort((a, b) => b.totalRub - a.totalRub);
+}
+
+function marketMatchesTreemapScope(
+  marketLabel: string,
+  filter: {
+    scope: LocationAllocationTreemapScope;
+    countries: MarketCountryRow[];
+    countryIdToClusterKey: Map<string, string>;
+  }
+): boolean {
+  const country = filter.countries.find((c) => c.label_ru === marketLabel);
+  if (!country) return filter.scope.kind === 'all';
+
+  if (filter.scope.kind === 'market') {
+    return country.id === filter.scope.country.id;
+  }
+  if (filter.scope.kind === 'region') {
+    return countryBelongsToTopRegion(
+      country,
+      filter.scope.region,
+      filter.countryIdToClusterKey
+    );
+  }
+  return true;
+}
+
+export function resolveLocationTreemapNodeScopedCost(
+  node: TreemapLayoutNode,
+  meta: LocationAllocationTreemapMeta,
+  scope: LocationAllocationTreemapScope,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): number {
+  if (scope.kind === 'all') {
+    return resolveLocationTreemapNodeYearCost(node, meta);
+  }
+  const layoutValue = node.value ?? 0;
+  const rowId = node.data.adminInitiativeRowId;
+  if (rowId) {
+    const full = meta.yearCostByInitiativeId.get(rowId) ?? 0;
+    const row = meta.initiativeRowById.get(rowId);
+    if (row && full > 0) {
+      return initiativeScopedCostRub(row, full, scope, countries, countryIdToClusterKey);
+    }
+  }
+  const ids = collectLocationTreemapInitiativeIds(node, meta);
+  if (ids.length === 0) return layoutValue;
+  let sum = 0;
+  for (const id of ids) {
+    const full = meta.yearCostByInitiativeId.get(id) ?? 0;
+    const row = meta.initiativeRowById.get(id);
+    if (!row || full <= 0) continue;
+    sum += initiativeScopedCostRub(row, full, scope, countries, countryIdToClusterKey);
+  }
+  return sum > 0 ? sum : layoutValue;
+}
+
+export function treemapScopeLabel(scope: LocationAllocationTreemapScope): string | null {
+  if (scope.kind === 'region') return TOP_REGION_DISPLAY_LABELS[scope.region];
+  if (scope.kind === 'market') return scope.country.label_ru;
+  return null;
 }
 
 export function sumLocationTreemapYearCost(

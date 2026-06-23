@@ -21,6 +21,10 @@ const GRID_COLUMNS_OVERVIEW = '1.125rem minmax(3rem,1fr) minmax(6.75rem,1.25fr)'
 const GRID_COLUMNS_REGION =
   '1.125rem minmax(2.75rem,0.85fr) minmax(6.75rem,1.15fr) minmax(3.25rem,4.25rem) minmax(5rem,0.9fr)';
 
+/** # | Entity | аллокация | Δ */
+const GRID_COLUMNS_REGION_NO_SHARE =
+  '1.125rem minmax(2.75rem,0.85fr) minmax(6.75rem,1.15fr) minmax(3.25rem,4.25rem)';
+
 const DELTA_COLUMN_TITLE = 'Дельта распределения по выручке';
 const ENTITY_SHARE_COLUMN_LABEL = 'Доля от всей стоимости юнита';
 
@@ -39,6 +43,7 @@ type Props = {
   listViewportPx?: number;
   className?: string;
   overviewMode?: boolean;
+  showEntityShareColumn?: boolean;
 };
 
 function AllocationAmountCell({ row }: { row: UnitRegionDetailRow }) {
@@ -82,6 +87,7 @@ export function LocationRegionEntityRankedList({
   listViewportPx = REGION_ENTITY_LIST_VIEWPORT_PX,
   className,
   overviewMode = false,
+  showEntityShareColumn = true,
 }: Props) {
   const [hoverName, setHoverName] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -107,7 +113,11 @@ export function LocationRegionEntityRankedList({
   const title = contextLabel ? `${titleLabel} · ${contextLabel}` : titleLabel;
 
   const shareLabel = overviewMode ? 'от общего' : 'бюджета региона';
-  const gridColumns = overviewMode ? GRID_COLUMNS_OVERVIEW : GRID_COLUMNS_REGION;
+  const gridColumns = overviewMode
+    ? GRID_COLUMNS_OVERVIEW
+    : showEntityShareColumn
+      ? GRID_COLUMNS_REGION
+      : GRID_COLUMNS_REGION_NO_SHARE;
 
   const updateScrollHints = useCallback(() => {
     const el = scrollRef.current;
@@ -209,8 +219,10 @@ export function LocationRegionEntityRankedList({
           : `${row.name}\n` +
             `Алокация: ${formatLocationFullAmount(row.factRub)} (${row.regionBudgetSharePct.toFixed(1)}% ${shareLabel})\n` +
             `vs ${formatLocationFullAmount(row.planRub)}\n` +
-            `Дельта распределения по выручке: ${formatLocationFullAmount(row.deltaRub)}\n` +
-            `${ENTITY_SHARE_COLUMN_LABEL}: ${entitySharePct.toFixed(1)}% · ${formatLocationFullAmount(row.entityTotalRub)}`;
+            `Дельта распределения по выручке: ${formatLocationFullAmount(row.deltaRub)}` +
+            (showEntityShareColumn
+              ? `\n${ENTITY_SHARE_COLUMN_LABEL}: ${entitySharePct.toFixed(1)}% · ${formatLocationFullAmount(row.entityTotalRub)}`
+              : '');
 
         const rowContent = (
           <>
@@ -235,10 +247,12 @@ export function LocationRegionEntityRankedList({
                 >
                   {formatLocationDeltaM(row.deltaRub)}
                 </span>
-                <span className="text-right text-[10px] tabular-nums leading-tight self-center text-muted-foreground">
-                  <span className="font-medium text-foreground/65">{entitySharePct.toFixed(0)}%</span>
-                  {' '}от {formatLocationCompactM(row.entityTotalRub)}
-                </span>
+                {showEntityShareColumn ? (
+                  <span className="text-right text-[10px] tabular-nums leading-tight self-center text-muted-foreground">
+                    <span className="font-medium text-foreground/65">{entitySharePct.toFixed(0)}%</span>
+                    {' '}от {formatLocationCompactM(row.entityTotalRub)}
+                  </span>
+                ) : null}
               </>
             ) : null}
           </>
@@ -320,7 +334,9 @@ export function LocationRegionEntityRankedList({
               <Split className="h-3 w-3 shrink-0" aria-hidden />
               <span>по выручке</span>
             </span>
-            <span className="text-right leading-tight">{ENTITY_SHARE_COLUMN_LABEL}</span>
+            {showEntityShareColumn ? (
+              <span className="text-right leading-tight">{ENTITY_SHARE_COLUMN_LABEL}</span>
+            ) : null}
           </>
         ) : null}
       </div>

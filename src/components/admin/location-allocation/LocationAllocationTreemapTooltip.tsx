@@ -2,12 +2,24 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
-import type { LocationAllocationTreemapMeta } from '@/lib/locationAllocationTreemap';
+import type {
+  LocationAllocationTreemapMeta,
+  LocationAllocationTreemapScope,
+} from '@/lib/locationAllocationTreemap';
 import {
   collectLocationTreemapInitiativeIds,
   resolveLocationTreemapNodeYearCost,
+  resolveLocationTreemapNodeScopedCost,
   sumLocationTreemapClusterMarketBreakdown,
+  sumLocationTreemapRegionBreakdown,
+  treemapScopeLabel,
 } from '@/lib/locationAllocationTreemap';
+import type { MarketCountryRow } from '@/hooks/useMarketCountries';
+import {
+  TOP_REGION_ORDER,
+  TOP_REGION_SHORT_LABELS,
+  type TopRegionLabel,
+} from '@/lib/locationRegionModel';
 import { formatLocationCompactM, formatLocationFullAmount } from '@/lib/locationDisplayFormat';
 
 const CURSOR_OFFSET = 12;
@@ -17,6 +29,9 @@ const WIDE_TOOLTIP_MARKET_THRESHOLD = 10;
 type Props = {
   data: { node: TreemapLayoutNode; position: { x: number; y: number } } | null;
   meta: LocationAllocationTreemapMeta;
+  treemapScope?: LocationAllocationTreemapScope;
+  countries?: MarketCountryRow[];
+  countryIdToClusterKey?: Map<string, string>;
   showMoney?: boolean;
 };
 
@@ -28,6 +43,9 @@ function pct(part: number, whole: number): string {
 export const LocationAllocationTreemapTooltip = memo(function LocationAllocationTreemapTooltip({
   data,
   meta,
+  treemapScope = { kind: 'all' },
+  countries = [],
+  countryIdToClusterKey = new Map(),
   showMoney = true,
 }: Props) {
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -58,18 +76,43 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
     setPosition({ x, y });
   }, [data]);
 
+  const initiativeIds = useMemo(() => {
+    if (!data) return [];
+    return collectLocationTreemapInitiativeIds(data.node, meta);
+  }, [data, meta]);
+
   const clusterGroups = useMemo(() => {
     if (!data) return [];
-    const initiativeIds = collectLocationTreemapInitiativeIds(data.node, meta);
-    return sumLocationTreemapClusterMarketBreakdown(initiativeIds, meta);
-  }, [data, meta]);
+    const filter =
+      treemapScope.kind === 'all'
+        ? undefined
+        : { scope: treemapScope, countries, countryIdToClusterKey };
+    return sumLocationTreemapClusterMarketBreakdown(initiativeIds, meta, filter);
+  }, [data, initiativeIds, meta, treemapScope, countries, countryIdToClusterKey]);
 
   const body = useMemo(() => {
     if (!data) return null;
 
     const { node } = data;
     const fullCost = resolveLocationTreemapNodeYearCost(node, meta);
+    const scopedCost = resolveLocationTreemapNodeScopedCost(
+      node,
+      meta,
+      treemapScope,
+      countries,
+      countryIdToClusterKey
+    );
+    const isFiltered = treemapScope.kind !== 'all';
+    const scopeLabel = treemapScopeLabel(treemapScope);
     const marketCount = clusterGroups.reduce((s, g) => s + g.markets.length, 0);
+
+    const regionBreakdown = sumLocationTreemapRegionBreakdown(initiativeIds, meta);
+    const otherRegions = TOP_REGION_ORDER.map((region) => {
+      if (treemapScope.kind === 'region' && region === treemapScope.region) return null;
+      const rub = regionBreakdown.get(region) ?? 0;
+      if (rub <= 0) return null;
+      return { region, rub };
+    }).filter((r): r is { region: TopRegionLabel; rub: number } => r != null);
 
     return (
       <>
@@ -80,23 +123,65 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
           <p className="text-xs text-muted-foreground">{node.data.unit}</p>
         ) : null}
         {showMoney ? (
-          <div className="flex justify-between gap-4 text-xs">
-            <span className="text-muted-foreground">
-              {node.isInitiative ? 'Полная стоимость' : 'Сумма'}
-            </span>
-            <span className="font-medium tabular-nums">
-              {formatLocationCompactM(fullCost)}
-              <span className="ml-1 text-[10px] font-normal text-muted-foreground">
-                ({formatLocationFullAmount(fullCost)} ₽)
+          <>
+            {isFiltered ? (
+              <div className="flex justify-between gap-4 text-xs">
+                <span className="text-muted-foreground">
+                  {scopeLabel ? `Стоимость · ${scopeLabel}` : 'Стоимость в фильтре'}
+                </span>
+                <span className="font-medium tabular-nums">
+                  {formatLocationCompactM(scopedCost)}
+                  <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                    ({formatLocationFullAmount(scopedCost)} ₽)
+                  </span>
+                </span>
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-4 text-xs">
+              <span className="text-muted-foreground">
+                {node.isInitiative ? 'Полная стоимость' : 'Сумма'}
               </span>
-            </span>
+              <span className={cn('font-medium tabular-nums', isFiltered && 'text-muted-foreground')}>
+                {formatLocationCompactM(fullCost)}
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                  ({formatLocationFullAmount(fullCost)} ₽)
+                </span>
+              </span>
+            </div>
+          </>
+        ) : null}
+
+        {isFiltered && otherRegions.length > 0 ? (
+          <div className={cn(showMoney && 'border-t border-border/60 pt-2')}>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Другие регионы
+            </p>
+            <div className="space-y-1">
+              {otherRegions.map(({ region, rub }) => (
+                <div
+                  key={region}
+                  className="flex items-baseline justify-between gap-2 text-xs tabular-nums"
+                >
+                  <span className="text-muted-foreground">{TOP_REGION_SHORT_LABELS[region]}</span>
+                  <span className="text-right shrink-0">
+                    <span className="text-muted-foreground">{pct(rub, fullCost)}</span>
+                    {showMoney ? (
+                      <>
+                        <span className="mx-1 text-muted-foreground/60">·</span>
+                        <span>{formatLocationCompactM(rub)}</span>
+                      </>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
         {marketCount > 0 ? (
-          <div className={cn(showMoney && 'border-t border-border/60 pt-2')}>
+          <div className={cn((showMoney || otherRegions.length > 0) && 'border-t border-border/60 pt-2')}>
             <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              По рынкам
+              {isFiltered ? 'Рынки в фильтре' : 'По рынкам'}
             </p>
             <div className="max-h-[280px] space-y-2.5 overflow-y-auto">
               {clusterGroups.map((group) => (
@@ -112,7 +197,9 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
                       >
                         <span className="text-muted-foreground truncate">{label}</span>
                         <span className="text-right shrink-0">
-                          <span className="text-muted-foreground">{pct(rub, fullCost)}</span>
+                          <span className="text-muted-foreground">
+                            {pct(rub, isFiltered ? scopedCost : fullCost)}
+                          </span>
                           {showMoney ? (
                             <>
                               <span className="mx-1 text-muted-foreground/60">·</span>
@@ -127,12 +214,23 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
               ))}
             </div>
           </div>
+        ) : isFiltered ? (
+          <p className="text-xs text-muted-foreground">Нет аллокации по рынкам в фильтре</p>
         ) : (
           <p className="text-xs text-muted-foreground">Нет аллокации по рынкам</p>
         )}
       </>
     );
-  }, [clusterGroups, data, showMoney, meta]);
+  }, [
+    clusterGroups,
+    countries,
+    countryIdToClusterKey,
+    data,
+    initiativeIds,
+    meta,
+    showMoney,
+    treemapScope,
+  ]);
 
   const marketCount = clusterGroups.reduce((s, g) => s + g.markets.length, 0);
   const wideTooltip = marketCount > WIDE_TOOLTIP_MARKET_THRESHOLD;

@@ -16,6 +16,7 @@ import {
   unitToUrlParam,
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
+import { excludePortfolioGhostRows } from '@/lib/portfolioVisibility';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -24,8 +25,10 @@ export default function AdminLocationAllocations() {
   const regionFilter = topRegionFromUrlSlug(searchParams.get('region') || '');
   const unitFilter = unitFromUrlParam(searchParams.get('unit') || '');
   const teamFilter = teamFromUrlParam(searchParams.get('team') || '');
+  const marketCountryId = searchParams.get('market') || '';
 
-  const { data: initiatives = [], isLoading: loadingInitiatives } = useInitiatives({ tableAll: true });
+  const { data: initiativesRaw = [], isLoading: loadingInitiatives } = useInitiatives({ tableAll: true });
+  const initiatives = useMemo(() => excludePortfolioGhostRows(initiativesRaw), [initiativesRaw]);
   const { data: countries = [], isLoading: loadingCountries } = useMarketCountries();
   const { updateInitiativeFieldAsync } = useInitiativeMutations();
 
@@ -43,6 +46,7 @@ export default function AdminLocationAllocations() {
         next.delete('cluster');
         next.delete('unit');
         next.delete('team');
+        next.delete('market');
         const slug = topRegionToUrlSlug(region);
         if (slug) next.set('region', slug);
         else next.delete('region');
@@ -82,9 +86,26 @@ export default function AdminLocationAllocations() {
     [setSearchParams]
   );
 
+  const setMarketFilter = useCallback(
+    (country: (typeof countries)[number] | null) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (country) next.set('market', country.id);
+        else next.delete('market');
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
+
   const countryIdToClusterKey = useMemo(
     () => buildCountryIdToClusterMap(countries),
     [countries]
+  );
+
+  const marketCountry = useMemo(
+    () => countries.find((c) => c.id === marketCountryId) ?? null,
+    [countries, marketCountryId]
   );
   const isLoading = loadingInitiatives || loadingCountries;
 
@@ -111,6 +132,8 @@ export default function AdminLocationAllocations() {
               onUnitFilterChange={setUnitFilter}
               teamFilter={teamFilter}
               onTeamFilterChange={setTeamFilter}
+              marketCountry={marketCountry}
+              onMarketFilterChange={setMarketFilter}
               onGeoCostSplitSave={saveGeoCostSplit}
             />
           )}
