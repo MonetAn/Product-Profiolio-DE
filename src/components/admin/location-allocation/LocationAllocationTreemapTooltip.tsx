@@ -6,12 +6,13 @@ import type { LocationAllocationTreemapMeta } from '@/lib/locationAllocationTree
 import {
   collectLocationTreemapInitiativeIds,
   resolveLocationTreemapNodeYearCost,
-  sumLocationTreemapClusterBreakdown,
+  sumLocationTreemapClusterMarketBreakdown,
 } from '@/lib/locationAllocationTreemap';
 import { formatLocationCompactM, formatLocationFullAmount } from '@/lib/locationDisplayFormat';
 
 const CURSOR_OFFSET = 12;
 const SCREEN_PADDING = 16;
+const WIDE_TOOLTIP_MARKET_THRESHOLD = 10;
 
 type Props = {
   data: { node: TreemapLayoutNode; position: { x: number; y: number } } | null;
@@ -57,14 +58,18 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
     setPosition({ x, y });
   }, [data]);
 
+  const clusterGroups = useMemo(() => {
+    if (!data) return [];
+    const initiativeIds = collectLocationTreemapInitiativeIds(data.node, meta);
+    return sumLocationTreemapClusterMarketBreakdown(initiativeIds, meta);
+  }, [data, meta]);
+
   const body = useMemo(() => {
     if (!data) return null;
 
     const { node } = data;
-    const initiativeIds = collectLocationTreemapInitiativeIds(node, meta);
     const fullCost = resolveLocationTreemapNodeYearCost(node, meta);
-    const clusterBreakdown = sumLocationTreemapClusterBreakdown(initiativeIds, meta);
-    const clusterRows = [...clusterBreakdown.entries()].sort((a, b) => b[1] - a[1]);
+    const marketCount = clusterGroups.reduce((s, g) => s + g.markets.length, 0);
 
     return (
       <>
@@ -88,27 +93,36 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
           </div>
         ) : null}
 
-        {clusterRows.length > 0 ? (
+        {marketCount > 0 ? (
           <div className={cn(showMoney && 'border-t border-border/60 pt-2')}>
             <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               По рынкам
             </p>
-            <div className="space-y-1 max-h-[220px] overflow-y-auto">
-              {clusterRows.map(([label, rub]) => (
-                <div
-                  key={label}
-                  className="flex items-baseline justify-between gap-3 text-xs tabular-nums"
-                >
-                  <span className="text-muted-foreground truncate">{label}</span>
-                  <span className="text-right shrink-0">
-                    <span className="text-muted-foreground">{pct(rub, fullCost)}</span>
-                    {showMoney ? (
-                      <>
-                        <span className="mx-1 text-muted-foreground/60">·</span>
-                        <span>{formatLocationCompactM(rub)}</span>
-                      </>
-                    ) : null}
-                  </span>
+            <div className="max-h-[280px] space-y-2.5 overflow-y-auto">
+              {clusterGroups.map((group) => (
+                <div key={group.clusterLabel}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/75">
+                    {group.clusterLabel}
+                  </p>
+                  <div className="space-y-0.5 pl-2">
+                    {group.markets.map(({ label, rub }) => (
+                      <div
+                        key={label}
+                        className="flex items-baseline justify-between gap-2 text-xs tabular-nums min-w-0"
+                      >
+                        <span className="text-muted-foreground truncate">{label}</span>
+                        <span className="text-right shrink-0">
+                          <span className="text-muted-foreground">{pct(rub, fullCost)}</span>
+                          {showMoney ? (
+                            <>
+                              <span className="mx-1 text-muted-foreground/60">·</span>
+                              <span>{formatLocationCompactM(rub)}</span>
+                            </>
+                          ) : null}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -118,7 +132,10 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
         )}
       </>
     );
-  }, [data, meta, showMoney]);
+  }, [clusterGroups, data, showMoney, meta]);
+
+  const marketCount = clusterGroups.reduce((s, g) => s + g.markets.length, 0);
+  const wideTooltip = marketCount > WIDE_TOOLTIP_MARKET_THRESHOLD;
 
   if (!data) return null;
 
@@ -126,7 +143,8 @@ export const LocationAllocationTreemapTooltip = memo(function LocationAllocation
     <div
       ref={tooltipRef}
       className={cn(
-        'treemap-tooltip location-allocation-treemap-tooltip pointer-events-none fixed z-[9999] max-w-[320px] rounded-lg border border-border bg-popover p-3 shadow-lg',
+        'treemap-tooltip location-allocation-treemap-tooltip pointer-events-none fixed z-[9999] rounded-lg border border-border bg-popover p-3 shadow-lg',
+        wideTooltip ? 'max-w-[400px]' : 'max-w-[320px]',
         data && position && 'visible'
       )}
       style={{

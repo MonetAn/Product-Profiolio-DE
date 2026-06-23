@@ -3,13 +3,11 @@ import { ChevronDown } from 'lucide-react';
 import type { GeoCostSplit } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
-  applyClusterPercentChange,
   applyMarketPercentChange,
   applyRegionPercentChange,
   buildGeoHierarchy,
-  geoSplitPercentTotal,
   regionDisplayLabel,
-  type GeoHierarchyRegionRow,
+  sumHierarchyPercents,
 } from '@/lib/locationAllocationGeoEdit';
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -45,8 +43,29 @@ function PercentInput({
       disabled={disabled}
       value={Number.isFinite(value) ? value : 0}
       onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
-      className={cn('h-7 w-[4.25rem] px-1.5 text-right tabular-nums text-xs', className)}
+      className={cn(
+        'h-7 w-[4.25rem] px-1.5 text-right tabular-nums text-xs',
+        '[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+        className
+      )}
     />
+  );
+}
+
+function ColumnHeaders({ totalPct }: { totalPct: number }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="min-w-0 flex-1">Рынок</span>
+      <span
+        className={cn(
+          'w-[4.25rem] shrink-0 text-right tabular-nums sm:w-[4.5rem]',
+          totalPct !== 100 && 'text-amber-600 dark:text-amber-500'
+        )}
+      >
+        Σ {totalPct}%
+      </span>
+      <span className="w-[4.5rem] shrink-0 text-right">₽</span>
+    </div>
   );
 }
 
@@ -63,7 +82,7 @@ export function LocationAllocationHierarchicalGeoEditor({
     [split, totalCostRub, countries, countryIdToClusterKey]
   );
 
-  const totalPct = geoSplitPercentTotal(split);
+  const totalPct = useMemo(() => sumHierarchyPercents(hierarchy), [hierarchy]);
 
   if (totalCostRub <= 0) {
     return (
@@ -75,35 +94,13 @@ export function LocationAllocationHierarchicalGeoEditor({
 
   if (hierarchy.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Нет рынков в распределении. Задайте доли на уровне региона или кластера.
-      </p>
+      <p className="text-sm text-muted-foreground">Справочник рынков пуст.</p>
     );
   }
 
-  const handleRegion = (region: GeoHierarchyRegionRow['region'], percent: number) => {
+  const handleRegion = (region: (typeof hierarchy)[0]['region'], percent: number) => {
     onChange(
-      applyRegionPercentChange(
-        split,
-        region,
-        percent,
-        totalCostRub,
-        countries,
-        countryIdToClusterKey
-      )
-    );
-  };
-
-  const handleCluster = (clusterLabel: string, percent: number) => {
-    onChange(
-      applyClusterPercentChange(
-        split,
-        clusterLabel,
-        percent,
-        totalCostRub,
-        countries,
-        countryIdToClusterKey
-      )
+      applyRegionPercentChange(split, region, percent, countries, countryIdToClusterKey)
     );
   };
 
@@ -115,96 +112,71 @@ export function LocationAllocationHierarchicalGeoEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span>Регион → кластер → рынок. Изменение рынков пересчитывает уровни выше.</span>
-        <span className="tabular-nums">
-          Σ {totalPct}%
-          {totalPct !== 100 ? (
-            <span className="ml-1 text-amber-600 dark:text-amber-500">· ожидается 100%</span>
-          ) : null}
-        </span>
+      <div className="rounded-lg border border-border/70 overflow-hidden">
+        <ColumnHeaders totalPct={totalPct} />
+
+        <div className="divide-y divide-border/60">
+          {hierarchy.map((region) => (
+            <Collapsible key={region.region} defaultOpen>
+              <div className="bg-muted/20 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="group flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-foreground"
+                    >
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
+                      <span className="truncate">{regionDisplayLabel(region.region)}</span>
+                    </button>
+                  </CollapsibleTrigger>
+                  <PercentInput
+                    value={region.percent}
+                    disabled={disabled}
+                    onChange={(v) => handleRegion(region.region, v)}
+                  />
+                  <span className="w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {formatLocationCompactM(region.rub)}
+                  </span>
+                </div>
+              </div>
+
+              <CollapsibleContent>
+                <ul className="divide-y divide-border/40 bg-background/80">
+                  {region.markets.map((market) => (
+                    <li
+                      key={market.countryId}
+                      className="flex items-center gap-2 px-3 py-1.5 pl-8 text-xs"
+                    >
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate',
+                          market.percent > 0 ? 'text-foreground/90' : 'text-muted-foreground/80'
+                        )}
+                      >
+                        {market.label}
+                      </span>
+                      <PercentInput
+                        value={market.percent}
+                        disabled={disabled}
+                        onChange={(v) => handleMarket(market.countryId, v)}
+                      />
+                      <span className="w-[4.5rem] shrink-0 text-right tabular-nums text-muted-foreground">
+                        {formatLocationCompactM(market.rub)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+        </div>
       </div>
 
-      <div className="rounded-lg border border-border/70 divide-y divide-border/60 overflow-hidden">
-        {hierarchy.map((region) => (
-          <Collapsible key={region.region} defaultOpen>
-            <div className="bg-muted/20 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className="group flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-foreground"
-                  >
-                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
-                    <span className="truncate">{regionDisplayLabel(region.region)}</span>
-                  </button>
-                </CollapsibleTrigger>
-                <PercentInput
-                  value={region.percent}
-                  disabled={disabled}
-                  onChange={(v) => handleRegion(region.region, v)}
-                />
-                <span className="w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                  {formatLocationCompactM(region.rub)}
-                </span>
-              </div>
-            </div>
-
-            <CollapsibleContent>
-              <div className="divide-y divide-border/40 bg-background/80">
-                {region.clusters.map((cluster) => (
-                  <Collapsible key={cluster.clusterLabel} defaultOpen={region.clusters.length <= 2}>
-                    <div className="px-3 py-2 pl-6">
-                      <div className="flex items-center gap-2">
-                        <CollapsibleTrigger asChild>
-                          <button
-                            type="button"
-                            className="group flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-foreground/90"
-                          >
-                            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
-                            <span className="truncate">{cluster.clusterLabel}</span>
-                          </button>
-                        </CollapsibleTrigger>
-                        <PercentInput
-                          value={cluster.percent}
-                          disabled={disabled}
-                          onChange={(v) => handleCluster(cluster.clusterLabel, v)}
-                        />
-                        <span className="w-[4.5rem] shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                          {formatLocationCompactM(cluster.rub)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <CollapsibleContent>
-                      <ul className="pb-1">
-                        {cluster.markets.map((market) => (
-                          <li
-                            key={market.countryId}
-                            className="flex items-center gap-2 px-3 py-1.5 pl-10 text-xs"
-                          >
-                            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                              {market.label}
-                            </span>
-                            <PercentInput
-                              value={market.percent}
-                              disabled={disabled}
-                              onChange={(v) => handleMarket(market.countryId, v)}
-                            />
-                            <span className="w-[4.5rem] shrink-0 text-right tabular-nums text-muted-foreground">
-                              {formatLocationCompactM(market.rub)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </CollapsibleContent>
-                  </Collapsible>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        ))}
-      </div>
+      {totalPct !== 100 ? (
+        <p className="text-xs text-amber-600 dark:text-amber-500">
+          Сумма по всем рынкам: {totalPct}% (для сохранения нужно 100%).
+        </p>
+      ) : null}
     </div>
   );
 }

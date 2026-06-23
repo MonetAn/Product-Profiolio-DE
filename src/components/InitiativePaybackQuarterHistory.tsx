@@ -13,6 +13,7 @@ import {
   type PlanningForecastQuarterLine,
 } from '@/lib/initiativePayback';
 import { cn } from '@/lib/utils';
+import '@/styles/initiative-payback-panel.css';
 
 interface InitiativePaybackRevenueTotalProps {
   quarterlyData?: Record<string, InitiativePaybackQuarter>;
@@ -116,100 +117,236 @@ interface InitiativePaybackQuarterHistoryPanelProps {
   quarterlyData?: Record<string, InitiativePaybackQuarter>;
   selectedQuarters: string[];
   className?: string;
+  variant?: 'gantt' | 'peek';
 }
 
-/** Прогноз окупаемости на конец каждого квартала планирования. */
+function sectionLabelClass(variant: 'gantt' | 'peek'): string {
+  return variant === 'peek'
+    ? 'text-sm font-medium text-muted-foreground mb-2'
+    : 'gantt-detail-panel-label';
+}
+
+interface InitiativePaybackCurrentSummaryProps {
+  quarterlyData?: Record<string, InitiativePaybackQuarter>;
+  selectedQuarters: string[];
+  variant?: 'gantt' | 'peek';
+}
+
+/** Текущий прогноз окупаемости за выбранный период. */
+export function InitiativePaybackCurrentSummary({
+  quarterlyData,
+  selectedQuarters,
+  variant = 'peek',
+}: InitiativePaybackCurrentSummaryProps) {
+  const summary = useMemo(
+    () => computeInitiativePayback(quarterlyData, selectedQuarters),
+    [quarterlyData, selectedQuarters]
+  );
+
+  if (!summary) return null;
+
+  const ratioLabel =
+    summary.ratio != null ? formatPaybackRatio(summary.ratio) : `+${formatBudget(summary.periodRevenue)}`;
+
+  return (
+    <section>
+      <h3 className={sectionLabelClass(variant)}>Текущий прогноз окупаемости</h3>
+      <div
+        className="initiative-payback-current-card"
+        title={paybackSummaryTitle(summary)}
+      >
+        <p className="initiative-payback-current-totals">
+          Стоимость <strong>{formatBudget(summary.periodCost)}</strong>
+          <span className="initiative-payback-current-totals-sep">·</span>
+          Прибыль <strong>{formatBudget(summary.periodRevenue)}</strong>
+        </p>
+        <span
+          className={cn(
+            'initiative-payback-current-ratio font-semibold tabular-nums',
+            summary.ratio != null && paybackToneClass(summary.isPaidOff)
+          )}
+        >
+          {ratioLabel}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+interface InitiativePaybackInfoSectionProps {
+  quarterlyData?: Record<string, InitiativePaybackQuarter>;
+  selectedQuarters: string[];
+  variant?: 'gantt' | 'peek';
+  className?: string;
+}
+
+/** Текущий прогноз + история по кварталам (таймлайн и карточка тримэпа). */
+export function InitiativePaybackInfoSection({
+  quarterlyData,
+  selectedQuarters,
+  variant = 'peek',
+  className,
+}: InitiativePaybackInfoSectionProps) {
+  const current = useMemo(
+    () => computeInitiativePayback(quarterlyData, selectedQuarters),
+    [quarterlyData, selectedQuarters]
+  );
+  const historyPoints = useMemo(
+    () => computeInitiativePlanningForecastSeries(quarterlyData, selectedQuarters),
+    [quarterlyData, selectedQuarters]
+  );
+
+  if (!current && variant !== 'peek' && historyPoints.length === 0) return null;
+
+  return (
+    <div className={cn('space-y-3', className)}>
+      {current ? (
+        <InitiativePaybackCurrentSummary
+          quarterlyData={quarterlyData}
+          selectedQuarters={selectedQuarters}
+          variant={variant}
+        />
+      ) : null}
+      {variant === 'peek' || historyPoints.length > 0 ? (
+        <InitiativePaybackQuarterHistoryPanel
+          quarterlyData={quarterlyData}
+          selectedQuarters={selectedQuarters}
+          variant={variant}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** История план/факта каждого квартала планирования. */
 export function InitiativePaybackQuarterHistoryPanel({
   quarterlyData,
   selectedQuarters,
   className,
+  variant = 'gantt',
 }: InitiativePaybackQuarterHistoryPanelProps) {
   const [expandedPlanningQuarter, setExpandedPlanningQuarter] = useState<string | null>(null);
+  const [historySectionOpen, setHistorySectionOpen] = useState(false);
 
   const points = useMemo(
     () => computeInitiativePlanningForecastSeries(quarterlyData, selectedQuarters),
     [quarterlyData, selectedQuarters]
   );
 
-  if (points.length === 0) return null;
+  const historyTitle = 'История план/факта каждого квартала';
+  const collapsible = variant === 'peek';
 
-  return (
-    <div className={cn('gantt-detail-panel-section gantt-detail-payback-history', className)}>
-      <div className="gantt-detail-panel-label">История факта/плана на конец каждого квартала</div>
-      <ul className="gantt-detail-payback-history-list">
-        {points.map((point, index) => {
-          const { planningQuarter, summary, isCurrentPlanningQuarter } = point;
-          const expanded = expandedPlanningQuarter === planningQuarter;
-          const ratioLabel =
-            summary.ratio != null ? formatPaybackRatio(summary.ratio) : '—';
-          const planningLabel = formatQuarterHuman(planningQuarter);
+  if (points.length === 0 && !collapsible) return null;
 
-          const breakdown = expanded
-            ? computePlanningForecastBreakdown(quarterlyData, selectedQuarters, planningQuarter, {
-                isLivePlanningQuarter: isCurrentPlanningQuarter,
-              })
+  const quarterList =
+    points.length > 0 ? (
+    <ul className="gantt-detail-payback-history-list">
+      {points.map((point, index) => {
+        const { planningQuarter, summary, isCurrentPlanningQuarter } = point;
+        const expanded = expandedPlanningQuarter === planningQuarter;
+        const ratioLabel = summary.ratio != null ? formatPaybackRatio(summary.ratio) : '—';
+        const planningLabel = formatQuarterHuman(planningQuarter);
+
+        const breakdown = expanded
+          ? computePlanningForecastBreakdown(quarterlyData, selectedQuarters, planningQuarter, {
+              isLivePlanningQuarter: isCurrentPlanningQuarter,
+            })
+          : null;
+
+        const previousPoint = index > 0 ? points[index - 1] : null;
+        const previousBreakdown =
+          expanded && breakdown && previousPoint
+            ? computePlanningForecastBreakdown(
+                quarterlyData,
+                selectedQuarters,
+                previousPoint.planningQuarter,
+                { isLivePlanningQuarter: previousPoint.isCurrentPlanningQuarter }
+              )
             : null;
 
-          const previousPoint = index > 0 ? points[index - 1] : null;
-          const previousBreakdown =
-            expanded && breakdown && previousPoint
-              ? computePlanningForecastBreakdown(
-                  quarterlyData,
-                  selectedQuarters,
-                  previousPoint.planningQuarter,
-                  { isLivePlanningQuarter: previousPoint.isCurrentPlanningQuarter }
-                )
-              : null;
-
-          return (
-            <li key={planningQuarter} className="gantt-detail-payback-history-block">
-              <button
-                type="button"
+        return (
+          <li key={planningQuarter} className="gantt-detail-payback-history-block">
+            <button
+              type="button"
+              className={cn(
+                'gantt-detail-payback-history-trigger',
+                expanded && 'gantt-detail-payback-history-trigger-expanded'
+              )}
+              onClick={() => setExpandedPlanningQuarter(expanded ? null : planningQuarter)}
+              aria-expanded={expanded}
+            >
+              <span className="gantt-detail-payback-history-trigger-icon" aria-hidden>
+                {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </span>
+              <span className="gantt-detail-payback-history-trigger-main">
+                <span className="gantt-detail-payback-history-quarter">
+                  {planningLabel}
+                  {isCurrentPlanningQuarter ? (
+                    <span className="gantt-detail-payback-history-live">сейчас</span>
+                  ) : null}
+                </span>
+                <span className="gantt-detail-payback-history-totals">
+                  Стоимость <strong>{formatBudget(summary.periodCost)}</strong>
+                  <span className="gantt-detail-payback-history-totals-sep">·</span>
+                  Прибыль <strong>{formatBudget(summary.periodRevenue)}</strong>
+                </span>
+              </span>
+              <span
                 className={cn(
-                  'gantt-detail-payback-history-trigger',
-                  expanded && 'gantt-detail-payback-history-trigger-expanded'
+                  'gantt-detail-payback-history-ratio font-semibold tabular-nums',
+                  summary.ratio != null && paybackToneClass(summary.isPaidOff)
                 )}
-                onClick={() =>
-                  setExpandedPlanningQuarter(expanded ? null : planningQuarter)
-                }
-                aria-expanded={expanded}
               >
-                <span className="gantt-detail-payback-history-trigger-icon" aria-hidden>
-                  {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </span>
-                <span className="gantt-detail-payback-history-trigger-main">
-                  <span className="gantt-detail-payback-history-quarter">
-                    {planningLabel}
-                    {isCurrentPlanningQuarter ? (
-                      <span className="gantt-detail-payback-history-live">сейчас</span>
-                    ) : null}
-                  </span>
-                  <span className="gantt-detail-payback-history-totals">
-                    Стоимость <strong>{formatBudget(summary.periodCost)}</strong>
-                    <span className="gantt-detail-payback-history-totals-sep">·</span>
-                    Прибыль <strong>{formatBudget(summary.periodRevenue)}</strong>
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    'gantt-detail-payback-history-ratio font-semibold tabular-nums',
-                    summary.ratio != null && paybackToneClass(summary.isPaidOff)
-                  )}
-                >
-                  {ratioLabel}
-                </span>
-              </button>
-              {expanded && breakdown ? (
-                <ForecastBreakdown
-                  lines={breakdown.lines}
-                  previousLines={previousBreakdown?.lines ?? null}
-                  planningQuarterLabel={planningLabel}
-                />
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+                {ratioLabel}
+              </span>
+            </button>
+            {expanded && breakdown ? (
+              <ForecastBreakdown
+                lines={breakdown.lines}
+                previousLines={previousBreakdown?.lines ?? null}
+                planningQuarterLabel={planningLabel}
+              />
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+    ) : (
+      <p className="initiative-payback-history-empty text-sm text-muted-foreground">
+        Пока нет записей. Заполните прибыль по кварталам в админке и сохраните — история начнёт
+        копиться с первого изменения.
+      </p>
+    );
+
+  if (collapsible) {
+    return (
+      <section className={className}>
+        <button
+          type="button"
+          className="initiative-payback-history-section-toggle"
+          onClick={() => setHistorySectionOpen((open) => !open)}
+          aria-expanded={historySectionOpen}
+        >
+          <span className="initiative-payback-history-section-toggle-icon" aria-hidden>
+            {historySectionOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
+          <span>{historyTitle}</span>
+        </button>
+        {historySectionOpen ? (
+          <div className="gantt-detail-payback-history initiative-payback-history-section-body">
+            {quarterList}
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  return (
+    <div
+      className={cn('gantt-detail-payback-history', 'gantt-detail-panel-section', className)}
+    >
+      <div className={sectionLabelClass(variant)}>{historyTitle}</div>
+      {quarterList}
     </div>
   );
 }

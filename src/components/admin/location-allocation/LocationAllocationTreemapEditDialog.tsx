@@ -24,7 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { LocationAllocationHierarchicalGeoEditor } from '@/components/admin/location-allocation/LocationAllocationHierarchicalGeoEditor';
 import {
   expandSplitToCountryEntries,
-  geoSplitPercentTotal,
+  geoSplitPercentTotalForCatalog,
   normalizeGeoSplitEntries,
   scopeLabelForLevel,
   type LocationAllocationGeoEditTarget,
@@ -88,7 +88,7 @@ export function LocationAllocationTreemapEditDialog({
   }, [open, target, savedSplit]);
 
   const isDirty = !geoSplitsEqual(draftSplit, savedSplit);
-  const totalPct = geoSplitPercentTotal(draftSplit);
+  const totalPct = geoSplitPercentTotalForCatalog(draftSplit, countries);
 
   const requestClose = useCallback(
     (nextOpen: boolean) => {

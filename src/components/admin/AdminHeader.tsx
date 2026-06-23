@@ -123,15 +123,6 @@ const AdminHeader = ({
               <span className="hidden sm:inline">Заполнение</span>
             </ToggleGroupItem>
           </Link>
-          <Link to={locationAllocationsUrl}>
-            <ToggleGroupItem
-              value="locationAllocations"
-              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Split className="h-4 w-4" />
-              <span className="hidden sm:inline">Алокации</span>
-            </ToggleGroupItem>
-          </Link>
           {showUnification && (
             <Link to={unificationUrl}>
               <ToggleGroupItem
@@ -209,6 +200,15 @@ const AdminHeader = ({
               </ToggleGroupItem>
             </Link>
           )}
+          <Link to={locationAllocationsUrl}>
+            <ToggleGroupItem
+              value="locationAllocations"
+              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <Split className="h-4 w-4" />
+              <span className="hidden sm:inline">Аллокации</span>
+            </ToggleGroupItem>
+          </Link>
         </ToggleGroup>
       </div>
 

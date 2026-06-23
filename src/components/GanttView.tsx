@@ -18,7 +18,7 @@ import {
 } from '@/lib/dataManager';
 import { InitiativePaybackLabel } from '@/components/InitiativePaybackLabel';
 import {
-  InitiativePaybackQuarterHistoryPanel,
+  InitiativePaybackInfoSection,
   InitiativePaybackRevenueTotal,
 } from '@/components/InitiativePaybackQuarterHistory';
 import {
@@ -874,9 +874,10 @@ const GanttView = ({
           )}
 
           {showInitiativePayback ? (
-            <InitiativePaybackQuarterHistoryPanel
+            <InitiativePaybackInfoSection
               quarterlyData={row.quarterlyData}
               selectedQuarters={selectedQuarters}
+              variant="gantt"
             />
           ) : null}
 

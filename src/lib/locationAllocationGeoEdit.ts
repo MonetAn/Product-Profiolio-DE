@@ -1,20 +1,16 @@
 import type { AdminDataRow, GeoCostSplit, GeoCostSplitEntry } from '@/lib/adminDataManager';
 import {
   geoCostSplitPercentsTotal,
-  marketClusterKeyLabel,
-  rubleAmountsFromGeoPercents,
   splitTotalIntoIntegerParts,
 } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
   allocateCostToMarkets,
-  clusterKeyFromLabel,
   initiativeYearCostRub,
   resolveInitiativeGeoSplit,
 } from '@/lib/locationAllocationModel';
 import {
-  clusterLabelToTopRegion,
-  clusterLabelsForTopRegion,
+  clusterKeyToTopRegion,
   countryMatchesScope,
   resolveUnitMarketScope,
   REVENUE_RUB_BY_COUNTRY_LABEL,
@@ -45,22 +41,13 @@ export type GeoHierarchyMarketRow = {
   label: string;
   percent: number;
   rub: number;
-  entryIndex: number;
-};
-
-export type GeoHierarchyClusterRow = {
-  clusterLabel: string;
-  clusterKey: string;
-  percent: number;
-  rub: number;
-  markets: GeoHierarchyMarketRow[];
 };
 
 export type GeoHierarchyRegionRow = {
   region: TopRegionLabel;
   percent: number;
   rub: number;
-  clusters: GeoHierarchyClusterRow[];
+  markets: GeoHierarchyMarketRow[];
 };
 
 function revenueWeight(labelRu: string): number {
@@ -96,6 +83,12 @@ function distributeIntegerPercents(total: number, weights: number[]): number[] {
   return out;
 }
 
+function activeCatalogCountries(countries: MarketCountryRow[]): MarketCountryRow[] {
+  return countries
+    .filter((c) => c.is_active)
+    .sort((a, b) => a.label_ru.localeCompare(b.label_ru, 'ru'));
+}
+
 export function buildRevenueDefaultGeoSplit(
   row: AdminDataRow,
   countries: MarketCountryRow[]
@@ -122,19 +115,18 @@ function effectiveSplitForInitiative(
   return buildRevenueDefaultGeoSplit(row, countries);
 }
 
-export function expandSplitToCountryEntries(
+/** Проценты по countryId без нормализации к 100%. */
+export function getRawPercentByCountryId(
   split: GeoCostSplit | undefined,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>,
   scope: UnitMarketScope = 'brands_all'
-): GeoCostSplitEntry[] {
-  if (!split?.entries?.length) return [];
-
-  const acc = new Map<string, number>();
+): Map<string, number> {
+  const map = new Map<string, number>();
+  if (!split?.entries?.length) return map;
 
   for (const entry of split.entries) {
     if (entry.kind === 'country') {
-      acc.set(entry.countryId, (acc.get(entry.countryId) ?? 0) + entry.percent);
+      map.set(entry.countryId, (map.get(entry.countryId) ?? 0) + Math.round(entry.percent));
       continue;
     }
     const clusterCountries = countriesInCluster(countries, entry.clusterKey, scope);
@@ -144,13 +136,33 @@ export function expandSplitToCountryEntries(
     clusterCountries.forEach((c, i) => {
       const p = parts[i] ?? 0;
       if (p <= 0) return;
-      acc.set(c.id, (acc.get(c.id) ?? 0) + p);
+      map.set(c.id, (map.get(c.id) ?? 0) + p);
     });
   }
 
-  void countryIdToClusterKey;
+  return map;
+}
 
-  return [...acc.entries()]
+export function splitFromPercentMap(map: Map<string, number>): GeoCostSplit | undefined {
+  const entries = [...map.entries()]
+    .filter(([, p]) => p > 0)
+    .map(([countryId, percent]) => ({
+      kind: 'country' as const,
+      countryId,
+      percent: Math.round(percent),
+    }));
+  return entries.length > 0 ? { entries } : undefined;
+}
+
+export function expandSplitToCountryEntries(
+  split: GeoCostSplit | undefined,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>,
+  scope: UnitMarketScope = 'brands_all'
+): GeoCostSplitEntry[] {
+  void countryIdToClusterKey;
+  const map = getRawPercentByCountryId(split, countries, scope);
+  return [...map.entries()]
     .filter(([, p]) => p > 0)
     .map(([countryId, percent]) => ({ kind: 'country' as const, countryId, percent }));
 }
@@ -235,76 +247,42 @@ export function buildGeoHierarchy(
   countryIdToClusterKey: Map<string, string>,
   scope: UnitMarketScope = 'brands_all'
 ): GeoHierarchyRegionRow[] {
-  const entries = normalizeGeoSplitEntries(
-    expandSplitToCountryEntries(split, countries, countryIdToClusterKey, scope)
-  );
-  if (entries.length === 0 || totalCostRub <= 0) return [];
+  void countryIdToClusterKey;
+  const percentByCountry = getRawPercentByCountryId(split, countries, scope);
+  const catalog = activeCatalogCountries(countries);
 
-  const countriesById = new Map(countries.map((c) => [c.id, c]));
-  const rubles = rubleAmountsFromGeoPercents(totalCostRub, entries.map((e) => e.percent));
-
-  const marketRows: GeoHierarchyMarketRow[] = entries.map((e, index) => {
-    const country = countriesById.get(e.countryId);
-    return {
-      countryId: e.countryId,
-      label: country?.label_ru ?? e.countryId,
-      percent: e.percent,
-      rub: rubles[index] ?? 0,
-      entryIndex: index,
-    };
-  });
-
-  const clusterMap = new Map<string, GeoHierarchyClusterRow>();
-  for (const market of marketRows) {
-    const country = countriesById.get(market.countryId);
-    const clusterKey = country?.cluster_key ?? countryIdToClusterKey.get(market.countryId) ?? '—';
-    const clusterLabel = marketClusterKeyLabel(clusterKey);
-    if (!clusterMap.has(clusterLabel)) {
-      clusterMap.set(clusterLabel, {
-        clusterLabel,
-        clusterKey,
-        percent: 0,
-        rub: 0,
-        markets: [],
-      });
-    }
-    const cluster = clusterMap.get(clusterLabel)!;
-    cluster.markets.push(market);
-    cluster.percent += market.percent;
-    cluster.rub += market.rub;
-  }
-
-  const regionMap = new Map<TopRegionLabel, GeoHierarchyRegionRow>();
-  for (const cluster of clusterMap.values()) {
-    const region = clusterLabelToTopRegion(cluster.clusterLabel);
-    if (!region) continue;
-    if (!regionMap.has(region)) {
-      regionMap.set(region, {
-        region,
-        percent: 0,
-        rub: 0,
-        clusters: [],
-      });
-    }
-    const regionRow = regionMap.get(region)!;
-    regionRow.clusters.push(cluster);
-    regionRow.percent += cluster.percent;
-    regionRow.rub += cluster.rub;
-  }
-
-  return TOP_REGION_ORDER.filter((r) => regionMap.has(r)).map((r) => {
-    const row = regionMap.get(r)!;
-    row.clusters.sort(
-      (a, b) =>
-        clusterLabelsForTopRegion(r).indexOf(a.clusterLabel) -
-          clusterLabelsForTopRegion(r).indexOf(b.clusterLabel) ||
-        a.clusterLabel.localeCompare(b.clusterLabel, 'ru')
+  const regions: GeoHierarchyRegionRow[] = TOP_REGION_ORDER.map((region) => {
+    const regionCountries = catalog.filter(
+      (c) => clusterKeyToTopRegion(c.cluster_key) === region
     );
-    row.clusters.forEach((c) => {
-      c.markets.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+
+    const markets: GeoHierarchyMarketRow[] = regionCountries.map((c) => {
+      const percent = percentByCountry.get(c.id) ?? 0;
+      const rub =
+        totalCostRub > 0 && percent > 0
+          ? Math.round((totalCostRub * percent) / 100)
+          : 0;
+      return {
+        countryId: c.id,
+        label: c.label_ru,
+        percent,
+        rub,
+      };
     });
-    return row;
-  });
+
+    return {
+      region,
+      percent: markets.reduce((s, m) => s + m.percent, 0),
+      rub: markets.reduce((s, m) => s + m.rub, 0),
+      markets,
+    };
+  }).filter((r) => r.markets.length > 0);
+
+  return regions;
+}
+
+export function sumHierarchyPercents(hierarchy: GeoHierarchyRegionRow[]): number {
+  return hierarchy.reduce((s, r) => s + r.percent, 0);
 }
 
 export function entriesFromHierarchy(
@@ -312,105 +290,41 @@ export function entriesFromHierarchy(
 ): GeoCostSplitEntry[] {
   const entries: GeoCostSplitEntry[] = [];
   for (const region of hierarchy) {
-    for (const cluster of region.clusters) {
-      for (const market of cluster.markets) {
-        if (market.percent <= 0) continue;
-        entries.push({
-          kind: 'country',
-          countryId: market.countryId,
-          percent: Math.round(market.percent),
-        });
-      }
+    for (const market of region.markets) {
+      if (market.percent <= 0) continue;
+      entries.push({
+        kind: 'country',
+        countryId: market.countryId,
+        percent: Math.round(market.percent),
+      });
     }
   }
-  return normalizeGeoSplitEntries(entries);
+  return entries;
 }
 
 export function applyRegionPercentChange(
   split: GeoCostSplit | undefined,
   region: TopRegionLabel,
   newRegionPercent: number,
-  totalCostRub: number,
   countries: MarketCountryRow[],
   countryIdToClusterKey: Map<string, string>,
   scope: UnitMarketScope = 'brands_all'
 ): GeoCostSplit | undefined {
-  const hierarchy = buildGeoHierarchy(split, totalCostRub, countries, countryIdToClusterKey, scope);
-  const regionRow = hierarchy.find((r) => r.region === region);
-  if (!regionRow) return split;
+  void countryIdToClusterKey;
+  const percentByCountry = getRawPercentByCountryId(split, countries, scope);
+  const catalog = activeCatalogCountries(countries);
+  const regionCountries = catalog.filter((c) => clusterKeyToTopRegion(c.cluster_key) === region);
+  if (regionCountries.length === 0) return split;
 
-  const oldPercent = regionRow.percent;
-  const delta = Math.round(newRegionPercent) - oldPercent;
-  if (delta === 0) return split;
+  const target = Math.max(0, Math.min(100, Math.round(newRegionPercent)));
+  const weights = regionCountries.map((c) => revenueWeight(c.label_ru));
+  const parts = distributeIntegerPercents(target, weights);
 
-  const otherRegions = hierarchy.filter((r) => r.region !== region);
-  const otherTotal = otherRegions.reduce((s, r) => s + r.percent, 0);
-  if (otherTotal <= 0 && delta !== 0) {
-    regionRow.percent = Math.max(0, Math.min(100, Math.round(newRegionPercent)));
-    redistributeRegionByRevenue(regionRow, countries, scope);
-    return { entries: entriesFromHierarchy(hierarchy) };
-  }
+  regionCountries.forEach((c, i) => {
+    percentByCountry.set(c.id, parts[i] ?? 0);
+  });
 
-  regionRow.percent = Math.max(0, Math.min(100, Math.round(newRegionPercent)));
-  const remaining = 100 - regionRow.percent;
-  if (otherTotal > 0) {
-    for (const other of otherRegions) {
-      other.percent = Math.round((other.percent * remaining) / otherTotal);
-    }
-    fixPercentTotal(hierarchy);
-  }
-
-  for (const row of hierarchy) {
-    redistributeRegionByRevenue(row, countries, scope);
-  }
-
-  return { entries: entriesFromHierarchy(hierarchy) };
-}
-
-export function applyClusterPercentChange(
-  split: GeoCostSplit | undefined,
-  clusterLabel: string,
-  newClusterPercent: number,
-  totalCostRub: number,
-  countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>,
-  scope: UnitMarketScope = 'brands_all'
-): GeoCostSplit | undefined {
-  const hierarchy = buildGeoHierarchy(split, totalCostRub, countries, countryIdToClusterKey, scope);
-  const region = clusterLabelToTopRegion(clusterLabel);
-  if (!region) return split;
-  const regionRow = hierarchy.find((r) => r.region === region);
-  if (!regionRow) return split;
-  const clusterRow = regionRow.clusters.find((c) => c.clusterLabel === clusterLabel);
-  if (!clusterRow) return split;
-
-  const oldPercent = clusterRow.percent;
-  const delta = Math.round(newClusterPercent) - oldPercent;
-  if (delta === 0) return split;
-
-  const siblings = regionRow.clusters.filter((c) => c.clusterLabel !== clusterLabel);
-  const siblingTotal = siblings.reduce((s, c) => s + c.percent, 0);
-
-  clusterRow.percent = Math.max(0, Math.min(100, Math.round(newClusterPercent)));
-  const remaining = Math.max(0, regionRow.percent - clusterRow.percent);
-
-  if (siblingTotal > 0) {
-    for (const sibling of siblings) {
-      sibling.percent = Math.round((sibling.percent * remaining) / siblingTotal);
-    }
-    const clusterSum = regionRow.clusters.reduce((s, c) => s + c.percent, 0);
-    const clusterDelta = regionRow.percent - clusterSum;
-    if (clusterDelta !== 0 && regionRow.clusters.length > 0) {
-      regionRow.clusters[0].percent += clusterDelta;
-    }
-  }
-
-  redistributeClusterByRevenue(clusterRow, countries, scope);
-  for (const sibling of siblings) {
-    redistributeClusterByRevenue(sibling, countries, scope);
-  }
-
-  return { entries: entriesFromHierarchy(hierarchy) };
+  return splitFromPercentMap(percentByCountry);
 }
 
 export function applyMarketPercentChange(
@@ -421,102 +335,10 @@ export function applyMarketPercentChange(
   countryIdToClusterKey: Map<string, string>,
   scope: UnitMarketScope = 'brands_all'
 ): GeoCostSplit | undefined {
-  const entries = normalizeGeoSplitEntries(
-    expandSplitToCountryEntries(split, countries, countryIdToClusterKey, scope)
-  );
-  const idx = entries.findIndex((e) => e.countryId === countryId);
-  if (idx < 0) return split;
-
-  const old = entries[idx].percent;
-  const delta = Math.round(newPercent) - old;
-  if (delta === 0) return split;
-
-  entries[idx].percent = Math.max(0, Math.min(100, Math.round(newPercent)));
-  const others = entries.filter((e) => e.countryId !== countryId);
-  const otherTotal = others.reduce((s, e) => s + e.percent, 0);
-  const remaining = 100 - entries[idx].percent;
-
-  if (otherTotal > 0) {
-    for (const e of others) {
-      e.percent = Math.round((e.percent * remaining) / otherTotal);
-    }
-  }
-
-  const normalized = normalizeGeoSplitEntries(entries);
-  return normalized.length > 0 ? { entries: normalized } : undefined;
-}
-
-function fixPercentTotal(hierarchy: GeoHierarchyRegionRow[]): void {
-  const sum = hierarchy.reduce((s, r) => s + r.percent, 0);
-  const delta = 100 - sum;
-  if (delta !== 0 && hierarchy.length > 0) {
-    hierarchy[0].percent += delta;
-  }
-}
-
-function redistributeRegionByRevenue(
-  regionRow: GeoHierarchyRegionRow,
-  countries: MarketCountryRow[],
-  scope: UnitMarketScope
-): void {
-  const labels = clusterLabelsForTopRegion(regionRow.region);
-  const existingLabels = new Set(regionRow.clusters.map((c) => c.clusterLabel));
-  for (const label of labels) {
-    if (existingLabels.has(label)) continue;
-    regionRow.clusters.push({
-      clusterLabel: label,
-      clusterKey: clusterKeyFromLabel(label),
-      percent: 0,
-      rub: 0,
-      markets: [],
-    });
-  }
-
-  const activeLabels = labels.filter((label) =>
-    regionRow.clusters.some((c) => c.clusterLabel === label)
-  );
-  if (activeLabels.length === 0) return;
-
-  const weights = activeLabels.map((label) => {
-    const ck = clusterKeyFromLabel(label);
-    return countriesInCluster(countries, ck, scope).reduce(
-      (s, c) => s + revenueWeight(c.label_ru),
-      0
-    );
-  });
-  const parts = distributeIntegerPercents(regionRow.percent, weights);
-  activeLabels.forEach((label, i) => {
-    const cluster = regionRow.clusters.find((c) => c.clusterLabel === label);
-    if (!cluster) return;
-    cluster.percent = parts[i] ?? 0;
-    redistributeClusterByRevenue(cluster, countries, scope);
-  });
-
-  regionRow.clusters = regionRow.clusters.filter((c) => c.percent > 0 || c.markets.length > 0);
-}
-
-function redistributeClusterByRevenue(
-  clusterRow: GeoHierarchyClusterRow,
-  countries: MarketCountryRow[],
-  scope: UnitMarketScope
-): void {
-  const clusterCountries = countriesInCluster(countries, clusterRow.clusterKey, scope);
-  if (clusterCountries.length === 0) {
-    clusterRow.markets = [];
-    clusterRow.rub = 0;
-    return;
-  }
-
-  const weights = clusterCountries.map((c) => revenueWeight(c.label_ru));
-  const parts = distributeIntegerPercents(clusterRow.percent, weights);
-
-  clusterRow.markets = clusterCountries.map((c, i) => ({
-    countryId: c.id,
-    label: c.label_ru,
-    percent: parts[i] ?? 0,
-    rub: 0,
-    entryIndex: i,
-  }));
+  void countryIdToClusterKey;
+  const percentByCountry = getRawPercentByCountryId(split, countries, scope);
+  percentByCountry.set(countryId, Math.max(0, Math.min(100, Math.round(newPercent))));
+  return splitFromPercentMap(percentByCountry);
 }
 
 export function resolveGeoEditTargetFromNode(
@@ -605,6 +427,21 @@ export function regionDisplayLabel(region: TopRegionLabel): string {
   return TOP_REGION_DISPLAY_LABELS[region];
 }
 
+/** Сумма % только по строкам сплита (legacy). */
 export function geoSplitPercentTotal(split: GeoCostSplit | undefined): number {
   return geoCostSplitPercentsTotal(split?.entries ?? []);
+}
+
+/** Сумма % по всему справочнику (включая нули). */
+export function geoSplitPercentTotalForCatalog(
+  split: GeoCostSplit | undefined,
+  countries: MarketCountryRow[],
+  scope: UnitMarketScope = 'brands_all'
+): number {
+  const map = getRawPercentByCountryId(split, countries, scope);
+  let total = 0;
+  for (const c of activeCatalogCountries(countries)) {
+    total += map.get(c.id) ?? 0;
+  }
+  return total;
 }

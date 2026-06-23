@@ -19,6 +19,8 @@ import {
 import type { TeamBaselineRow } from '@/lib/budgetTruth2026';
 import { AlertCircle, CheckCircle2, ExternalLink, Pencil } from 'lucide-react';
 import { DescriptionMarkdown } from '@/components/DescriptionMarkdown';
+import { InitiativePaybackInfoSection } from '@/components/InitiativePaybackQuarterHistory';
+import type { InitiativePaybackQuarter } from '@/lib/initiativePayback';
 
 interface InitiativePeekModalProps {
   open: boolean;
@@ -52,7 +54,7 @@ export function InitiativePeekModal({
   row,
   selectedQuarters,
   showMoney = true,
-  showInitiativePayback: _showInitiativePayback = false,
+  showInitiativePayback = false,
   includePreliminaryData = false,
   preliminaryQuarterBudgetMap,
   includeNonPnlBudgets = false,
@@ -168,6 +170,14 @@ export function InitiativePeekModal({
                   ) : null}
                 </section>
               )}
+
+              {showInitiativePayback && showMoney ? (
+                <InitiativePaybackInfoSection
+                  quarterlyData={row.quarterlyData as Record<string, InitiativePaybackQuarter>}
+                  selectedQuarters={selectedQuarters}
+                  variant="peek"
+                />
+              ) : null}
 
               {/* Description */}
               <section>

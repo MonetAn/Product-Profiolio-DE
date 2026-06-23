@@ -3,7 +3,7 @@ import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import type { TreeNode } from '@/lib/dataManager';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
 import {
-  initiativeFactByAllClusters,
+  initiativeFactMarketsByCluster,
   initiativeFactByAllRegions,
   TOP_REGION_ORDER,
   type TopRegionLabel,
@@ -13,7 +13,7 @@ import { initiativeYearCostRub } from '@/lib/locationAllocationModel';
 export type LocationAllocationTreemapMeta = {
   yearCostByInitiativeId: Map<string, number>;
   regionBreakdownByInitiativeId: Map<string, Map<TopRegionLabel, number>>;
-  clusterBreakdownByInitiativeId: Map<string, Map<string, number>>;
+  clusterMarketBreakdownByInitiativeId: Map<string, Map<string, Map<string, number>>>;
   initiativeRowById: Map<string, AdminDataRow>;
 };
 
@@ -261,7 +261,10 @@ export function buildLocationAllocationTreemapMeta(
 ): LocationAllocationTreemapMeta {
   const yearCostByInitiativeId = new Map<string, number>();
   const regionBreakdownByInitiativeId = new Map<string, Map<TopRegionLabel, number>>();
-  const clusterBreakdownByInitiativeId = new Map<string, Map<string, number>>();
+  const clusterMarketBreakdownByInitiativeId = new Map<
+    string,
+    Map<string, Map<string, number>>
+  >();
   const initiativeRowById = new Map<string, AdminDataRow>();
 
   for (const row of initiatives) {
@@ -273,16 +276,16 @@ export function buildLocationAllocationTreemapMeta(
       row.id,
       initiativeFactByAllRegions(row, yearQuarters, countries, countryIdToClusterKey)
     );
-    clusterBreakdownByInitiativeId.set(
+    clusterMarketBreakdownByInitiativeId.set(
       row.id,
-      initiativeFactByAllClusters(row, yearQuarters, countries, countryIdToClusterKey)
+      initiativeFactMarketsByCluster(row, yearQuarters, countries, countryIdToClusterKey)
     );
   }
 
   return {
     yearCostByInitiativeId,
     regionBreakdownByInitiativeId,
-    clusterBreakdownByInitiativeId,
+    clusterMarketBreakdownByInitiativeId,
     initiativeRowById,
   };
 }
@@ -335,20 +338,45 @@ export function sumLocationTreemapRegionBreakdown(
   return out;
 }
 
-export function sumLocationTreemapClusterBreakdown(
+export type LocationTreemapClusterMarketGroup = {
+  clusterLabel: string;
+  totalRub: number;
+  markets: Array<{ label: string; rub: number }>;
+};
+
+export function sumLocationTreemapClusterMarketBreakdown(
   ids: string[],
   meta: LocationAllocationTreemapMeta
-): Map<string, number> {
-  const out = new Map<string, number>();
+): LocationTreemapClusterMarketGroup[] {
+  const merged = new Map<string, Map<string, number>>();
+
   for (const id of ids) {
-    const breakdown = meta.clusterBreakdownByInitiativeId.get(id);
+    const breakdown = meta.clusterMarketBreakdownByInitiativeId.get(id);
     if (!breakdown) continue;
-    for (const [label, rub] of breakdown) {
-      if (rub <= 0) continue;
-      out.set(label, (out.get(label) ?? 0) + rub);
+    for (const [clusterLabel, markets] of breakdown) {
+      let clusterMap = merged.get(clusterLabel);
+      if (!clusterMap) {
+        clusterMap = new Map();
+        merged.set(clusterLabel, clusterMap);
+      }
+      for (const [marketLabel, rub] of markets) {
+        if (rub <= 0) continue;
+        clusterMap.set(marketLabel, (clusterMap.get(marketLabel) ?? 0) + rub);
+      }
     }
   }
-  return out;
+
+  return [...merged.entries()]
+    .map(([clusterLabel, markets]) => {
+      const marketRows = [...markets.entries()]
+        .filter(([, rub]) => rub > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, rub]) => ({ label, rub }));
+      const totalRub = marketRows.reduce((s, m) => s + m.rub, 0);
+      return { clusterLabel, totalRub, markets: marketRows };
+    })
+    .filter((group) => group.markets.length > 0)
+    .sort((a, b) => b.totalRub - a.totalRub);
 }
 
 export function sumLocationTreemapYearCost(

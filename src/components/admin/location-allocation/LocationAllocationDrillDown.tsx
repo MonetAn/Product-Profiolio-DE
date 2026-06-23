@@ -18,7 +18,11 @@ import {
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { LocationAllocationTreemap } from '@/components/admin/location-allocation/LocationAllocationTreemap';
+import { LocationAllocationSunburst } from '@/components/admin/location-allocation/LocationAllocationSunburst';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+
+type InitiativeDetailView = 'treemap' | 'timeline' | 'sunburst';
 
 const EMPTY_SENSITIVE = new Set<string>();
 
@@ -60,6 +64,9 @@ export function LocationAllocationDrillDown({
   onTeamFilterChange,
   onGeoCostSplitSave,
 }: Props) {
+  const [initiativeDetailView, setInitiativeDetailView] =
+    useState<InitiativeDetailView>('treemap');
+
   const maskInput = useMemo(() => initiativesForSensitiveMask(initiatives), [initiatives]);
   const {
     data: sensitiveKeySet,
@@ -249,38 +256,68 @@ export function LocationAllocationDrillDown({
         </div>
       </div>
 
-      <div id="location-treemap" className="scroll-mt-4 space-y-3">
-        <p className="text-sm font-semibold tracking-tight px-0 sm:px-0">
-          Детализация по инициативам
-        </p>
-        <div className="-mx-4 sm:-mx-6">
-          <LocationAllocationTreemap
-            initiatives={visibleInitiatives}
-            year={year}
-            unitFilter={effectiveUnitFilter}
-            teamFilter={effectiveTeamFilter}
-            countries={countries}
-            countryIdToClusterKey={countryIdToClusterKey}
-            onGeoCostSplitSave={onGeoCostSplitSave}
-          />
+      <div id="location-initiatives" className="scroll-mt-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold tracking-tight">Детализация по инициативам</p>
+          <ToggleGroup
+            type="single"
+            value={initiativeDetailView}
+            onValueChange={(value) => {
+              if (value === 'treemap' || value === 'timeline' || value === 'sunburst') {
+                setInitiativeDetailView(value);
+              }
+            }}
+            className="h-8 rounded-lg border border-border bg-muted/30 p-0.5"
+          >
+            <ToggleGroupItem value="treemap" className="h-7 px-3 text-xs">
+              Тримап
+            </ToggleGroupItem>
+            <ToggleGroupItem value="timeline" className="h-7 px-3 text-xs">
+              Таймлайн
+            </ToggleGroupItem>
+            <ToggleGroupItem value="sunburst" className="h-7 px-3 text-xs">
+              Круговой
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
-      </div>
 
-      <div id="location-initiatives" className="rounded-xl border border-border bg-card p-4 scroll-mt-4">
-        <div className="mb-3">
-          <p className="text-sm font-semibold tracking-tight">Таймлайн инициатив</p>
-        </div>
-
-        <LocationAllocationTimeline
-          initiatives={visibleInitiatives}
-          year={year}
-          regionFilter={regionFilter}
-          unitFilter={effectiveUnitFilter}
-          teamFilter={effectiveTeamFilter}
-          countries={countries}
-          countryIdToClusterKey={countryIdToClusterKey}
-          onGeoCostSplitSave={onGeoCostSplitSave}
-        />
+        {initiativeDetailView === 'treemap' ? (
+          <div className="-mx-4 sm:-mx-6">
+            <LocationAllocationTreemap
+              initiatives={visibleInitiatives}
+              year={year}
+              unitFilter={effectiveUnitFilter}
+              teamFilter={effectiveTeamFilter}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
+              onGeoCostSplitSave={onGeoCostSplitSave}
+            />
+          </div>
+        ) : initiativeDetailView === 'timeline' ? (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <LocationAllocationTimeline
+              initiatives={visibleInitiatives}
+              year={year}
+              regionFilter={regionFilter}
+              unitFilter={effectiveUnitFilter}
+              teamFilter={effectiveTeamFilter}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
+              onGeoCostSplitSave={onGeoCostSplitSave}
+            />
+          </div>
+        ) : (
+          <div className="-mx-4 sm:-mx-6">
+            <LocationAllocationSunburst
+              initiatives={visibleInitiatives}
+              year={year}
+              unitFilter={effectiveUnitFilter}
+              teamFilter={effectiveTeamFilter}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
+            />
+          </div>
+        )}
       </div>
     </section>
   );

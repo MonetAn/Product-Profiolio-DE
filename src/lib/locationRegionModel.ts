@@ -3,6 +3,7 @@ import { isGeoCostSplitCompleteForCost, marketClusterKeyLabel, rubleAmountsFromG
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
   allocateCostToClusters,
+  allocateCostToMarkets,
   resolveInitiativeGeoSplit,
   quartersForYear,
   initiativeYearCostRub,
@@ -673,6 +674,146 @@ export function initiativeFactByAllClusters(
   const cost = initiativeYearCostRub(row, yearQuarters);
   if (cost <= 0) return new Map();
   return allocateInitiativeFactByCluster(cost, row, countries, countryIdToClusterKey);
+}
+
+/** Факт по отдельным рынкам (странам), сгруппированным по кластерам — для hover в тримапе аллокаций. */
+export type ClusterMarketRubMap = Map<string, Map<string, number>>;
+
+export function initiativeFactMarketsByCluster(
+  row: AdminDataRow,
+  yearQuarters: string[],
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): ClusterMarketRubMap {
+  const cost = initiativeYearCostRub(row, yearQuarters);
+  if (cost <= 0) return new Map();
+  return allocateInitiativeFactMarketsByCluster(cost, row, countries, countryIdToClusterKey);
+}
+
+function clusterLabelForCountry(
+  country: MarketCountryRow,
+  countryIdToClusterKey: Map<string, string>
+): string {
+  const clusterKey = countryIdToClusterKey.get(country.id) ?? country.cluster_key;
+  return marketClusterKeyLabel(clusterKey);
+}
+
+function addClusterMarketRub(
+  out: ClusterMarketRubMap,
+  clusterLabel: string,
+  marketLabel: string,
+  rub: number
+): void {
+  if (rub <= 0) return;
+  let markets = out.get(clusterLabel);
+  if (!markets) {
+    markets = new Map();
+    out.set(clusterLabel, markets);
+  }
+  markets.set(marketLabel, (markets.get(marketLabel) ?? 0) + rub);
+}
+
+function distributeRubByRevenueToCountryLabels(
+  rub: number,
+  eligible: MarketCountryRow[]
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (rub <= 0 || eligible.length === 0) return out;
+
+  const weights = eligible.map((c) => revenueRubForCountryLabel(c.label_ru));
+  const weightSum = weights.reduce((s, w) => s + w, 0);
+  if (weightSum <= 0) return out;
+
+  const percents = weights.map((w) => (100 * w) / weightSum);
+  const rubles = rubleAmountsFromGeoPercents(rub, percents);
+
+  eligible.forEach((country, i) => {
+    const part = rubles[i] ?? 0;
+    if (part <= 0) return;
+    out.set(country.label_ru, (out.get(country.label_ru) ?? 0) + part);
+  });
+
+  return out;
+}
+
+function countriesForClusterKey(
+  clusterKey: string,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): MarketCountryRow[] {
+  return countries.filter((c) => {
+    if (!c.is_active) return false;
+    const ck = countryIdToClusterKey.get(c.id) ?? c.cluster_key;
+    return ck === clusterKey;
+  });
+}
+
+function allocateCostToClusterMarketLabels(
+  costRub: number,
+  split: GeoCostSplit,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): ClusterMarketRubMap {
+  const byKey = allocateCostToMarkets(costRub, split, countryIdToClusterKey);
+  const countriesById = new Map(countries.map((c) => [c.id, c]));
+  const out: ClusterMarketRubMap = new Map();
+
+  for (const [key, rub] of byKey) {
+    if (rub <= 0) continue;
+
+    if (key.startsWith('cluster:')) {
+      const clusterKey = key.slice('cluster:'.length);
+      const clusterLabel = marketClusterKeyLabel(clusterKey);
+      const inCluster = countriesForClusterKey(clusterKey, countries, countryIdToClusterKey);
+      for (const [label, part] of distributeRubByRevenueToCountryLabels(rub, inCluster)) {
+        addClusterMarketRub(out, clusterLabel, label, part);
+      }
+      continue;
+    }
+
+    const country = countriesById.get(key);
+    if (!country) continue;
+    addClusterMarketRub(
+      out,
+      clusterLabelForCountry(country, countryIdToClusterKey),
+      country.label_ru,
+      rub
+    );
+  }
+
+  return out;
+}
+
+function allocateInitiativeFactMarketsByCluster(
+  costRub: number,
+  row: AdminDataRow,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): ClusterMarketRubMap {
+  const cost = Math.round(Number(costRub) || 0);
+  if (cost <= 0) return new Map();
+
+  const split = resolveInitiativeGeoSplit(row);
+  if (isGeoCostSplitCompleteForCost(cost, split)) {
+    return allocateCostToClusterMarketLabels(cost, split!, countries, countryIdToClusterKey);
+  }
+
+  const scope = resolveUnitMarketScope(row.unit, row.team) ?? 'brands_all';
+  const eligible = countries.filter((c) => c.is_active && countryMatchesScope(c, scope));
+  const rubByMarket = distributeRubByRevenueToCountryLabels(cost, eligible);
+  const out: ClusterMarketRubMap = new Map();
+
+  for (const country of eligible) {
+    const rub = rubByMarket.get(country.label_ru) ?? 0;
+    addClusterMarketRub(
+      out,
+      clusterLabelForCountry(country, countryIdToClusterKey),
+      country.label_ru,
+      rub
+    );
+  }
+
+  return out;
 }
 
 function allocateInitiativeFactByCluster(
