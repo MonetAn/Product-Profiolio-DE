@@ -28,10 +28,10 @@ function row(partial: Partial<AdminDataRow> & Pick<AdminDataRow, 'id'>): AdminDa
 const INTERVAL = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'] as const;
 
 describe('portfolioVisibility', () => {
-  it('marks legacy ghost rows as hidden', () => {
-    const ghost = row({ id: 'g1', isPortfolioGhost: true });
-    expect(resolvePortfolioMatrixTier(ghost)).toBe('ghost');
-    expect(excludePortfolioGhostRows([ghost])).toHaveLength(0);
+  it('does not hide rows via legacy ghost flag (ghost only in app, not DB)', () => {
+    const legacy = row({ id: 'g1', isPortfolioGhost: true });
+    expect(resolvePortfolioMatrixTier(legacy)).toBe('inactive');
+    expect(excludePortfolioGhostRows([legacy])).toHaveLength(1);
   });
 
   it('keeps hub-local rows as drafts', () => {
@@ -97,7 +97,7 @@ describe('portfolioVisibility', () => {
       ],
       { intervalQuarters: INTERVAL }
     );
-    expect(partition.inactive.map((r) => r.id)).toEqual(['i1']);
+    expect(partition.inactive.map((r) => r.id)).toEqual(['i1', 'g1']);
     expect(partition.completedPast.map((r) => r.id)).toEqual(['cp1']);
     expect(partition.completedCurrent.map((r) => r.id)).toEqual(['cc1']);
     expect(buildCoefficientMatrixPrimaryRows(partition).map((r) => r.id)).toEqual([

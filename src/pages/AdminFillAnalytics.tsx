@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAccess } from '@/hooks/useAccess';
 import { useFilterParams } from '@/hooks/useFilterParams';
-import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
+import { useInitiatives, useQuarters, useInitiativeScopeCatalog, scopeCatalogToAdminStubs } from '@/hooks/useInitiatives';
 import { useBudgetDepartmentAllocations } from '@/hooks/useBudgetDepartmentAllocations';
 import { useMarketCountries, buildCountryIdToClusterMap } from '@/hooks/useMarketCountries';
 import {
@@ -165,7 +165,11 @@ export default function AdminFillAnalytics() {
 
   const analyticsQuarter = searchParams.get('fillAnalyticsQuarter')?.trim() ?? '';
 
-  const { data: catalogInitiativesData = [] } = useInitiatives({ units: [], teams: [] });
+  const { data: scopeCatalogRows = [] } = useInitiativeScopeCatalog();
+  const scopeCatalogStubs = useMemo(
+    () => scopeCatalogToAdminStubs(scopeCatalogRows),
+    [scopeCatalogRows]
+  );
   const { data: initiativesData = [], isPending: initiativesLoading, error } = useInitiatives({
     units: selectedUnits,
     teams: selectedTeams,
@@ -177,12 +181,8 @@ export default function AdminFillAnalytics() {
     () => excludePortfolioGhostRows(initiativesData),
     [initiativesData]
   );
-  const catalogVisible = useMemo(
-    () => excludePortfolioGhostRows(catalogInitiativesData),
-    [catalogInitiativesData]
-  );
 
-  const quarters = useQuarters(catalogVisible);
+  const quarters = useQuarters(initiativesDataVisible);
   const sortedQuarters = useMemo(
     () => [...quarters].filter(Boolean).sort(compareQuarters),
     [quarters]
@@ -272,7 +272,7 @@ export default function AdminFillAnalytics() {
     [setSearchParams]
   );
 
-  const fillUnitOptions = useMemo(() => getUniqueUnits(catalogInitiativesData), [catalogInitiativesData]);
+  const fillUnitOptions = useMemo(() => getUniqueUnits(scopeCatalogStubs), [scopeCatalogStubs]);
   const selectAllUnitsForIT = useCallback(() => {
     setSearchParams(
       (prev) => {
@@ -287,18 +287,18 @@ export default function AdminFillAnalytics() {
   }, [setSearchParams, fillUnitOptions]);
 
   const fillResolveTeamsForUnit = useCallback(
-    (unit: string) => getTeamsForUnits(catalogInitiativesData, [unit]),
-    [catalogInitiativesData]
+    (unit: string) => getTeamsForUnits(scopeCatalogStubs, [unit]),
+    [scopeCatalogStubs]
   );
 
   const fillScopeTeamOptions = useMemo(() => {
-    if (selectedUnits.length === 0) return getTeamsForUnits(catalogInitiativesData, []);
+    if (selectedUnits.length === 0) return getTeamsForUnits(scopeCatalogStubs, []);
     const set = new Set<string>();
     for (const unit of selectedUnits) {
       for (const team of fillResolveTeamsForUnit(unit)) set.add(team);
     }
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [selectedUnits, catalogInitiativesData, fillResolveTeamsForUnit]);
+  }, [selectedUnits, scopeCatalogStubs, fillResolveTeamsForUnit]);
 
   const { data: ackRows = [] } = useQuery({
     queryKey: ['fill-analytics-acks', selectedQuarter, selectedUnits, selectedTeams],
@@ -556,7 +556,7 @@ export default function AdminFillAnalytics() {
                   onUnitsChange={scopeOnUnitsChange}
                   onTeamsChange={scopeOnTeamsChange}
                   onFiltersChange={scopeOnFiltersChange}
-                  allData={catalogInitiativesData}
+                  allData={scopeCatalogStubs}
                 />
               </div>
               <Button type="button" variant="outline" size="sm" className="h-8" onClick={selectAllUnitsForIT}>

@@ -23,7 +23,14 @@ import PeoplePlatformAllocationsMock from "./pages/PeoplePlatformAllocationsMock
 import Unification from "./pages/Unification";
 import { EarlyAccessRoute } from "@/components/EarlyAccessRoute";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

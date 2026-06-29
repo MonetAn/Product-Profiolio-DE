@@ -103,8 +103,6 @@ export type Database = {
           proposed_geo_cost_split: Json | null
           id: string
           initiative: string
-          is_portfolio_ghost: boolean
-          is_portfolio_completed: boolean
           is_timeline_stub: boolean
           quarterly_data: Json
           stakeholders: string | null
@@ -123,8 +121,6 @@ export type Database = {
           proposed_geo_cost_split?: Json | null
           id?: string
           initiative: string
-          is_portfolio_ghost?: boolean
-          is_portfolio_completed?: boolean
           is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
@@ -143,8 +139,6 @@ export type Database = {
           proposed_geo_cost_split?: Json | null
           id?: string
           initiative?: string
-          is_portfolio_ghost?: boolean
-          is_portfolio_completed?: boolean
           is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
@@ -155,6 +149,32 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: []
+      }
+      initiative_portfolio_meta: {
+        Row: {
+          initiative_id: string
+          is_portfolio_completed: boolean
+          updated_at: string
+        }
+        Insert: {
+          initiative_id: string
+          is_portfolio_completed?: boolean
+          updated_at?: string
+        }
+        Update: {
+          initiative_id?: string
+          is_portfolio_completed?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "initiative_portfolio_meta_initiative_id_fkey"
+            columns: ["initiative_id"]
+            isOneToOne: true
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       market_countries: {
         Row: {

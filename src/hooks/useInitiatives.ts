@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   AdminDataRow,
@@ -13,6 +13,7 @@ import {
   parseRevenueRubHistoryFromJson,
 } from '@/lib/quarterValueHistory';
 import { Tables, Json } from '@/integrations/supabase/types';
+import { fetchPortfolioCompletedMap } from '@/lib/portfolioMeta';
 
 type DBInitiative = Pick<
   Tables<'initiatives'>,
@@ -25,13 +26,11 @@ type DBInitiative = Pick<
   | 'documentation_link'
   | 'stakeholders'
   | 'is_timeline_stub'
-  | 'is_portfolio_ghost'
-  | 'is_portfolio_completed'
   | 'quarterly_data'
   | 'geo_cost_split'
 >;
 
-const INITIATIVE_SELECT_COLUMNS = [
+export const INITIATIVE_SELECT_COLUMNS = [
   'id',
   'unit',
   'team',
@@ -41,11 +40,30 @@ const INITIATIVE_SELECT_COLUMNS = [
   'documentation_link',
   'stakeholders',
   'is_timeline_stub',
-  'is_portfolio_ghost',
-  'is_portfolio_completed',
   'quarterly_data',
   'geo_cost_split',
 ].join(', ');
+
+const INITIATIVE_SCOPE_CATALOG_COLUMNS = 'id, unit, team';
+
+export type InitiativeScopeCatalogRow = Pick<AdminDataRow, 'id' | 'unit' | 'team'>;
+
+/** Минимальные AdminDataRow для ScopeSelector / unit-team пикера (без quarterly_data). */
+export function scopeCatalogToAdminStubs(rows: InitiativeScopeCatalogRow[]): AdminDataRow[] {
+  return rows.map((r) => ({
+    id: r.id,
+    unit: r.unit,
+    team: r.team,
+    initiative: '',
+    stakeholdersList: [],
+    description: '',
+    documentationLink: '',
+    stakeholders: '',
+    isTimelineStub: false,
+    isPortfolioCompleted: false,
+    quarterlyData: {},
+  }));
+}
 
 export function parseAdminQuarterFromJson(
   quarterKey: string,
@@ -83,7 +101,10 @@ export function quarterlyJsonToAdminRecord(raw: unknown): Record<string, AdminQu
 }
 
 // Convert database row to client format
-export function dbToAdminRow(db: DBInitiative): AdminDataRow {
+export function dbToAdminRow(
+  db: DBInitiative,
+  portfolioCompleted = false
+): AdminDataRow {
   const rawQuarterlyData = db.quarterly_data;
   const quarterlyData: Record<string, AdminQuarterData> = {};
 
@@ -106,8 +127,7 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
     documentationLink: db.documentation_link || '',
     stakeholders: db.stakeholders || '',
     isTimelineStub: db.is_timeline_stub ?? false,
-    isPortfolioGhost: db.is_portfolio_ghost ?? false,
-    isPortfolioCompleted: db.is_portfolio_completed ?? false,
+    isPortfolioCompleted: portfolioCompleted,
     quarterlyData,
     ...(initiativeGeoCostSplit ? { initiativeGeoCostSplit } : {}),
   };
@@ -156,8 +176,6 @@ export function adminRowToDb(row: Partial<AdminDataRow>): Record<string, unknown
   if (row.documentationLink !== undefined) result.documentation_link = row.documentationLink;
   if (row.stakeholders !== undefined) result.stakeholders = row.stakeholders;
   if (row.isTimelineStub !== undefined) result.is_timeline_stub = row.isTimelineStub;
-  if (row.isPortfolioGhost !== undefined) result.is_portfolio_ghost = row.isPortfolioGhost;
-  if (row.isPortfolioCompleted !== undefined) result.is_portfolio_completed = row.isPortfolioCompleted;
   if (row.quarterlyData !== undefined) result.quarterly_data = quarterlyDataToJson(row.quarterlyData);
   if (row.initiativeGeoCostSplit !== undefined) {
     result.geo_cost_split =
@@ -186,6 +204,64 @@ export function extractQuartersFromData(data: AdminDataRow[]): string[] {
 }
 
 export const INITIATIVES_QUERY_KEY = ['initiatives'] as const;
+export const INITIATIVE_SCOPE_CATALOG_QUERY_KEY = ['initiatives', 'scope-catalog'] as const;
+
+/** Обновить одну строку во всех кэшах initiatives после PATCH/INSERT с .select(). */
+export function replaceRowInInitiativeCaches(
+  queryClient: QueryClient,
+  dbRow: DBInitiative,
+  options?: { portfolioCompleted?: boolean; insertIfMissing?: boolean }
+): void {
+  const entries = queryClient.getQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY });
+  for (const [queryKey, data] of entries) {
+    if (!data) continue;
+    const existing = data.find((r) => r.id === dbRow.id);
+    const completed = options?.portfolioCompleted ?? existing?.isPortfolioCompleted ?? false;
+    let newRow = dbToAdminRow(dbRow, completed);
+    newRow = normalizeSupportCascade(newRow, extractQuartersFromData(data));
+    const hasRow = data.some((r) => r.id === dbRow.id);
+    if (!hasRow && !options?.insertIfMissing) continue;
+    const next = hasRow
+      ? data.map((r) => (r.id === dbRow.id ? newRow : r))
+      : [...data, newRow];
+    queryClient.setQueryData(queryKey, next);
+  }
+}
+
+export function removeRowFromInitiativeCaches(queryClient: QueryClient, id: string): void {
+  const entries = queryClient.getQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY });
+  for (const [queryKey, data] of entries) {
+    if (!data?.some((r) => r.id === id)) continue;
+    queryClient.setQueryData(
+      queryKey,
+      data.filter((r) => r.id !== id)
+    );
+  }
+}
+
+export function upsertScopeCatalogRow(
+  queryClient: QueryClient,
+  row: InitiativeScopeCatalogRow
+): void {
+  queryClient.setQueryData<InitiativeScopeCatalogRow[]>(INITIATIVE_SCOPE_CATALOG_QUERY_KEY, (old) => {
+    const prev = old ?? [];
+    const idx = prev.findIndex((r) => r.id === row.id);
+    if (idx === -1) return [...prev, row].sort((a, b) => {
+      const u = a.unit.localeCompare(b.unit);
+      return u !== 0 ? u : a.team.localeCompare(b.team);
+    });
+    const next = [...prev];
+    next[idx] = row;
+    return next;
+  });
+}
+
+export function removeScopeCatalogRow(queryClient: QueryClient, id: string): void {
+  queryClient.setQueryData<InitiativeScopeCatalogRow[]>(INITIATIVE_SCOPE_CATALOG_QUERY_KEY, (old) => {
+    if (!old) return old;
+    return old.filter((r) => r.id !== id);
+  });
+}
 
 export type InitiativesScope = {
   units?: string[];
@@ -225,20 +301,56 @@ export async function fetchInitiatives(scope?: InitiativesScope): Promise<AdminD
     .order('initiative');
 
   if (error) throw error;
-  const rows = (data || []).map(dbToAdminRow);
+
+  const completedMap = await fetchPortfolioCompletedMap();
+  const rows = (data || []).map((row) =>
+    dbToAdminRow(row, completedMap.get(row.id) === true)
+  );
   const quarters = extractQuartersFromData(rows);
   return rows.map(row => normalizeSupportCascade(row, quarters));
 }
 
-export function useInitiatives(scope?: InitiativesScope) {
+export async function fetchInitiativeScopeCatalog(): Promise<InitiativeScopeCatalogRow[]> {
+  const { data, error } = await supabase
+    .from('initiatives')
+    .select(INITIATIVE_SCOPE_CATALOG_COLUMNS)
+    .is('deleted_at', null)
+    .order('unit')
+    .order('team')
+    .order('id');
+
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    unit: r.unit,
+    team: r.team,
+  }));
+}
+
+/** Лёгкий каталог unit/team для пикера scope (без quarterly_data). */
+export function useInitiativeScopeCatalog() {
+  return useQuery({
+    queryKey: INITIATIVE_SCOPE_CATALOG_QUERY_KEY,
+    queryFn: fetchInitiativeScopeCatalog,
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 15,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useInitiatives(scope?: InitiativesScope & { enabled?: boolean }) {
   const units = normalizeFilterValues(scope?.units);
   const teams = normalizeFilterValues(scope?.teams);
   const tableAll = scope?.tableAll === true;
+  const enabled = scope?.enabled !== false;
   return useQuery({
     queryKey: [...INITIATIVES_QUERY_KEY, { units, teams, tableAll }],
     queryFn: () => fetchInitiatives({ units, teams, tableAll }),
-    staleTime: 1000 * 60 * 3, // 3 minutes — меньше повторных запросов при переходах
-    gcTime: 1000 * 60 * 10, // 10 minutes in cache
+    enabled,
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 15,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     /** При refetch после сохранений не отдаём пустой снимок — избегаем «мигания» UI в Quick Flow */
     placeholderData: keepPreviousData,
   });

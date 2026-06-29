@@ -26,9 +26,10 @@ export function isHubDraftRow(row: AdminDataRow): boolean {
   return Boolean(row.isNew) || isHubLocalRowId(row.id);
 }
 
+/** Ghost не храним в БД (ALTER initiatives на проде блокируется). Пока не скрываем legacy — 0% идут в inactive. */
 export function isPortfolioGhostRow(row: AdminDataRow): boolean {
   if (row.isTimelineStub) return false;
-  return Boolean(row.isPortfolioGhost);
+  return false;
 }
 
 export function hasInitiativeSignalInQuarters(

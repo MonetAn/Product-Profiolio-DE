@@ -50,7 +50,7 @@ import {
   initQuickTeamQueue,
   type QuickTeamQueueState,
 } from '@/lib/adminQuickTeamQueue';
-import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
+import { useInitiatives, useQuarters, useInitiativeScopeCatalog, scopeCatalogToAdminStubs } from '@/hooks/useInitiatives';
 import { useMarketCountries, buildCountryIdToClusterMap } from '@/hooks/useMarketCountries';
 import { useAccess } from '@/hooks/useAccess';
 import { useAuth } from '@/hooks/useAuth';
@@ -167,18 +167,13 @@ const Admin = () => {
    * Каталог юнитов/команд для пикера: показываем полный каталог любому админу.
    * Sensitive юниты/команды по-прежнему фильтрует RLS (видны только super_admin).
    */
-  const catalogTableAll = true;
-  const { data: catalogInitiativesData } = useInitiatives({
-    units: [],
-    teams: [],
-    tableAll: catalogTableAll,
-  });
+  const { data: scopeCatalogRows = [], refetch: refetchScopeCatalog } = useInitiativeScopeCatalog();
+  const scopeCatalogData = useMemo(
+    () => excludePortfolioGhostRows(scopeCatalogToAdminStubs(scopeCatalogRows)),
+    [scopeCatalogRows]
+  );
   const rawData = initiativesData ?? [];
   const portfolioFillData = useMemo(() => excludePortfolioGhostRows(rawData), [rawData]);
-  const scopeCatalogData = useMemo(
-    () => excludePortfolioGhostRows(catalogInitiativesData ?? []),
-    [catalogInitiativesData]
-  );
   const quarters = useQuarters(portfolioFillData);
   const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
   const countryIdToClusterKey = useMemo(
@@ -2164,7 +2159,12 @@ const Admin = () => {
       ) : null}
 
       {isAdmin && hasData && SHOW_GOOGLE_SHEETS_SYNC_STRIP_UI ? (
-        <GoogleSheetsSyncStrip onAfterImport={() => refetch()} />
+        <GoogleSheetsSyncStrip
+          onAfterImport={() => {
+            void refetch();
+            void refetchScopeCatalog();
+          }}
+        />
       ) : null}
 
       <main className="flex-1 flex flex-col overflow-hidden w-full min-w-0">

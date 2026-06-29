@@ -15,6 +15,10 @@ import {
   quarterlyDataToJson,
   quarterlyJsonToAdminRecord,
   INITIATIVES_QUERY_KEY,
+  INITIATIVE_SELECT_COLUMNS,
+  replaceRowInInitiativeCaches,
+  removeScopeCatalogRow,
+  upsertScopeCatalogRow,
 } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
 import { Person } from '@/lib/peopleDataManager';
@@ -27,6 +31,7 @@ import { getCurrentQuarter } from '@/lib/quarterUtils';
 import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
 import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
+import { upsertPortfolioCompleted } from '@/lib/portfolioMeta';
 
 const FIELD_TO_COLUMN: Record<string, string> = {
   unit: 'unit',
@@ -37,8 +42,6 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   documentationLink: 'documentation_link',
   stakeholders: 'stakeholders',
   isTimelineStub: 'is_timeline_stub',
-  isPortfolioGhost: 'is_portfolio_ghost',
-  isPortfolioCompleted: 'is_portfolio_completed',
   quarterlyData: 'quarterly_data',
   initiativeGeoCostSplit: 'geo_cost_split',
 };
@@ -109,8 +112,6 @@ function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>)
   if (p.documentation_link !== undefined) next.documentationLink = p.documentation_link as string;
   if (p.stakeholders !== undefined) next.stakeholders = p.stakeholders as string;
   if (p.is_timeline_stub !== undefined) next.isTimelineStub = p.is_timeline_stub as boolean;
-  if (p.is_portfolio_ghost !== undefined) next.isPortfolioGhost = p.is_portfolio_ghost as boolean;
-  if (p.is_portfolio_completed !== undefined) next.isPortfolioCompleted = p.is_portfolio_completed as boolean;
   if (p.quarterly_data !== undefined) {
     next.quarterlyData = quarterlyJsonToAdminRecord(p.quarterly_data);
   }
@@ -165,8 +166,14 @@ export function useInitiativeMutations() {
 
   const updateMutation = useMutation({
     mutationFn: async (vars: { id: string; patch: Record<string, unknown> }) => {
-      const { error } = await supabase.from('initiatives').update(vars.patch).eq('id', vars.id);
+      const { data, error } = await supabase
+        .from('initiatives')
+        .update(vars.patch)
+        .eq('id', vars.id)
+        .select(INITIATIVE_SELECT_COLUMNS)
+        .single();
       if (error) throw error;
+      return data;
     },
     onMutate: async (variables) => {
       setSyncStatus('saving');
@@ -202,12 +209,23 @@ export function useInitiativeMutations() {
         variant: 'destructive',
       });
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      const existing = findRowInInitiativeCaches(queryClient, variables.id);
+      replaceRowInInitiativeCaches(queryClient, data, {
+        portfolioCompleted: existing?.isPortfolioCompleted,
+      });
+      if (variables.patch.unit !== undefined || variables.patch.team !== undefined) {
+        upsertScopeCatalogRow(queryClient, {
+          id: data.id,
+          unit: data.unit,
+          team: data.team,
+        });
+      }
       if (debounceTimers.current.size === 0) {
         setSyncStatus('synced');
       }
     },
-    onSettled: () => {
+    onSettled: (_data, error) => {
       if (bulkInitiativeInvalidateSkipsRef.current > 0) {
         bulkInitiativeInvalidateSkipsRef.current -= 1;
         if (bulkInitiativeInvalidateSkipsRef.current === 0) {
@@ -215,7 +233,9 @@ export function useInitiativeMutations() {
         }
         return;
       }
-      scheduleInitiativesInvalidate();
+      if (error) {
+        scheduleInitiativesInvalidate(0);
+      }
     },
   });
 
@@ -233,8 +253,6 @@ export function useInitiativeMutations() {
           documentation_link: data.documentationLink,
           stakeholders: data.stakeholders,
           is_timeline_stub: data.isTimelineStub ?? false,
-          is_portfolio_ghost: data.isPortfolioGhost ?? false,
-          is_portfolio_completed: data.isPortfolioCompleted ?? false,
           quarterly_data: quarterlyDataToJson(qd),
           geo_cost_split:
             data.initiativeGeoCostSplit?.entries?.length
@@ -245,6 +263,9 @@ export function useInitiativeMutations() {
         .single();
 
       if (error) throw error;
+      if (data.isPortfolioCompleted) {
+        await upsertPortfolioCompleted(created.id, true);
+      }
       return created;
     },
     onMutate: async () => {
@@ -259,9 +280,17 @@ export function useInitiativeMutations() {
         variant: 'destructive',
       });
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       setSyncStatus('synced');
-      scheduleInitiativesInvalidate();
+      replaceRowInInitiativeCaches(queryClient, created, {
+        portfolioCompleted: false,
+        insertIfMissing: true,
+      });
+      upsertScopeCatalogRow(queryClient, {
+        id: created.id,
+        unit: created.unit,
+        team: created.team,
+      });
     },
   });
 
@@ -305,6 +334,7 @@ export function useInitiativeMutations() {
         if (old === undefined) return undefined;
         return old.filter((row) => row.id !== id);
       });
+      removeScopeCatalogRow(queryClient, id);
       return { previousEntries };
     },
     onError: (err, id, context) => {
@@ -323,7 +353,7 @@ export function useInitiativeMutations() {
     },
     onSuccess: () => {
       setSyncStatus('synced');
-      scheduleInitiativesInvalidate();
+      scheduleInitiativesInvalidate(0);
       queryClient.invalidateQueries({ queryKey: BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY });
     },
   });
@@ -650,6 +680,20 @@ export function useInitiativeMutations() {
   const immediateUpdate = useCallback(
     (id: string, field: string, value: unknown) => {
       if (field === 'isTimelineStub') return;
+      if (field === 'isPortfolioCompleted') {
+        if (!findRowInInitiativeCaches(queryClient, id)) return;
+        queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
+          if (old === undefined) return undefined;
+          return old.map((row) =>
+            row.id === id ? { ...row, isPortfolioCompleted: Boolean(value) } : row
+          );
+        });
+        void upsertPortfolioCompleted(id, Boolean(value)).then(
+          () => setSyncStatus('synced'),
+          () => scheduleInitiativesInvalidate(0)
+        );
+        return;
+      }
       if (!findRowInInitiativeCaches(queryClient, id)) return;
       const dbColumn = FIELD_TO_COLUMN[field] || field;
       queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
@@ -700,6 +744,16 @@ export function useInitiativeMutations() {
             stakeholders_list: list,
             stakeholders: stakeholdersStringFromList(list),
           },
+        });
+        return;
+      }
+      if (field === 'isPortfolioCompleted') {
+        await upsertPortfolioCompleted(id, Boolean(value));
+        queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
+          if (old === undefined) return undefined;
+          return old.map((row) =>
+            row.id === id ? { ...row, isPortfolioCompleted: Boolean(value) } : row
+          );
         });
         return;
       }
@@ -818,8 +872,7 @@ export function useInitiativeMutations() {
     }
 
     setSyncStatus('synced');
-    scheduleInitiativesInvalidate(0);
-  }, [queryClient, updateMutation, persistQuarterDataFromCache, scheduleInitiativesInvalidate]);
+  }, [queryClient, updateMutation, persistQuarterDataFromCache]);
 
   const flushPendingChanges = useCallback(() => {
     debounceTimers.current.forEach((timer) => clearTimeout(timer));

@@ -11,6 +11,12 @@ if (import.meta.env.DEV && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
   );
 }
 
+if (import.meta.env.DEV && SUPABASE_URL && /supabase\.co/i.test(SUPABASE_URL)) {
+  console.error(
+    '[Supabase] DEV смотрит на ПРОД — жжёт egress. Переключите VITE_SUPABASE_* в .env.local на Docker (npm run dev:local).'
+  );
+}
+
 // Однократная проверка в dev: PostgREST с publishable/anon ключом (а не /auth/v1/health — там часто 401 без service role)
 if (import.meta.env.DEV && SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) {
   const base = SUPABASE_URL.replace(/\/$/, '');
