@@ -102,7 +102,7 @@ function tileContent(
   else status = 'ok';
 
   const titles: Record<PortfolioHubBlock, string> = {
-    coefficients: 'Коэффициенты и распределение усилий',
+    coefficients: 'Создание инициатив и распределение усилий',
     descriptions: 'Описание и документация',
     planFact: 'План и факт по кварталам',
     geo: 'Аллокации по рынкам',
