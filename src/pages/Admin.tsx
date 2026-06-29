@@ -101,6 +101,10 @@ import {
   type HubRowFieldPatch,
   HUB_LOCAL_ROW_PREFIX,
 } from '@/lib/portfolioHubDraft';
+import {
+  countPortfolioFillInitiatives,
+  excludePortfolioGhostRows,
+} from '@/lib/portfolioVisibility';
 import { quarterlyDataToJson } from '@/hooks/useInitiatives';
 
 function messageFromUnknownError(e: unknown): string {
@@ -170,11 +174,12 @@ const Admin = () => {
     tableAll: catalogTableAll,
   });
   const rawData = initiativesData ?? [];
+  const portfolioFillData = useMemo(() => excludePortfolioGhostRows(rawData), [rawData]);
   const scopeCatalogData = useMemo(
-    () => catalogInitiativesData ?? [],
+    () => excludePortfolioGhostRows(catalogInitiativesData ?? []),
     [catalogInitiativesData]
   );
-  const quarters = useQuarters(rawData);
+  const quarters = useQuarters(portfolioFillData);
   const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
   const countryIdToClusterKey = useMemo(
     () => buildCountryIdToClusterMap(marketCountries),
@@ -212,10 +217,10 @@ const Admin = () => {
   const [quickTeamQueue, setQuickTeamQueue] = useState<QuickTeamQueueState | null>(null);
 
   // Derived state (must be before canShowQuick / isQuickMode)
-  const hasData = rawData.length > 0;
+  const hasData = portfolioFillData.length > 0;
   const units = getUniqueUnits(scopeCatalogData);
   const teams = getTeamsForUnits(scopeCatalogData, selectedUnits);
-  const filteredData = rawData;
+  const filteredData = portfolioFillData;
 
   const fillAccessCtx = useMemo(
     () => ({
@@ -892,6 +897,14 @@ const Admin = () => {
     });
   }, []);
 
+  const handleHubPortfolioCompletedChange = useCallback(
+    async (id: string, completed: boolean) => {
+      if (isHubLocalRowId(id)) return;
+      await updateInitiativeFieldAsync(id, 'isPortfolioCompleted', completed);
+    },
+    [updateInitiativeFieldAsync]
+  );
+
   const persistHubDraftToServer = useCallback(async (): Promise<boolean> => {
     const previewQs = [...quickFillQuarters].filter((q) => quarters.includes(q)).sort(compareQuarters);
     const previewById =
@@ -956,6 +969,8 @@ const Admin = () => {
             rest.stakeholders?.trim() ||
             stakeholdersStringFromList(rest.stakeholdersList ?? []),
           isTimelineStub: false,
+          isPortfolioGhost: false,
+          isPortfolioCompleted: false,
           quarterlyData: previewById?.get(merged.id) ?? rest.quarterlyData,
           initiativeGeoCostSplit: rest.initiativeGeoCostSplit,
         };
@@ -1809,6 +1824,8 @@ const Admin = () => {
         documentationLink: data.documentationLink,
         stakeholders: '',
         isTimelineStub: false,
+        isPortfolioGhost: false,
+        isPortfolioCompleted: false,
         quarterlyData,
       });
       
@@ -1839,6 +1856,8 @@ const Admin = () => {
         documentationLink: '',
         stakeholders: '',
         isTimelineStub: false,
+        isPortfolioGhost: false,
+        isPortfolioCompleted: false,
         quarterlyData,
       });
       const createdId = (result as { id?: string })?.id;
@@ -2120,8 +2139,8 @@ const Admin = () => {
       {showAdminNavHeader ? (
         <AdminHeader
           currentView="initiatives"
-          initiativeCount={filteredData.length}
-          totalInitiativeCount={rawData.length}
+          initiativeCount={countPortfolioFillInitiatives(filteredData)}
+          totalInitiativeCount={countPortfolioFillInitiatives(portfolioFillData)}
           hasData={hasData}
           hasFilters={selectedUnits.length > 0 || selectedTeams.length > 0}
           syncStatus={syncStatus}
@@ -2460,6 +2479,7 @@ const Admin = () => {
                     onInitiativeFieldChange={handleHubRowDraftChange}
                     onAddInitiativeFromMatrix={handleHubAddPendingRow}
                     onDeleteInitiativeFromMatrix={handleHubDeleteRow}
+                    onPortfolioCompletedChange={handleHubPortfolioCompletedChange}
                   />
                 ) : (
                   <div className="min-h-0 flex-1 overflow-y-auto">

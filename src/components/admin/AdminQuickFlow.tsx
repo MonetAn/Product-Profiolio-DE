@@ -9,6 +9,7 @@ import {
 import {
   Plus,
   ChevronRight,
+  ChevronDown,
   Loader2,
   Calculator,
   AlertCircle,
@@ -16,10 +17,13 @@ import {
   LayoutGrid,
   ListChecks,
   Trash2,
+  CircleCheck,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -409,6 +413,13 @@ export type EffortMatrixInlineProps = {
   onInitiativeNameChange?: (id: string, name: string) => void;
   focusInitiativeId?: string | null;
   onFocusInitiativeConsumed?: () => void;
+  /** Инициативы с 0% после сохранения — тогл под стабом. */
+  inactiveRows?: AdminDataRow[];
+  /** Завершённые без доли в выбранном интервале кварталов. */
+  completedPastRows?: AdminDataRow[];
+  inactiveSectionYear?: number;
+  portfolioCompletableIds?: ReadonlySet<string>;
+  onPortfolioCompletedChange?: (id: string, completed: boolean) => void;
 };
 
 export function EffortMatrixInline({
@@ -427,8 +438,16 @@ export function EffortMatrixInline({
   onInitiativeNameChange,
   focusInitiativeId = null,
   onFocusInitiativeConsumed,
+  inactiveRows = [],
+  completedPastRows = [],
+  inactiveSectionYear = 2026,
+  portfolioCompletableIds,
+  onPortfolioCompletedChange,
 }: EffortMatrixInlineProps) {
   const [headerAddBusy, setHeaderAddBusy] = useState(false);
+  const [inactiveOpen, setInactiveOpen] = useState(false);
+  const [completedPastOpen, setCompletedPastOpen] = useState(false);
+  const [completeConfirmId, setCompleteConfirmId] = useState<string | null>(null);
   const nameInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   useLayoutEffect(() => {
@@ -467,12 +486,18 @@ export function EffortMatrixInline({
     for (const s of chipStates) m.set(s.quarter, s);
     return m;
   }, [chipStates]);
-  const matrixRows = useMemo(() => {
-    const stubs = filteredData.filter((row) => row.isTimelineStub === true);
-    if (stubs.length === 0) return filteredData;
-    const regularRows = filteredData.filter((row) => row.isTimelineStub !== true);
-    return [...regularRows, ...stubs];
-  }, [filteredData]);
+  const matrixRows = filteredData;
+
+  const completeConfirmLabel = useMemo(() => {
+    if (!completeConfirmId) return '—';
+    return filteredData.find((r) => r.id === completeConfirmId)?.initiative?.trim() || '—';
+  }, [completeConfirmId, filteredData]);
+
+  const confirmCompleteInitiative = useCallback(() => {
+    if (!completeConfirmId || !onPortfolioCompletedChange) return;
+    onPortfolioCompletedChange(completeConfirmId, true);
+    setCompleteConfirmId(null);
+  }, [completeConfirmId, onPortfolioCompletedChange]);
 
   const matrixHasTimelineStub = useMemo(
     () => filteredData.some((r) => r.isTimelineStub === true),
@@ -535,6 +560,10 @@ export function EffortMatrixInline({
   const canOfferDelete = Boolean(
     quickSessionDeletableIds && quickSessionDeletableIds.size > 0 && onRequestDeleteQuickSessionRow
   );
+  const canOfferComplete = Boolean(
+    onPortfolioCompletedChange && portfolioCompletableIds && portfolioCompletableIds.size > 0
+  );
+  const canOfferRowActions = canOfferDelete || canOfferComplete;
 
   const initiativeColClass = splitImmersive
     ? 'min-w-[220px] max-w-[min(100vw,24rem)] sm:max-w-[26rem]'
@@ -732,13 +761,15 @@ export function EffortMatrixInline({
             <tbody>
               {matrixRows.map((row) => {
                 const isStub = row.isTimelineStub === true;
+                const isCompleted = Boolean(row.isPortfolioCompleted);
                 const stubLabel = isStub ? getStubResidualLabel(row.team) : null;
                 return (
                 <tr
                   key={row.id}
                   className={cn(
                     'border-b last:border-0',
-                    splitImmersive ? 'border-border/35' : 'border-border'
+                    splitImmersive ? 'border-border/35' : 'border-border',
+                    isCompleted && !isStub && 'bg-muted/15'
                   )}
                   title={isStub ? stubLabel ?? undefined : row.initiative?.trim() || undefined}
                 >
@@ -753,23 +784,61 @@ export function EffortMatrixInline({
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-0.5">
-                      {canOfferDelete ? (
-                        <div className="flex h-8 w-6 shrink-0 items-center justify-center">
-                          {!isStub && quickSessionDeletableIds!.has(row.id) ? (
+                      {canOfferRowActions ? (
+                        <div className="flex h-8 shrink-0 items-center gap-0.5">
+                          {canOfferComplete && !isStub && portfolioCompletableIds!.has(row.id) ? (
                             <button
                               type="button"
-                              onClick={() => onRequestDeleteQuickSessionRow!(row.id)}
+                              onClick={() => setCompleteConfirmId(row.id)}
                               className={cn(
-                                'shrink-0 rounded-md p-0.5 text-muted-foreground opacity-0 transition-opacity',
-                                'hover:bg-destructive/10 hover:text-destructive',
+                                'flex h-8 w-7 shrink-0 items-center justify-center rounded-md',
+                                'text-muted-foreground opacity-0 transition-opacity',
+                                'hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-400',
                                 'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
                                 'group-hover/name:opacity-100 group-focus-within/name:opacity-100'
                               )}
-                              title="Удалить инициативу"
-                              aria-label={`Удалить инициативу «${row.initiative || '—'}»`}
+                              title="Отметить инициативу завершённой"
+                              aria-label={`Завершить инициативу «${row.initiative || '—'}»`}
                             >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                              <CircleCheck className="h-4 w-4" aria-hidden />
                             </button>
+                          ) : null}
+                          {canOfferComplete && !isStub && isCompleted ? (
+                            <button
+                              type="button"
+                              onClick={() => onPortfolioCompletedChange!(row.id, false)}
+                              className={cn(
+                                'flex h-8 w-7 shrink-0 items-center justify-center rounded-md',
+                                'text-muted-foreground opacity-0 transition-opacity',
+                                'hover:bg-muted/60 hover:text-foreground',
+                                'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                                'group-hover/name:opacity-100 group-focus-within/name:opacity-100'
+                              )}
+                              title="Вернуть в активные"
+                              aria-label={`Вернуть в активные «${row.initiative || '—'}»`}
+                            >
+                              <Undo2 className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          ) : null}
+                          {canOfferDelete ? (
+                            <div className="flex h-8 w-6 items-center justify-center">
+                              {!isStub && quickSessionDeletableIds!.has(row.id) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onRequestDeleteQuickSessionRow!(row.id)}
+                                  className={cn(
+                                    'shrink-0 rounded-md p-0.5 text-muted-foreground opacity-0 transition-opacity',
+                                    'hover:bg-destructive/10 hover:text-destructive',
+                                    'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                                    'group-hover/name:opacity-100 group-focus-within/name:opacity-100'
+                                  )}
+                                  title="Удалить инициативу"
+                                  aria-label={`Удалить инициативу «${row.initiative || '—'}»`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                </button>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
                       ) : null}
@@ -800,6 +869,16 @@ export function EffortMatrixInline({
                         ) : (
                           <span className="truncate text-xs font-medium leading-snug">{row.initiative || '—'}</span>
                         )}
+                        {!isStub && row.isNew ? (
+                          <span className="w-fit rounded bg-sky-500/10 px-1 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300">
+                            черновик
+                          </span>
+                        ) : null}
+                        {!isStub && isCompleted ? (
+                          <span className="w-fit rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-800 dark:text-emerald-300">
+                            завершена
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </td>
@@ -870,10 +949,243 @@ export function EffortMatrixInline({
                 </tr>
                 );
               })}
+              {inactiveRows.length > 0 ? (
+                <>
+                  <tr className={cn(splitImmersive ? 'border-border/35' : 'border-border', 'border-t')}>
+                    <td
+                      colSpan={visibleQuarters.length + 1}
+                      className={cn(
+                        'px-2 py-1.5 align-middle sm:px-3',
+                        splitImmersive ? 'bg-muted/20' : 'bg-muted/25'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        onClick={() => setInactiveOpen((v) => !v)}
+                        aria-expanded={inactiveOpen}
+                      >
+                        {inactiveOpen ? (
+                          <ChevronDown className="size-3.5 shrink-0" aria-hidden />
+                        ) : (
+                          <ChevronRight className="size-3.5 shrink-0" aria-hidden />
+                        )}
+                        <span>
+                          {inactiveRows.length}{' '}
+                          {inactiveRows.length === 1
+                            ? 'инициатива'
+                            : inactiveRows.length < 5
+                              ? 'инициативы'
+                              : 'инициатив'}{' '}
+                          без коэффициентов в {inactiveSectionYear}
+                        </span>
+                      </button>
+                    </td>
+                  </tr>
+                  {inactiveOpen
+                    ? inactiveRows.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={cn(
+                            'border-b last:border-0',
+                            splitImmersive ? 'border-border/35' : 'border-border'
+                          )}
+                        >
+                          <td
+                            className={cn(
+                              'group/name sticky left-0 z-10 px-2 py-1.5 align-middle sm:px-3 sm:py-2',
+                              initiativeColClass,
+                              splitImmersive
+                                ? 'border-r border-border/45 bg-background/95 backdrop-blur-[2px] dark:bg-background/90'
+                                : 'border-r border-border bg-background'
+                            )}
+                          >
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              {canOfferDelete && quickSessionDeletableIds!.has(row.id) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onRequestDeleteQuickSessionRow!(row.id)}
+                                  className={cn(
+                                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+                                    'text-muted-foreground opacity-0 transition-opacity',
+                                    'hover:bg-destructive/10 hover:text-destructive',
+                                    'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                                    'group-hover/name:opacity-100 group-focus-within/name:opacity-100'
+                                  )}
+                                  title="Удалить инициативу"
+                                  aria-label={`Удалить инициативу «${row.initiative || '—'}»`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                </button>
+                              ) : null}
+                              <span className="truncate text-xs text-muted-foreground">
+                                {row.initiative || '—'}
+                              </span>
+                            </div>
+                          </td>
+                          {visibleQuarters.map((q) => {
+                            const qd = row.quarterlyData[q] ?? createEmptyQuarterData();
+                            const effort = qd.effortCoefficient ?? 0;
+                            return (
+                              <td
+                                key={q}
+                                className={cn(
+                                  'p-1 text-center align-middle sm:p-1.5',
+                                  splitImmersive
+                                    ? 'border-r border-border/30 last:border-r-0'
+                                    : 'border-r border-border last:border-r-0'
+                                )}
+                              >
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={effort === 0 ? '' : effort}
+                                  onChange={(e) =>
+                                    onQuarterDataChange(
+                                      row.id,
+                                      q,
+                                      'effortCoefficient',
+                                      parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                  className="mx-auto h-8 w-[4rem] px-1 text-center text-sm text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none sm:w-[4.25rem]"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))
+                    : null}
+                </>
+              ) : null}
+              {completedPastRows.length > 0 ? (
+                <>
+                  <tr className={cn(splitImmersive ? 'border-border/35' : 'border-border', 'border-t')}>
+                    <td
+                      colSpan={visibleQuarters.length + 1}
+                      className={cn(
+                        'px-2 py-1.5 align-middle sm:px-3',
+                        splitImmersive ? 'bg-muted/20' : 'bg-muted/25'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        onClick={() => setCompletedPastOpen((v) => !v)}
+                        aria-expanded={completedPastOpen}
+                      >
+                        {completedPastOpen ? (
+                          <ChevronDown className="size-3.5 shrink-0" aria-hidden />
+                        ) : (
+                          <ChevronRight className="size-3.5 shrink-0" aria-hidden />
+                        )}
+                        <span>
+                          {completedPastRows.length}{' '}
+                          {completedPastRows.length === 1
+                            ? 'инициатива'
+                            : completedPastRows.length < 5
+                              ? 'инициативы'
+                              : 'инициатив'}{' '}
+                          завершены в прошлом
+                        </span>
+                      </button>
+                    </td>
+                  </tr>
+                  {completedPastOpen
+                    ? completedPastRows.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={cn(
+                            'border-b last:border-0',
+                            splitImmersive ? 'border-border/35' : 'border-border',
+                            'bg-muted/10'
+                          )}
+                        >
+                          <td
+                            className={cn(
+                              'group/name sticky left-0 z-10 px-2 py-1.5 align-middle sm:px-3 sm:py-2',
+                              initiativeColClass,
+                              splitImmersive
+                                ? 'border-r border-border/45 bg-background/95 backdrop-blur-[2px] dark:bg-background/90'
+                                : 'border-r border-border bg-background'
+                            )}
+                          >
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              {onPortfolioCompletedChange ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onPortfolioCompletedChange(row.id, false)}
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                  title="Вернуть в активные"
+                                  aria-label={`Вернуть в активные «${row.initiative || '—'}»`}
+                                >
+                                  <Undo2 className="h-3.5 w-3.5" aria-hidden />
+                                </button>
+                              ) : null}
+                              <span className="truncate text-xs text-muted-foreground">
+                                {row.initiative || '—'}
+                              </span>
+                              <span className="shrink-0 rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-800 dark:text-emerald-300">
+                                завершена
+                              </span>
+                            </div>
+                          </td>
+                          {visibleQuarters.map((q) => {
+                            const qd = row.quarterlyData[q] ?? createEmptyQuarterData();
+                            const effort = qd.effortCoefficient ?? 0;
+                            return (
+                              <td
+                                key={q}
+                                className={cn(
+                                  'p-1 text-center align-middle sm:p-1.5',
+                                  splitImmersive
+                                    ? 'border-r border-border/30 last:border-r-0'
+                                    : 'border-r border-border last:border-r-0'
+                                )}
+                              >
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={effort === 0 ? '' : effort}
+                                  onChange={(e) =>
+                                    onQuarterDataChange(
+                                      row.id,
+                                      q,
+                                      'effortCoefficient',
+                                      parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                  className="mx-auto h-8 w-[4rem] px-1 text-center text-sm text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none sm:w-[4.25rem]"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))
+                    : null}
+                </>
+              ) : null}
             </tbody>
           </table>
         </div>
       )}
+      <AlertDialog open={completeConfirmId !== null} onOpenChange={(open) => !open && setCompleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Завершить инициативу?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Инициатива «{completeConfirmLabel}» будет считаться завершённой. Она останется в treemap с текущей
+              долей и переместится вниз списка с отметкой «завершена».
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCompleteInitiative}>Завершить</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

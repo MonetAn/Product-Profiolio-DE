@@ -24,6 +24,7 @@ import {
   sortStakeholderLabels,
 } from '@/lib/adminDataManager';
 import { compareQuarters, getCurrentQuarter } from '@/lib/quarterUtils';
+import { excludePortfolioGhostRows } from '@/lib/portfolioVisibility';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -172,7 +173,16 @@ export default function AdminFillAnalytics() {
   const { data: budgetDepartmentAllocations = [] } = useBudgetDepartmentAllocations();
   const { data: marketCountries = [] } = useMarketCountries({ includeInactive: false });
 
-  const quarters = useQuarters(catalogInitiativesData);
+  const initiativesDataVisible = useMemo(
+    () => excludePortfolioGhostRows(initiativesData),
+    [initiativesData]
+  );
+  const catalogVisible = useMemo(
+    () => excludePortfolioGhostRows(catalogInitiativesData),
+    [catalogInitiativesData]
+  );
+
+  const quarters = useQuarters(catalogVisible);
   const sortedQuarters = useMemo(
     () => [...quarters].filter(Boolean).sort(compareQuarters),
     [quarters]
@@ -309,14 +319,14 @@ export default function AdminFillAnalytics() {
 
   const teamUniverse = useMemo(() => {
     const out = new Map<string, TeamRef>();
-    for (const row of initiativesData) {
+    for (const row of initiativesDataVisible) {
       if (row.isTimelineStub) continue;
       if (!row.unit.trim() || !row.team.trim()) continue;
       if (!row.quarterlyData[selectedQuarter]) continue;
       out.set(teamKey(row.unit, row.team), { unit: row.unit, team: row.team });
     }
     return out;
-  }, [initiativesData, selectedQuarter]);
+  }, [initiativesDataVisible, selectedQuarter]);
 
   const teamStatuses = useMemo<TeamFillStatus[]>(() => {
     const ackByTeam = new Map<string, Map<HubBlock, { at: string | null }>>();
@@ -409,7 +419,7 @@ export default function AdminFillAnalytics() {
 
   const allocationCharts = useMemo(() => {
     const rowById = new Map<string, AdminDataRow>();
-    for (const row of initiativesData) {
+    for (const row of initiativesDataVisible) {
       rowById.set(row.id, row);
     }
 
@@ -440,7 +450,7 @@ export default function AdminFillAnalytics() {
       unitToClusters,
       deToClusters,
     };
-  }, [initiativesData, budgetDepartmentAllocations, selectedQuarter, countryIdToClusterKey]);
+  }, [initiativesDataVisible, budgetDepartmentAllocations, selectedQuarter, countryIdToClusterKey]);
   const unitAllocationRows = useMemo(
     () => buildAggregatedRowsForAllocations(allocationCharts.unitToClusters, selectedQuarter),
     [allocationCharts.unitToClusters, selectedQuarter]

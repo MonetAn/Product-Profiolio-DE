@@ -18,6 +18,7 @@ import QuarterSelector from '@/components/admin/people/QuarterSelector';
 import { AdminPeopleDirectoryFullView } from '@/components/admin/people/AdminPeopleDirectoryFullView';
 import { Button } from '@/components/ui/button';
 import { getUniqueUnits, getTeamsForUnits, filterData, getUnitSummary } from '@/lib/adminDataManager';
+import { excludePortfolioGhostRows } from '@/lib/portfolioVisibility';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
 
 type GroupMode = 'person' | 'initiative';
@@ -27,7 +28,8 @@ type PeoplePageMode = 'assignments' | 'directory';
 export default function AdminPeople() {
   const { data: people = [], isLoading: peopleLoading } = usePeople();
   const { data: assignments = [] } = usePersonAssignments();
-  const { data: initiatives = [] } = useInitiatives();
+  const { data: initiativesRaw = [] } = useInitiatives();
+  const initiatives = useMemo(() => excludePortfolioGhostRows(initiativesRaw), [initiativesRaw]);
   const quarters = useQuarters(initiatives);
   
   // URL-synced filters

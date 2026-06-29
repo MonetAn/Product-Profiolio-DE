@@ -8,6 +8,7 @@ import {
 import type { PortfolioHubAckBlock, PortfolioHubAckByBlock } from '@/lib/portfolioHubAck';
 import { isHubBlockAcked } from '@/lib/portfolioHubAck';
 import { compareQuarters } from '@/lib/quarterUtils';
+import { excludePortfolioGhostRows, rowsForCoefficientEffortSum, PORTFOLIO_FILL_YEAR } from '@/lib/portfolioVisibility';
 
 const YEAR_2026_QUARTERS = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'] as const;
 
@@ -26,10 +27,11 @@ export function portfolioHubCoefficientsIncomplete(
   rows: AdminDataRow[],
   quartersCatalog: string[]
 ): boolean {
+  const visibleRows = excludePortfolioGhostRows(rows);
   const qs = YEAR_2026_QUARTERS.filter((q) => quartersCatalog.includes(q));
   if (qs.length === 0) return false;
   const byTeam = new Map<string, AdminDataRow[]>();
-  for (const r of rows) {
+  for (const r of visibleRows) {
     if (r.isTimelineStub) continue;
     const key = `${r.unit}\u0000${r.team}`;
     const arr = byTeam.get(key) ?? [];
@@ -39,8 +41,9 @@ export function portfolioHubCoefficientsIncomplete(
   for (const [, teamRows] of byTeam) {
     const unit = teamRows[0]?.unit ?? '';
     const team = teamRows[0]?.team ?? '';
+    const effortRows = rowsForCoefficientEffortSum(teamRows, { year: PORTFOLIO_FILL_YEAR, intervalQuarters: qs });
     for (const q of qs) {
-      const { isValid } = validateTeamQuarterEffort(teamRows, unit, team, q);
+      const { isValid } = validateTeamQuarterEffort(effortRows, unit, team, q);
       // Σ < 100% — допустимо: остаток лежит на заглушке (контейнер бюджета команды).
       // Помечаем «неполным» только перебор > 100% — такие коэффициенты невалидны.
       if (!isValid) return true;
@@ -51,17 +54,17 @@ export function portfolioHubCoefficientsIncomplete(
 
 export function portfolioHubDescriptionsIncomplete(rows: AdminDataRow[], quartersCatalog: string[]): boolean {
   const fq = hubValidationQuarters(quartersCatalog);
-  return getQuickFlowDescriptionDocIssuesForQuarters(rows, fq).length > 0;
+  return getQuickFlowDescriptionDocIssuesForQuarters(excludePortfolioGhostRows(rows), fq).length > 0;
 }
 
 export function portfolioHubPlanFactIncomplete(rows: AdminDataRow[], quartersCatalog: string[]): boolean {
   const fq = hubValidationQuarters(quartersCatalog);
-  return getQuickFlowPlanFactIssuesForQuarters(rows, fq).length > 0;
+  return getQuickFlowPlanFactIssuesForQuarters(excludePortfolioGhostRows(rows), fq).length > 0;
 }
 
 export function portfolioHubGeoIncomplete(rows: AdminDataRow[], quartersCatalog: string[]): boolean {
   const fq = hubValidationQuarters(quartersCatalog);
-  return getQuickFlowRowsWithIncompleteGeoSplit(rows, fq).length > 0;
+  return getQuickFlowRowsWithIncompleteGeoSplit(excludePortfolioGhostRows(rows), fq).length > 0;
 }
 
 const BLOCKS: PortfolioHubAckBlock[] = ['coefficients', 'descriptions', 'planFact', 'geo'];

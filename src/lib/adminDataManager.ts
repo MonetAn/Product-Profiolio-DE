@@ -345,6 +345,10 @@ export interface AdminDataRow {
   /** Предложение продуктов (hint, не источник истины). */
   initiativeProposedGeoCostSplit?: GeoCostSplit;
   isTimelineStub?: boolean;
+  /** Legacy / без сигнала в 2026 — скрыта из заполнения портфеля. */
+  isPortfolioGhost?: boolean;
+  /** Завершена лидером — в секции неактивных. */
+  isPortfolioCompleted?: boolean;
   isNew?: boolean;
   isModified?: boolean;
 }

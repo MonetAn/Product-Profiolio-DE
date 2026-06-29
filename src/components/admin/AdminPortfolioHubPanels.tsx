@@ -22,8 +22,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { AdminDataRow, AdminQuarterData, GeoCostSplit } from '@/lib/adminDataManager';
-import { effortMatrixColumnChipState, hasInitiativeEffortOrCostInYear } from '@/lib/adminDataManager';
+import { effortMatrixColumnChipState } from '@/lib/adminDataManager';
 import { rowsAfterSimulatedDeletes } from '@/lib/adminEffortTreemapPreviewModel';
+import {
+  PORTFOLIO_FILL_YEAR,
+  buildCoefficientMatrixPrimaryRows,
+  partitionCoefficientMatrixRows,
+  rowsForCoefficientEffortSum,
+} from '@/lib/portfolioVisibility';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { compareQuarters, filterQuartersInRange, getCurrentQuarter, getPreviousQuarter } from '@/lib/quarterUtils';
 import { cn } from '@/lib/utils';
@@ -160,6 +166,8 @@ type Props = {
   onAddInitiativeFromMatrix: () => void | Promise<void>;
   /** Удаление строки из матрицы коэффициентов (подтверждение внутри панели). */
   onDeleteInitiativeFromMatrix?: (id: string) => void | Promise<void>;
+  /** Отметка «завершена» — инициатива уходит в секцию неактивных. */
+  onPortfolioCompletedChange?: (id: string, completed: boolean) => void | Promise<void>;
 };
 
 /** Состояние чипов кварталов для матриц и сводки аллокаций на обзоре хаба. */
@@ -306,39 +314,14 @@ export function AdminPortfolioHubPanels({
   onInitiativeGeoCostSplitChange,
   onAddInitiativeFromMatrix,
   onDeleteInitiativeFromMatrix,
+  onPortfolioCompletedChange,
 }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
-  /**
-   * Матрица коэффициентов: видны строки с effort > 0 или cost > 0 в текущем году, плюс заглушки команды
-   * и свежесозданные в сессии. При смене unit+team фиксируем список «квалифицированных»
-   * id и держим его до следующей смены scope: при редактировании можно временно стереть все
-   * коэффициенты у инициативы — она не пропадёт. После перезахода/смены команды список
-   * пересчитывается из реальных данных (это и есть «архивация» прошлогодних — костыль до
-   * системного решения).
-   */
-  const currentCalendarYear = useMemo(() => {
-    const m = getCurrentQuarter().match(/^(\d{4})/);
-    return m ? Number(m[1]) : new Date().getFullYear();
-  }, []);
-
-  const scopeKey = `${unit}\u0000${team}`;
-  const [stickyMatrixIds, setStickyMatrixIds] = useState<{
-    key: string;
-    ids: Set<string>;
-  } | null>(null);
-
-  useEffect(() => {
-    if (filteredData.length === 0) return;
-    if (stickyMatrixIds?.key === scopeKey) return;
-    const ids = new Set<string>();
-    for (const r of filteredData) {
-      if (hasInitiativeEffortOrCostInYear(r, currentCalendarYear)) ids.add(r.id);
-    }
-    setStickyMatrixIds({ key: scopeKey, ids });
-  }, [filteredData, scopeKey, currentCalendarYear, stickyMatrixIds]);
 
   const coeffBaselineRef = useRef<AdminDataRow[] | null>(null);
   const prevOpenForCoeffRef = useRef<PortfolioHubPanel>(null);
+  const scopeKey = `${unit}\u0000${team}`;
+
   useEffect(() => {
     coeffBaselineRef.current = null;
   }, [scopeKey]);
@@ -350,23 +333,41 @@ export function AdminPortfolioHubPanels({
     prevOpenForCoeffRef.current = open;
   }, [open]);
 
-  const coeffMatrixRaw = useMemo(() => {
-    const sticky =
-      stickyMatrixIds?.key === scopeKey ? stickyMatrixIds.ids : null;
-    return filteredData.filter(
-      (r) =>
-        r.isNew ||
-        r.isTimelineStub ||
-        hasInitiativeEffortOrCostInYear(r, currentCalendarYear) ||
-        (sticky?.has(r.id) ?? false)
-    );
-  }, [filteredData, currentCalendarYear, stickyMatrixIds, scopeKey]);
+  const { matrixCatalogQuarters, matrixVisibleQuarters, chipToolbar } = usePortfolioHubMatrixToolbar(
+    filteredData,
+    quarters,
+    fillQuarters
+  );
+
+  const coeffMatrixPartition = useMemo(
+    () =>
+      partitionCoefficientMatrixRows(filteredData, {
+        year: PORTFOLIO_FILL_YEAR,
+        intervalQuarters: matrixVisibleQuarters,
+      }),
+    [filteredData, matrixVisibleQuarters]
+  );
+
+  const coeffMatrixPrimary = useMemo(
+    () => buildCoefficientMatrixPrimaryRows(coeffMatrixPartition),
+    [coeffMatrixPartition]
+  );
+
+  const coeffInactiveRows = coeffMatrixPartition.inactive;
+  const coeffCompletedPastRows = coeffMatrixPartition.completedPast;
+
+  const coeffMatrixRaw = coeffMatrixPrimary;
 
   const coeffMatrixData = useMemo(() => {
+    const dataById = new Map(filteredData.map((r) => [r.id, r]));
+    const currentOrdered = coeffMatrixRaw.map((r) => dataById.get(r.id) ?? r);
     const baseline = coeffBaselineRef.current ?? coeffMatrixRaw;
-    const simulated = rowsAfterSimulatedDeletes(baseline, filteredData, fillQuarters);
+    const simulated = rowsAfterSimulatedDeletes(baseline, currentOrdered, fillQuarters);
     const visibleIds = new Set(coeffMatrixRaw.map((r) => r.id));
-    return simulated.filter((r) => r.isTimelineStub || visibleIds.has(r.id));
+    const order = new Map(coeffMatrixRaw.map((r, i) => [r.id, i]));
+    return simulated
+      .filter((r) => r.isTimelineStub || visibleIds.has(r.id))
+      .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
   }, [coeffMatrixRaw, filteredData, fillQuarters]);
 
   const coeffMatrixMatchesScope = useMemo(() => {
@@ -397,12 +398,6 @@ export function AdminPortfolioHubPanels({
     };
   }, [open]);
 
-  const { matrixCatalogQuarters, matrixVisibleQuarters, chipToolbar } = usePortfolioHubMatrixToolbar(
-    filteredData,
-    quarters,
-    fillQuarters
-  );
-
   /** По умолчанию сравнение treemap включено; снимается только крестиком, затем доступна кнопка внизу. */
   const [treemapCompareOpen, setTreemapCompareOpen] = useState(true);
   const prevHubPanelRef = useRef<PortfolioHubPanel | null>(null);
@@ -421,15 +416,33 @@ export function AdminPortfolioHubPanels({
   const matrixDeletableIds = useMemo(
     () =>
       onDeleteInitiativeFromMatrix
-        ? new Set(coeffMatrixData.filter((r) => !r.isTimelineStub).map((r) => r.id))
+        ? new Set([
+            ...coeffMatrixData.filter((r) => !r.isTimelineStub).map((r) => r.id),
+            ...coeffInactiveRows.map((r) => r.id),
+          ])
         : undefined,
-    [onDeleteInitiativeFromMatrix, coeffMatrixData]
+    [onDeleteInitiativeFromMatrix, coeffMatrixData, coeffInactiveRows]
+  );
+
+  const matrixCompletableIds = useMemo(
+    () =>
+      onPortfolioCompletedChange
+        ? new Set(
+            coeffMatrixData
+              .filter((r) => !r.isTimelineStub && !r.isNew && !r.isPortfolioCompleted)
+              .map((r) => r.id)
+          )
+        : undefined,
+    [onPortfolioCompletedChange, coeffMatrixData]
   );
 
   const matrixDeleteRowLabel = useMemo(() => {
     if (!matrixDeleteConfirmId) return '';
-    return coeffMatrixData.find((r) => r.id === matrixDeleteConfirmId)?.initiative?.trim() || '—';
-  }, [matrixDeleteConfirmId, coeffMatrixData]);
+    const row = [...coeffMatrixData, ...coeffInactiveRows, ...coeffCompletedPastRows].find(
+      (r) => r.id === matrixDeleteConfirmId
+    );
+    return row?.initiative?.trim() || '—';
+  }, [matrixDeleteConfirmId, coeffMatrixData, coeffInactiveRows, coeffCompletedPastRows]);
 
   const handleRequestMatrixDelete = useCallback(
     (id: string) => {
@@ -475,15 +488,19 @@ export function AdminPortfolioHubPanels({
   );
 
   const quarterEffortStates = useMemo(() => {
+    const effortRows = rowsForCoefficientEffortSum(coeffMatrixData, {
+      year: PORTFOLIO_FILL_YEAR,
+      intervalQuarters: matrixVisibleQuarters,
+    });
     return fillQuarters.map((targetQ) => {
-      const sum = coeffMatrixData.reduce(
+      const sum = effortRows.reduce(
         (s, row) =>
           row.isTimelineStub ? s : s + (row.quarterlyData[targetQ]?.effortCoefficient ?? 0),
         0
       );
       return { quarter: targetQ, sum, valid: sum <= 100, inCatalog: quarters.includes(targetQ) };
     });
-  }, [coeffMatrixData, fillQuarters, quarters]);
+  }, [coeffMatrixData, fillQuarters, quarters, matrixVisibleQuarters]);
 
   const allTargetsInCatalog =
     fillQuarters.length > 0 && quarterEffortStates.every((s) => s.inCatalog);
@@ -523,6 +540,9 @@ export function AdminPortfolioHubPanels({
             <EffortMatrixInline
               visibleQuarters={matrixVisibleQuarters}
               filteredData={coeffMatrixData}
+              inactiveRows={coeffInactiveRows}
+              completedPastRows={coeffCompletedPastRows}
+              inactiveSectionYear={PORTFOLIO_FILL_YEAR}
               onQuarterDataChange={onQuarterDataChange}
               splitImmersive={treemapCompareOpen}
               compactPeriodPicker
@@ -533,6 +553,8 @@ export function AdminPortfolioHubPanels({
               onRequestDeleteQuickSessionRow={
                 onDeleteInitiativeFromMatrix ? handleRequestMatrixDelete : undefined
               }
+              portfolioCompletableIds={matrixCompletableIds}
+              onPortfolioCompletedChange={onPortfolioCompletedChange}
             />
           </div>
         )}

@@ -25,6 +25,8 @@ type DBInitiative = Pick<
   | 'documentation_link'
   | 'stakeholders'
   | 'is_timeline_stub'
+  | 'is_portfolio_ghost'
+  | 'is_portfolio_completed'
   | 'quarterly_data'
   | 'geo_cost_split'
 >;
@@ -39,6 +41,8 @@ const INITIATIVE_SELECT_COLUMNS = [
   'documentation_link',
   'stakeholders',
   'is_timeline_stub',
+  'is_portfolio_ghost',
+  'is_portfolio_completed',
   'quarterly_data',
   'geo_cost_split',
 ].join(', ');
@@ -102,6 +106,8 @@ export function dbToAdminRow(db: DBInitiative): AdminDataRow {
     documentationLink: db.documentation_link || '',
     stakeholders: db.stakeholders || '',
     isTimelineStub: db.is_timeline_stub ?? false,
+    isPortfolioGhost: db.is_portfolio_ghost ?? false,
+    isPortfolioCompleted: db.is_portfolio_completed ?? false,
     quarterlyData,
     ...(initiativeGeoCostSplit ? { initiativeGeoCostSplit } : {}),
   };
@@ -150,6 +156,8 @@ export function adminRowToDb(row: Partial<AdminDataRow>): Record<string, unknown
   if (row.documentationLink !== undefined) result.documentation_link = row.documentationLink;
   if (row.stakeholders !== undefined) result.stakeholders = row.stakeholders;
   if (row.isTimelineStub !== undefined) result.is_timeline_stub = row.isTimelineStub;
+  if (row.isPortfolioGhost !== undefined) result.is_portfolio_ghost = row.isPortfolioGhost;
+  if (row.isPortfolioCompleted !== undefined) result.is_portfolio_completed = row.isPortfolioCompleted;
   if (row.quarterlyData !== undefined) result.quarterly_data = quarterlyDataToJson(row.quarterlyData);
   if (row.initiativeGeoCostSplit !== undefined) {
     result.geo_cost_split =

@@ -103,6 +103,8 @@ export type Database = {
           proposed_geo_cost_split: Json | null
           id: string
           initiative: string
+          is_portfolio_ghost: boolean
+          is_portfolio_completed: boolean
           is_timeline_stub: boolean
           quarterly_data: Json
           stakeholders: string | null
@@ -121,6 +123,8 @@ export type Database = {
           proposed_geo_cost_split?: Json | null
           id?: string
           initiative: string
+          is_portfolio_ghost?: boolean
+          is_portfolio_completed?: boolean
           is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null
@@ -139,6 +143,8 @@ export type Database = {
           proposed_geo_cost_split?: Json | null
           id?: string
           initiative?: string
+          is_portfolio_ghost?: boolean
+          is_portfolio_completed?: boolean
           is_timeline_stub?: boolean
           quarterly_data?: Json
           stakeholders?: string | null

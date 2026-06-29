@@ -37,6 +37,8 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   documentationLink: 'documentation_link',
   stakeholders: 'stakeholders',
   isTimelineStub: 'is_timeline_stub',
+  isPortfolioGhost: 'is_portfolio_ghost',
+  isPortfolioCompleted: 'is_portfolio_completed',
   quarterlyData: 'quarterly_data',
   initiativeGeoCostSplit: 'geo_cost_split',
 };
@@ -107,6 +109,8 @@ function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>)
   if (p.documentation_link !== undefined) next.documentationLink = p.documentation_link as string;
   if (p.stakeholders !== undefined) next.stakeholders = p.stakeholders as string;
   if (p.is_timeline_stub !== undefined) next.isTimelineStub = p.is_timeline_stub as boolean;
+  if (p.is_portfolio_ghost !== undefined) next.isPortfolioGhost = p.is_portfolio_ghost as boolean;
+  if (p.is_portfolio_completed !== undefined) next.isPortfolioCompleted = p.is_portfolio_completed as boolean;
   if (p.quarterly_data !== undefined) {
     next.quarterlyData = quarterlyJsonToAdminRecord(p.quarterly_data);
   }
@@ -229,6 +233,8 @@ export function useInitiativeMutations() {
           documentation_link: data.documentationLink,
           stakeholders: data.stakeholders,
           is_timeline_stub: data.isTimelineStub ?? false,
+          is_portfolio_ghost: data.isPortfolioGhost ?? false,
+          is_portfolio_completed: data.isPortfolioCompleted ?? false,
           quarterly_data: quarterlyDataToJson(qd),
           geo_cost_split:
             data.initiativeGeoCostSplit?.entries?.length
