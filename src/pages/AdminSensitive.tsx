@@ -20,6 +20,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { normalizeTeamName } from '@/lib/sensitiveScopes';
 import { Navigate } from 'react-router-dom';
 import { AdminTreemapLayoutSettings } from '@/components/admin/AdminTreemapLayoutSettings';
+import { AdminPublicEmbedLinks } from '@/components/admin/AdminPublicEmbedLinks';
 
 type SensitiveRow = Database['public']['Tables']['sensitive_scopes']['Row'];
 
@@ -284,6 +285,8 @@ export default function AdminSensitive() {
         )}
 
         <AdminTreemapLayoutSettings />
+
+        <AdminPublicEmbedLinks />
       </main>
     </div>
   );

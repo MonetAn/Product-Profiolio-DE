@@ -18,6 +18,7 @@ import AdminPeopleEffortFill from "./pages/AdminPeopleEffortFill";
 import AdminFillAnalytics from "./pages/AdminFillAnalytics";
 import AdminLocationAllocations from "./pages/AdminLocationAllocations";
 import Auth from "./pages/Auth";
+import EmbedPortfolio from "./pages/EmbedPortfolio";
 import NotFound from "./pages/NotFound";
 import PeoplePlatformAllocationsMock from "./pages/PeoplePlatformAllocationsMock";
 import Unification from "./pages/Unification";
@@ -42,6 +43,7 @@ const App = () => (
             <Routes>
             <Route path="/mock/people-platform-allocations" element={<PeoplePlatformAllocationsMock />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/embed/:slug" element={<EmbedPortfolio />} />
             <Route path="/" element={
               <ProtectedRoute>
                 <Index />
