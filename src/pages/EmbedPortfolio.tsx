@@ -288,7 +288,12 @@ export default function EmbedPortfolio() {
           setResetZoomTrigger((prev) => prev + 1);
         }}
         rawData={rawData}
+        availableQuarters={availableQuarters}
         selectedQuarters={selectedQuarters}
+        onQuartersChange={(quarters) => {
+          setSelectedQuarters(quarters);
+          setResetZoomTrigger((prev) => prev + 1);
+        }}
         selectedUnit={unit}
         baselineByTeam={baselineByTeam}
       />

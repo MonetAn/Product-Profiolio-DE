@@ -17,9 +17,30 @@ interface EmbedToolbarProps {
   onShowTeamsChange: (val: boolean) => void;
   onShowInitiativesChange: (val: boolean) => void;
   rawData: RawDataRow[];
+  availableQuarters: string[];
   selectedQuarters: string[];
+  onQuartersChange: (quarters: string[]) => void;
   selectedUnit: string;
   baselineByTeam?: Map<string, TeamBaselineRow>;
+}
+
+function quarterToggleValue(selectedQuarters: string[], availableQuarters: string[]): string {
+  if (selectedQuarters.length === 0 || availableQuarters.length === 0) return 'all';
+  const sortedAvailable = [...availableQuarters].sort();
+  const sortedSelected = [...selectedQuarters].sort();
+  if (
+    sortedSelected.length === sortedAvailable.length &&
+    sortedSelected.every((q, i) => q === sortedAvailable[i])
+  ) {
+    return 'all';
+  }
+  if (sortedSelected.length === 1) return sortedSelected[0];
+  return 'all';
+}
+
+function quarterShortLabel(quarter: string): string {
+  const part = quarter.split('-')[1];
+  return part ?? quarter;
 }
 
 export function EmbedToolbar({
@@ -30,7 +51,9 @@ export function EmbedToolbar({
   onShowTeamsChange,
   onShowInitiativesChange,
   rawData,
+  availableQuarters,
   selectedQuarters,
+  onQuartersChange,
   selectedUnit,
   baselineByTeam,
 }: EmbedToolbarProps) {
@@ -105,6 +128,43 @@ export function EmbedToolbar({
           </>
         )}
       </div>
+
+      {availableQuarters.length > 0 && (
+        <>
+          <div className="h-4 w-px bg-border shrink-0" aria-hidden />
+          <ToggleGroup
+            type="single"
+            value={quarterToggleValue(selectedQuarters, availableQuarters)}
+            onValueChange={(v) => {
+              if (!v) return;
+              if (v === 'all') {
+                onQuartersChange([...availableQuarters]);
+              } else if (availableQuarters.includes(v)) {
+                onQuartersChange([v]);
+              }
+            }}
+            className="bg-secondary rounded-md p-0.5 shrink-0"
+          >
+            <ToggleGroupItem
+              value="all"
+              className="h-7 px-2 text-xs font-medium rounded data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              aria-label="Весь 2026"
+            >
+              2026
+            </ToggleGroupItem>
+            {availableQuarters.map((q) => (
+              <ToggleGroupItem
+                key={q}
+                value={q}
+                className="h-7 px-2 text-xs font-medium rounded data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                aria-label={q}
+              >
+                {quarterShortLabel(q)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </>
+      )}
 
       <div className="flex-1 min-w-[8px]" />
 
