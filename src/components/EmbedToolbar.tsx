@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -24,23 +25,28 @@ interface EmbedToolbarProps {
   baselineByTeam?: Map<string, TeamBaselineRow>;
 }
 
-function quarterToggleValue(selectedQuarters: string[], availableQuarters: string[]): string {
-  if (selectedQuarters.length === 0 || availableQuarters.length === 0) return 'all';
-  const sortedAvailable = [...availableQuarters].sort();
-  const sortedSelected = [...selectedQuarters].sort();
-  if (
-    sortedSelected.length === sortedAvailable.length &&
-    sortedSelected.every((q, i) => q === sortedAvailable[i])
-  ) {
-    return 'all';
-  }
-  if (sortedSelected.length === 1) return sortedSelected[0];
-  return 'all';
-}
-
 function quarterShortLabel(quarter: string): string {
   const part = quarter.split('-')[1];
   return part ?? quarter;
+}
+
+function isAllQuartersSelected(selectedQuarters: string[], availableQuarters: string[]): boolean {
+  if (availableQuarters.length === 0) return false;
+  const sortedAvailable = [...availableQuarters].sort();
+  const sortedSelected = [...selectedQuarters].sort();
+  return (
+    sortedSelected.length === sortedAvailable.length &&
+    sortedSelected.every((q, i) => q === sortedAvailable[i])
+  );
+}
+
+function getQuartersInRange(start: string, end: string, availableQuarters: string[]): string[] {
+  const sorted = [...availableQuarters].sort();
+  const startIdx = sorted.indexOf(start);
+  const endIdx = sorted.indexOf(end);
+  if (startIdx === -1 || endIdx === -1) return [];
+  const [minIdx, maxIdx] = [Math.min(startIdx, endIdx), Math.max(startIdx, endIdx)];
+  return sorted.slice(minIdx, maxIdx + 1);
 }
 
 export function EmbedToolbar({
@@ -57,6 +63,34 @@ export function EmbedToolbar({
   selectedUnit,
   baselineByTeam,
 }: EmbedToolbarProps) {
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [hoverQuarter, setHoverQuarter] = useState<string | null>(null);
+
+  const allQuartersSelected = isAllQuartersSelected(selectedQuarters, availableQuarters);
+
+  const handleQuarterClick = (q: string) => {
+    if (rangeStart === null) {
+      setRangeStart(q);
+      onQuartersChange([q]);
+      return;
+    }
+    const range = getQuartersInRange(rangeStart, q, availableQuarters);
+    onQuartersChange(range.length > 0 ? range : [q]);
+    setRangeStart(null);
+    setHoverQuarter(null);
+  };
+
+  const handleAllQuartersClick = () => {
+    setRangeStart(null);
+    setHoverQuarter(null);
+    onQuartersChange([...availableQuarters].sort());
+  };
+
+  const isInHoverRange = (q: string): boolean => {
+    if (!rangeStart || !hoverQuarter) return false;
+    return getQuartersInRange(rangeStart, hoverQuarter, availableQuarters).includes(q);
+  };
+
   const totals = rawData.reduce(
     (acc, row) => {
       const periodBudget = calculateBudget(row, selectedQuarters, {
@@ -132,37 +166,48 @@ export function EmbedToolbar({
       {availableQuarters.length > 0 && (
         <>
           <div className="h-4 w-px bg-border shrink-0" aria-hidden />
-          <ToggleGroup
-            type="single"
-            value={quarterToggleValue(selectedQuarters, availableQuarters)}
-            onValueChange={(v) => {
-              if (!v) return;
-              if (v === 'all') {
-                onQuartersChange([...availableQuarters]);
-              } else if (availableQuarters.includes(v)) {
-                onQuartersChange([v]);
-              }
-            }}
-            className="bg-secondary rounded-md p-0.5 shrink-0"
-          >
-            <ToggleGroupItem
-              value="all"
-              className="h-7 px-2 text-xs font-medium rounded data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          <div className="flex items-center gap-0.5 bg-secondary rounded-md p-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleAllQuartersClick}
+              className={`h-7 px-2 text-xs font-medium rounded transition-colors ${
+                allQuartersSelected && rangeStart === null
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-foreground hover:bg-background/60'
+              }`}
               aria-label="Весь 2026"
+              aria-pressed={allQuartersSelected && rangeStart === null}
             >
               2026
-            </ToggleGroupItem>
-            {availableQuarters.map((q) => (
-              <ToggleGroupItem
-                key={q}
-                value={q}
-                className="h-7 px-2 text-xs font-medium rounded data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                aria-label={q}
-              >
-                {quarterShortLabel(q)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+            </button>
+            {availableQuarters.map((q) => {
+              const isSelected = selectedQuarters.includes(q);
+              const isStart = rangeStart === q;
+              const isHovered = isInHoverRange(q);
+              return (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => handleQuarterClick(q)}
+                  onMouseEnter={() => setHoverQuarter(q)}
+                  onMouseLeave={() => setHoverQuarter(null)}
+                  className={`h-7 px-2 text-xs font-medium rounded border transition-all ${
+                    isStart
+                      ? 'bg-primary text-primary-foreground border-primary ring-1 ring-primary/30'
+                      : isSelected
+                        ? 'bg-foreground text-background border-foreground'
+                        : isHovered
+                          ? 'bg-primary/30 border-primary/50 text-foreground'
+                          : 'bg-transparent border-transparent text-foreground hover:bg-background/60'
+                  }`}
+                  aria-label={q}
+                  aria-pressed={isSelected}
+                >
+                  {quarterShortLabel(q)}
+                </button>
+              );
+            })}
+          </div>
         </>
       )}
 
