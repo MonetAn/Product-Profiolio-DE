@@ -3,6 +3,7 @@ import { compareQuarters } from '@/lib/quarterUtils';
 import {
   buildQuarterlyCostsForTeam,
   frozenTeamQuarterTotals,
+  teamEffortOverflowQuarters,
   type BuildTeamCostsOptions,
 } from '@/lib/redistributeTeamCosts2026';
 
@@ -23,6 +24,11 @@ export function buildQuarterlyDataFromPreview(
     out.set(r.id, structuredClone(r.quarterlyData));
   }
   if (sortedQ.length === 0) return out;
+
+  const overflow = teamEffortOverflowQuarters(teamRows, sortedQ);
+  if (overflow.length > 0) {
+    throw new Error(`Σ% усилий превышает 100%: ${overflow.join(', ')}`);
+  }
 
   const anchored = Boolean(options?.baseline) || Boolean(options?.fixedTqByQuarter);
   const buildOpts: BuildTeamCostsOptions = anchored

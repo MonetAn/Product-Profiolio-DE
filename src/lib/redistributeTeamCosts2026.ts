@@ -50,14 +50,25 @@ function baselineTq(baseline: TeamBaselineRow, quarter: string): number {
 }
 
 export type BuildTeamCostsOptions = {
-  /** LIST1 эталон команды — приоритетный источник Tq. */
+  /** LIST1 эталон — только явный reconcile/SQL; не для delete/Quick Flow. */
   baseline?: TeamBaselineRow | null;
-  /** Снимок суммы команды «до» (например, до удаления в preview). */
+  /** Снимок Tq команды «до» операции; главный якорь для админских действий. */
   fixedTqByQuarter?: ReadonlyMap<string, number>;
 };
 
+const EFFORT_CAP = 100;
+const EFFORT_EPS = 1e-4;
+
+/** Кварталы, где Σ% не-заглушек > 100 (сохранение должно блокироваться). */
+export function teamEffortOverflowQuarters(
+  teamRows: AdminDataRow[],
+  quarters: string[]
+): string[] {
+  return quarters.filter((q) => columnEffortSum(teamRows, q) > EFFORT_CAP + EFFORT_EPS);
+}
+
 /**
- * Пересчёт cost по % усилия: Tq из baseline (или fixed / факт), не-заглушки = round(eff/100·Tq),
+ * Пересчёт cost по % усилия: Tq из frozen (или live), не-заглушки = round(eff/100·Tq),
  * заглушка = остаток. Сохраняет тотал команды за квартал.
  */
 export function buildQuarterlyCostsForTeam(
@@ -78,12 +89,12 @@ export function buildQuarterlyCostsForTeam(
   const stubIds = teamRows.filter((r) => r.isTimelineStub).map((r) => r.id);
 
   const resolveTq = (q: string): number => {
+    const fixed = options?.fixedTqByQuarter?.get(q);
+    if (fixed !== undefined && fixed > 0) return fixed;
     if (options?.baseline) {
       const bt = baselineTq(options.baseline, q);
       if (bt > 0) return bt;
     }
-    const fixed = options?.fixedTqByQuarter?.get(q);
-    if (fixed !== undefined && fixed > 0) return fixed;
     return teamQuarterCostSum(teamRows, q);
   };
 
@@ -100,8 +111,15 @@ export function buildQuarterlyCostsForTeam(
       continue;
     }
 
-    // Без якоря (baseline / frozen Tq) при Σeff>100% не пересчитываем — данные невалидны.
-    if (!anchored && columnEffortSum(teamRows, q) > 100 + 1e-4) continue;
+    const colEff = columnEffortSum(teamRows, q);
+    if (colEff > EFFORT_CAP + EFFORT_EPS) {
+      if (anchored) {
+        throw new Error(
+          `buildQuarterlyCostsForTeam: Σ% усилий ${colEff.toFixed(1)} > 100 в ${q} — сохранение заблокировано`
+        );
+      }
+      continue;
+    }
 
     let nonStubCostOtherSum = 0;
     for (const r of teamRows) {
@@ -279,12 +297,12 @@ function resolveTeamYearTarget(
   baseline: TeamBaselineRow | null,
   frozenTqByQuarter?: ReadonlyMap<string, number>
 ): number {
-  if (baseline && baseline.rubAll > 0) return Math.round(baseline.rubAll);
   if (frozenTqByQuarter) {
     let s = 0;
     for (const q of Y2026_QUARTERS) s += frozenTqByQuarter.get(q) ?? 0;
     if (s > 0) return Math.round(s);
   }
+  if (baseline && baseline.rubAll > 0) return Math.round(baseline.rubAll);
   return 0;
 }
 
@@ -364,8 +382,8 @@ export type RedistributeTeamResult = {
 };
 
 /**
- * После удаления инициативы: пересчитать cost всей команды по baseline LIST1 и % усилия.
- * Тотал команды (и портфеля) не падает — доля удалённой уходит на оставшиеся строки / стаб.
+ * После удаления инициативы: перераспределить cost по % усилия внутри frozen Tq команды.
+ * Доля удалённой уходит на оставшиеся строки / стаб; тотал команды не меняется.
  */
 export async function redistributeTeamCosts2026InDb(
   unit: string,
@@ -383,7 +401,10 @@ export async function redistributeTeamCosts2026InDb(
     teamRows = await fetchLiveTeamRows(unit, team);
   }
 
-  const buildOpts = { baseline, fixedTqByQuarter: options?.frozenTqByQuarter };
+  const frozenTq =
+    options?.frozenTqByQuarter ??
+    frozenTeamQuarterTotals(teamRows, [...Y2026_QUARTERS]);
+  const buildOpts = { fixedTqByQuarter: frozenTq };
   const dataById = buildQuarterlyCostsForTeam(teamRows, [...Y2026_QUARTERS], buildOpts);
   const updatedRowIds: string[] = [];
 
@@ -398,14 +419,14 @@ export async function redistributeTeamCosts2026InDb(
     updatedRowIds.push(row.id);
   }
 
-  const yearTarget = resolveTeamYearTarget(baseline, options?.frozenTqByQuarter);
+  const yearTarget = resolveTeamYearTarget(baseline, frozenTq);
   if (yearTarget > 0) {
     await applyTeamYearDust(unit, team, yearTarget);
   }
 
   await syncTeamSplitFromQuarterly(unit, team);
 
-  const yearTargetFinal = resolveTeamYearTarget(baseline, options?.frozenTqByQuarter);
+  const yearTargetFinal = resolveTeamYearTarget(baseline, frozenTq);
   if (yearTargetFinal > 0) {
     await assertTeamYearTotalMatchesTarget(unit, team, yearTargetFinal);
   }
