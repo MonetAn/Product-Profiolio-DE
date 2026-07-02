@@ -136,6 +136,11 @@ export function LocationAllocationTreemapContainer({
 
   const handleNodeClick = useCallback(
     (node: TreemapLayoutNode) => {
+      if (node.data.isInitiative && onEditNode) {
+        onEditNode(node);
+        return;
+      }
+
       if (node.data.isUnit) {
         onAutoEnableTeams?.();
       } else if (node.data.isTeam) {
@@ -147,7 +152,7 @@ export function LocationAllocationTreemapContainer({
 
       setFocusedPath(normalizeTreemapFocusPath(data, splitTreemapEncodedPath(node.path)));
     },
-    [data, onAutoEnableTeams, onAutoEnableInitiatives]
+    [data, onAutoEnableTeams, onAutoEnableInitiatives, onEditNode]
   );
 
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {

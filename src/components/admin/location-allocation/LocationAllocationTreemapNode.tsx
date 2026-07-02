@@ -301,7 +301,7 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
 
   return (
     <div className={classNames} style={boxStyle} {...eventHandlers}>
-      {onEditClick && node.height >= 28 && node.width >= 36 ? (
+      {onEditClick && !node.isInitiative && node.height >= 28 && node.width >= 36 ? (
         <button
           type="button"
           className="absolute top-0.5 right-0.5 z-30 flex h-6 w-6 items-center justify-center rounded-md bg-black/25 text-white/95 hover:bg-black/40 hover:text-white pointer-events-auto"

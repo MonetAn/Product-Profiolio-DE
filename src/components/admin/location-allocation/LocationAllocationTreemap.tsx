@@ -251,7 +251,7 @@ export function LocationAllocationTreemap({
         ) : null}
         <p className="ml-auto text-[10px] text-muted-foreground hidden sm:block">
           {treemapScope.kind === 'all'
-            ? 'В ячейке — по регионам; наведите — по рынкам; ✎ — редактирование'
+            ? 'В ячейке — по регионам; наведите — по рынкам; клик по инициативе — редактирование; ✎ — юнит/команда'
             : 'В ячейке — доля фильтра и остальные регионы; наведите — рынки в фильтре'}
         </p>
       </div>
