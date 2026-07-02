@@ -155,23 +155,26 @@ export function LocationAllocationTreemapEditDialog({
           <DialogHeader className="shrink-0 space-y-1 border-b border-border px-5 py-4 text-left">
             <p className="text-xs text-muted-foreground">{target.breadcrumb}</p>
             <DialogTitle className="text-lg leading-snug">{target.title}</DialogTitle>
-            {target.description ? (
-              <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                {target.description}
-              </p>
-            ) : target.level === 'initiative' ? (
-              <p className="text-sm text-muted-foreground italic">Описание не указано</p>
-            ) : null}
-            <p className="text-xs text-muted-foreground pt-1">{scopeHint}</p>
-            {target.totalCostRub > 0 ? (
-              <p className="text-sm tabular-nums">
-                <span className="text-muted-foreground">Полная стоимость за год: </span>
-                <span className="font-semibold">{formatLocationCompactM(target.totalCostRub)}</span>
-              </p>
-            ) : null}
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
+            {target.description ? (
+              <p className="mb-3 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {target.description}
+              </p>
+            ) : target.level === 'initiative' ? (
+              <p className="mb-3 text-sm text-muted-foreground italic">Описание не указано</p>
+            ) : null}
+            <p className="mb-1 text-xs text-muted-foreground">{scopeHint}</p>
+            {target.totalCostRub > 0 ? (
+              <p className="mb-4 text-sm tabular-nums">
+                <span className="text-muted-foreground">Полная стоимость за год: </span>
+                <span className="font-semibold">{formatLocationCompactM(target.totalCostRub)}</span>
+              </p>
+            ) : (
+              <div className="mb-4" />
+            )}
+
             <LocationAllocationHierarchicalGeoEditor
               split={draftSplit}
               totalCostRub={target.totalCostRub}
