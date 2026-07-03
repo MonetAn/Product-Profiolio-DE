@@ -745,7 +745,10 @@ const Admin = () => {
   const handleHubRowDraftChange = useCallback(
     (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
       if (!isHubLocalRowId(id)) {
-        if (field === 'initiative' && typeof value === 'string') {
+        if (
+          typeof value === 'string' &&
+          (field === 'initiative' || field === 'description' || field === 'documentationLink')
+        ) {
           immediateUpdate(id, field, value);
           return;
         }
@@ -1322,7 +1325,7 @@ const Admin = () => {
         return;
       }
       if (field === 'description' || field === 'documentationLink') {
-        updateInitiative(id, field, String(value), 0);
+        immediateUpdate(id, field, String(value));
       }
     },
     [immediateUpdate, updateInitiative]
@@ -1744,8 +1747,11 @@ const Admin = () => {
   // Data modification handlers
   const handleDataChange = useCallback(
     (id: string, field: keyof AdminDataRow, value: string | string[] | number | boolean) => {
-      /** Название без debounce: иначе refetch после create/инвалидации перезаписывает кэш до flush таймера — ввод «ломается». */
-      if (field === 'initiative' && typeof value === 'string') {
+      /** Текстовые поля карточки без debounce: refetch после других сохранений откатывает кэш до таймера. */
+      if (
+        typeof value === 'string' &&
+        (field === 'initiative' || field === 'description' || field === 'documentationLink')
+      ) {
         immediateUpdate(id, field, value);
         return;
       }

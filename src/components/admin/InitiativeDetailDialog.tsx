@@ -831,6 +831,27 @@ const InitiativeDetailDialog = ({
     }
   }, [initiative?.id]);
 
+  const flushTopLevelFields = useCallback(() => {
+    if (!initiative) return;
+    if (localName !== (initiative.initiative || '')) {
+      onDataChange(initiative.id, 'initiative', localName);
+    }
+    if (localDescription !== (initiative.description || '')) {
+      onDataChange(initiative.id, 'description', localDescription);
+    }
+    if (localDocLink !== (initiative.documentationLink || '')) {
+      onDataChange(initiative.id, 'documentationLink', localDocLink);
+    }
+  }, [initiative, localName, localDescription, localDocLink, onDataChange]);
+
+  const handleDialogOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) flushTopLevelFields();
+      onOpenChange(nextOpen);
+    },
+    [flushTopLevelFields, onOpenChange]
+  );
+
   if (!initiative) return null;
 
   const totalQuarterCost = quarters.reduce(
@@ -847,7 +868,7 @@ const InitiativeDetailDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

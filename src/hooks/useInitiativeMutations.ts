@@ -101,6 +101,24 @@ function valuesEqual(left: unknown, right: unknown): boolean {
   }
 }
 
+function pendingFieldPatchesForInitiative(
+  id: string,
+  pendingFieldValues: Map<string, unknown>
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const suffix of INIT_DEBOUNCE_KEY_SUFFIXES) {
+    const key = `${id}-${suffix}`;
+    const pending = pendingFieldValues.get(key);
+    if (pending === undefined) continue;
+    const dbColumn = FIELD_TO_COLUMN[suffix] || suffix;
+    patch[dbColumn] = pending;
+    if (suffix === 'stakeholdersList') {
+      patch.stakeholders = stakeholdersStringFromList(pending as string[]);
+    }
+  }
+  return patch;
+}
+
 function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>): AdminDataRow {
   const next = { ...row };
   const p = patch;
@@ -129,6 +147,8 @@ export function useInitiativeMutations() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const debounceTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  /** Значения полей, ожидающие debounce-запись — не перечитываем из кэша (refetch может откатить текст до таймера). */
+  const pendingFieldValuesRef = useRef<Map<string, unknown>>(new Map());
   /** Кварталы с изменённым effortCoefficient, ожидающие syncAssignments после PATCH quarterly_data. */
   const pendingEffortSyncsRef = useRef<Map<string, Set<string>>>(new Map());
   const invalidateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -214,6 +234,18 @@ export function useInitiativeMutations() {
       replaceRowInInitiativeCaches(queryClient, data, {
         portfolioCompleted: existing?.isPortfolioCompleted,
       });
+      const pendingPatches = pendingFieldPatchesForInitiative(
+        variables.id,
+        pendingFieldValuesRef.current
+      );
+      if (Object.keys(pendingPatches).length > 0) {
+        queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
+          if (old === undefined) return undefined;
+          return old.map((row) =>
+            row.id === variables.id ? applyPatchToAdminRow(row, pendingPatches) : row
+          );
+        });
+      }
       if (variables.patch.unit !== undefined || variables.patch.team !== undefined) {
         upsertScopeCatalogRow(queryClient, {
           id: data.id,
@@ -367,8 +399,12 @@ export function useInitiativeMutations() {
       const latest = findRowInInitiativeCaches(queryClient, id);
       if (!latest) return;
       const originalValue = (latest as unknown as Record<string, unknown>)[field];
-      if (valuesEqual(originalValue, value)) return;
+      if (valuesEqual(originalValue, value)) {
+        pendingFieldValuesRef.current.delete(key);
+        return;
+      }
 
+      pendingFieldValuesRef.current.set(key, value);
       const dbColumn = FIELD_TO_COLUMN[field] || field;
 
       queryClient.setQueriesData<AdminDataRow[]>({ queryKey: INITIATIVES_QUERY_KEY }, (old) => {
@@ -391,21 +427,20 @@ export function useInitiativeMutations() {
       setPendingCount(debounceTimers.current.size + 1);
 
       const timer = setTimeout(() => {
-        const latestRow = findRowInInitiativeCaches(queryClient, id);
-        if (!latestRow) {
-          debounceTimers.current.delete(key);
-          setPendingCount(debounceTimers.current.size);
-          return;
-        }
-        const latestValue = (latestRow as unknown as Record<string, unknown>)[field];
-        if (valuesEqual(latestValue, originalValue)) {
-          debounceTimers.current.delete(key);
+        debounceTimers.current.delete(key);
+        const valueToSave = pendingFieldValuesRef.current.get(key);
+        pendingFieldValuesRef.current.delete(key);
+        if (valueToSave === undefined) {
           if (debounceTimers.current.size === 0) setSyncStatus('synced');
           setPendingCount(debounceTimers.current.size);
           return;
         }
+        if (!findRowInInitiativeCaches(queryClient, id)) {
+          setPendingCount(debounceTimers.current.size);
+          return;
+        }
         if (field === 'stakeholdersList') {
-          const list = latestValue as string[];
+          const list = valueToSave as string[];
           updateMutation.mutate({
             id,
             patch: {
@@ -416,10 +451,9 @@ export function useInitiativeMutations() {
         } else {
           updateMutation.mutate({
             id,
-            patch: { [dbColumn]: latestValue },
+            patch: { [dbColumn]: valueToSave },
           });
         }
-        debounceTimers.current.delete(key);
         setPendingCount(debounceTimers.current.size);
       }, delay);
 
@@ -864,10 +898,25 @@ export function useInitiativeMutations() {
         continue;
       }
       const dbColumn = FIELD_TO_COLUMN[parsed.field] || parsed.field;
-      const latestValue = (latest as unknown as Record<string, unknown>)[parsed.field];
+      const pendingKey = `${parsed.id}-${parsed.field}`;
+      const valueToSave =
+        pendingFieldValuesRef.current.get(pendingKey) ??
+        (latest as unknown as Record<string, unknown>)[parsed.field];
+      pendingFieldValuesRef.current.delete(pendingKey);
+      if (parsed.field === 'stakeholdersList') {
+        const list = valueToSave as string[];
+        await updateMutation.mutateAsync({
+          id: parsed.id,
+          patch: {
+            stakeholders_list: list,
+            stakeholders: stakeholdersStringFromList(list),
+          },
+        });
+        continue;
+      }
       await updateMutation.mutateAsync({
         id: parsed.id,
-        patch: { [dbColumn]: latestValue },
+        patch: { [dbColumn]: valueToSave },
       });
     }
 
@@ -877,6 +926,7 @@ export function useInitiativeMutations() {
   const flushPendingChanges = useCallback(() => {
     debounceTimers.current.forEach((timer) => clearTimeout(timer));
     debounceTimers.current.clear();
+    pendingFieldValuesRef.current.clear();
     setPendingCount(0);
   }, []);
 
