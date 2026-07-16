@@ -11,9 +11,30 @@ import {
 
 // ===== GEO COST SPLIT (квартал: % от cost по строкам справочника market_countries) =====
 
+export type GeoCostSplitAllocationSource = 'revenue' | 'manual';
+
+export type GeoCostSplitAllocationOrigin =
+  | { level: 'unit'; unit: string }
+  | { level: 'team'; unit: string; team: string }
+  | { level: 'initiative'; initiativeId: string };
+
 export type GeoCostSplitEntry =
-  | { kind: 'country'; countryId: string; percent: number; note?: string }
-  | { kind: 'cluster'; clusterKey: string; percent: number; note?: string };
+  | {
+      kind: 'country';
+      countryId: string;
+      percent: number;
+      note?: string;
+      /** Как была рассчитана доля: автоматически по выручке или задана вручную. */
+      allocationSource?: GeoCostSplitAllocationSource;
+    }
+  | {
+      kind: 'cluster';
+      clusterKey: string;
+      percent: number;
+      note?: string;
+      /** Как была рассчитана доля: автоматически по выручке или задана вручную. */
+      allocationSource?: GeoCostSplitAllocationSource;
+    };
 
 export interface GeoCostSplit {
   entries: GeoCostSplitEntry[];
@@ -23,6 +44,8 @@ export interface GeoCostSplit {
   driverKey?: string;
   /** Подпись драйвера для UI и выгрузок; при пересчёте коэффициентов ключ ищем по `driverKey`. */
   driverLabel?: string;
+  /** Уровень, на котором решение было сохранено; дочерние блоки используют это для пояснения наследования. */
+  allocationOrigin?: GeoCostSplitAllocationOrigin;
 }
 
 import type { QuarterCostHistoryEntry, QuarterMoneyHistoryEntry } from './quarterValueHistory';
@@ -107,21 +130,28 @@ export function geoCostSplitToJson(split: GeoCostSplit): {
   note?: string;
   driverKey?: string;
   driverLabel?: string;
+  allocationOrigin?: GeoCostSplitAllocationOrigin;
 } {
   const splitNote = typeof split.note === 'string' && split.note.trim() ? split.note.trim() : undefined;
   const driverKey =
     typeof split.driverKey === 'string' && split.driverKey.trim() ? split.driverKey.trim() : undefined;
   const driverLabel =
     typeof split.driverLabel === 'string' && split.driverLabel.trim() ? split.driverLabel.trim() : undefined;
+  const allocationOrigin = split.allocationOrigin;
   return {
     entries: split.entries.map((e) => {
       const note = typeof e.note === 'string' && e.note.trim() ? e.note.trim() : undefined;
+      const allocationSource =
+        e.allocationSource === 'revenue' || e.allocationSource === 'manual'
+          ? e.allocationSource
+          : undefined;
       if (e.kind === 'country') {
         return {
           kind: 'country',
           countryId: e.countryId,
           percent: e.percent,
           ...(note ? { note } : {}),
+          ...(allocationSource ? { allocationSource } : {}),
         };
       }
       return {
@@ -129,10 +159,12 @@ export function geoCostSplitToJson(split: GeoCostSplit): {
         clusterKey: e.clusterKey,
         percent: e.percent,
         ...(note ? { note } : {}),
+        ...(allocationSource ? { allocationSource } : {}),
       };
     }),
     ...(splitNote ? { note: splitNote } : {}),
     ...(driverKey ? { driverKey, ...(driverLabel ? { driverLabel } : {}) } : {}),
+    ...(allocationOrigin ? { allocationOrigin } : {}),
   };
 }
 
@@ -149,10 +181,26 @@ export function parseGeoCostSplit(raw: unknown): GeoCostSplit | undefined {
     const noteRaw = e.note;
     const note =
       typeof noteRaw === 'string' && noteRaw.trim() ? noteRaw.trim() : undefined;
+    const allocationSource =
+      e.allocationSource === 'revenue' || e.allocationSource === 'manual'
+        ? e.allocationSource
+        : undefined;
     if (kind === 'country' && typeof e.countryId === 'string' && e.countryId) {
-      entries.push({ kind: 'country', countryId: e.countryId, percent, ...(note ? { note } : {}) });
+      entries.push({
+        kind: 'country',
+        countryId: e.countryId,
+        percent,
+        ...(note ? { note } : {}),
+        ...(allocationSource ? { allocationSource } : {}),
+      });
     } else if (kind === 'cluster' && typeof e.clusterKey === 'string' && e.clusterKey) {
-      entries.push({ kind: 'cluster', clusterKey: e.clusterKey, percent, ...(note ? { note } : {}) });
+      entries.push({
+        kind: 'cluster',
+        clusterKey: e.clusterKey,
+        percent,
+        ...(note ? { note } : {}),
+        ...(allocationSource ? { allocationSource } : {}),
+      });
     }
   }
   if (entries.length === 0) return undefined;
@@ -165,10 +213,40 @@ export function parseGeoCostSplit(raw: unknown): GeoCostSplit | undefined {
     typeof driverKeyRaw === 'string' && driverKeyRaw.trim() ? driverKeyRaw.trim() : undefined;
   const driverLabel =
     typeof driverLabelRaw === 'string' && driverLabelRaw.trim() ? driverLabelRaw.trim() : undefined;
+  const originRaw = o.allocationOrigin;
+  let allocationOrigin: GeoCostSplitAllocationOrigin | undefined;
+  if (originRaw && typeof originRaw === 'object' && !Array.isArray(originRaw)) {
+    const origin = originRaw as Record<string, unknown>;
+    if (origin.level === 'unit' && typeof origin.unit === 'string' && origin.unit.trim()) {
+      allocationOrigin = { level: 'unit', unit: origin.unit.trim() };
+    } else if (
+      origin.level === 'team' &&
+      typeof origin.unit === 'string' &&
+      origin.unit.trim() &&
+      typeof origin.team === 'string' &&
+      origin.team.trim()
+    ) {
+      allocationOrigin = {
+        level: 'team',
+        unit: origin.unit.trim(),
+        team: origin.team.trim(),
+      };
+    } else if (
+      origin.level === 'initiative' &&
+      typeof origin.initiativeId === 'string' &&
+      origin.initiativeId.trim()
+    ) {
+      allocationOrigin = {
+        level: 'initiative',
+        initiativeId: origin.initiativeId.trim(),
+      };
+    }
+  }
   return {
     entries,
     ...(splitNote ? { note: splitNote } : {}),
     ...(driverKey ? { driverKey, ...(driverLabel ? { driverLabel } : {}) } : {}),
+    ...(allocationOrigin ? { allocationOrigin } : {}),
   };
 }
 
@@ -179,10 +257,12 @@ export function cloneGeoCostSplit(split: GeoCostSplit | undefined): GeoCostSplit
   const dk = typeof split.driverKey === 'string' && split.driverKey.trim() ? split.driverKey.trim() : undefined;
   const dl =
     typeof split.driverLabel === 'string' && split.driverLabel.trim() ? split.driverLabel.trim() : undefined;
+  const allocationOrigin = split.allocationOrigin;
   return {
     entries: split.entries.map((e) => ({ ...e })),
     ...(n ? { note: n } : {}),
     ...(dk ? { driverKey: dk, ...(dl ? { driverLabel: dl } : {}) } : {}),
+    ...(allocationOrigin ? { allocationOrigin: { ...allocationOrigin } } : {}),
   };
 }
 

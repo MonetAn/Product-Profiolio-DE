@@ -5,9 +5,12 @@ import type { TreemapLayoutNode } from '@/components/treemap/types';
 import {
   allocateInitiativeFactByRegion,
   countryBelongsToTopRegion,
+  initiativeFactAllocationSourcesByMarket,
   initiativeFactFlatByMarket,
   initiativeFactMarketsByCluster,
   initiativeFactByAllRegions,
+  type LocationAllocationSourceBreakdown,
+  type LocationAllocationSourceByMarket,
   TOP_REGION_ORDER,
   TOP_REGION_DISPLAY_LABELS,
   type TopRegionLabel,
@@ -55,6 +58,10 @@ export type LocationAllocationTreemapMeta = {
   yearCostByInitiativeId: Map<string, number>;
   regionBreakdownByInitiativeId: Map<string, Map<TopRegionLabel, number>>;
   clusterMarketBreakdownByInitiativeId: Map<string, Map<string, Map<string, number>>>;
+  allocationSourceByMarketByInitiativeId: Map<
+    string,
+    LocationAllocationSourceByMarket
+  >;
   initiativeRowById: Map<string, AdminDataRow>;
 };
 
@@ -324,6 +331,10 @@ export function buildLocationAllocationTreemapMeta(
     string,
     Map<string, Map<string, number>>
   >();
+  const allocationSourceByMarketByInitiativeId = new Map<
+    string,
+    LocationAllocationSourceByMarket
+  >();
   const initiativeRowById = new Map<string, AdminDataRow>();
 
   for (const row of initiatives) {
@@ -339,12 +350,22 @@ export function buildLocationAllocationTreemapMeta(
       row.id,
       initiativeFactMarketsByCluster(row, yearQuarters, countries, countryIdToClusterKey)
     );
+    allocationSourceByMarketByInitiativeId.set(
+      row.id,
+      initiativeFactAllocationSourcesByMarket(
+        yearCost,
+        row,
+        countries,
+        countryIdToClusterKey
+      )
+    );
   }
 
   return {
     yearCostByInitiativeId,
     regionBreakdownByInitiativeId,
     clusterMarketBreakdownByInitiativeId,
+    allocationSourceByMarketByInitiativeId,
     initiativeRowById,
   };
 }
@@ -378,6 +399,76 @@ export function collectLocationTreemapInitiativeIds(
     ids.push(id);
   }
   return ids;
+}
+
+export type LocationTreemapDecisionAnnotation = {
+  comment: string | null;
+  inheritedFrom: string | null;
+};
+
+function treemapNodeLevel(node: TreemapLayoutNode): 'unit' | 'team' | 'initiative' {
+  if (node.isInitiative || node.data.isInitiative) return 'initiative';
+  if (node.isTeam || node.data.isTeam) return 'team';
+  return 'unit';
+}
+
+/** Общий комментарий блока и краткое пояснение, если решение пришло от родителя. */
+export function resolveLocationTreemapDecisionAnnotation(
+  node: TreemapLayoutNode,
+  ids: string[],
+  meta: LocationAllocationTreemapMeta
+): LocationTreemapDecisionAnnotation {
+  if (ids.length === 0) return { comment: null, inheritedFrom: null };
+
+  const splits = ids.map((id) => meta.initiativeRowById.get(id)?.initiativeGeoCostSplit);
+  const firstSplit = splits[0];
+  const firstComment = firstSplit?.note?.trim() ?? '';
+  const commonComment =
+    firstComment && splits.every((split) => (split?.note?.trim() ?? '') === firstComment)
+      ? firstComment
+      : null;
+
+  const firstOrigin = firstSplit?.allocationOrigin;
+  const commonOrigin =
+    firstOrigin &&
+    splits.every(
+      (split) => JSON.stringify(split?.allocationOrigin ?? null) === JSON.stringify(firstOrigin)
+    )
+      ? firstOrigin
+      : null;
+
+  const nodeLevel = treemapNodeLevel(node);
+  const nodeLevelRank = nodeLevel === 'unit' ? 0 : nodeLevel === 'team' ? 1 : 2;
+  const originLevel = commonOrigin?.level ?? 'initiative';
+  const originLevelRank = originLevel === 'unit' ? 0 : originLevel === 'team' ? 1 : 2;
+  const firstRow = meta.initiativeRowById.get(ids[0]);
+  const originContextMatches =
+    commonOrigin?.level === 'unit'
+      ? firstRow?.unit === commonOrigin.unit
+      : commonOrigin?.level === 'team'
+        ? firstRow?.unit === commonOrigin.unit &&
+          normalizeTreemapTeamName(firstRow?.team) ===
+            normalizeTreemapTeamName(commonOrigin.team)
+        : commonOrigin?.level === 'initiative'
+          ? ids.length === 1 && ids[0] === commonOrigin.initiativeId
+          : nodeLevel === 'initiative';
+  const originAppliesToNode = originContextMatches && originLevelRank <= nodeLevelRank;
+
+  if (!originAppliesToNode) {
+    return { comment: null, inheritedFrom: null };
+  }
+
+  const inheritedFrom =
+    commonOrigin?.level === 'unit' && nodeLevelRank > 0
+      ? `Коэффициенты от юнита «${commonOrigin.unit}»`
+      : commonOrigin?.level === 'team' && nodeLevel === 'initiative'
+        ? `Коэффициенты от команды «${commonOrigin.team}»`
+        : null;
+
+  return {
+    comment: commonComment,
+    inheritedFrom,
+  };
 }
 
 export function sumLocationTreemapRegionBreakdown(
@@ -466,6 +557,40 @@ function marketMatchesTreemapScope(
     );
   }
   return true;
+}
+
+export function sumLocationTreemapAllocationSourceBreakdown(
+  ids: string[],
+  meta: LocationAllocationTreemapMeta,
+  scope: LocationAllocationTreemapScope,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): LocationAllocationSourceBreakdown {
+  const out: LocationAllocationSourceBreakdown = {
+    revenueRub: 0,
+    manualRub: 0,
+  };
+
+  for (const id of ids) {
+    const byMarket = meta.allocationSourceByMarketByInitiativeId.get(id);
+    if (!byMarket) continue;
+    for (const [marketLabel, breakdown] of byMarket) {
+      if (
+        scope.kind !== 'all' &&
+        !marketMatchesTreemapScope(marketLabel, {
+          scope,
+          countries,
+          countryIdToClusterKey,
+        })
+      ) {
+        continue;
+      }
+      out.revenueRub += breakdown.revenueRub;
+      out.manualRub += breakdown.manualRub;
+    }
+  }
+
+  return out;
 }
 
 export function resolveLocationTreemapNodeScopedCost(

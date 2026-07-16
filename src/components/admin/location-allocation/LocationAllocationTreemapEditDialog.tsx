@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +27,6 @@ import {
   expandSplitToCountryEntries,
   geoSplitPercentTotalForCatalog,
   normalizeGeoSplitEntries,
-  scopeLabelForLevel,
   type LocationAllocationGeoEditTarget,
 } from '@/lib/locationAllocationGeoEdit';
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
@@ -43,7 +43,14 @@ type Props = {
 function normalizeGeoSplit(split: GeoCostSplit | undefined): GeoCostSplit | undefined {
   if (!split?.entries?.length) return undefined;
   const entries = normalizeGeoSplitEntries(split.entries);
-  return entries.length > 0 ? { entries } : undefined;
+  const note = split.note?.trim();
+  return entries.length > 0
+    ? {
+        entries,
+        ...(note ? { note } : {}),
+        ...(split.allocationOrigin ? { allocationOrigin: split.allocationOrigin } : {}),
+      }
+    : undefined;
 }
 
 function geoSplitsEqual(a: GeoCostSplit | undefined, b: GeoCostSplit | undefined): boolean {
@@ -65,19 +72,14 @@ export function LocationAllocationTreemapEditDialog({
 
   const savedSplit = useMemo(() => {
     if (!target) return undefined;
+    const expandedEntries = expandSplitToCountryEntries(
+      target.initialSplit,
+      countries,
+      countryIdToClusterKey
+    );
     return normalizeGeoSplit(
-      expandSplitToCountryEntries(
-        target.initialSplit,
-        countries,
-        countryIdToClusterKey
-      ).length > 0
-        ? {
-            entries: expandSplitToCountryEntries(
-              target.initialSplit,
-              countries,
-              countryIdToClusterKey
-            ),
-          }
+      expandedEntries.length > 0
+        ? { ...target.initialSplit, entries: expandedEntries }
         : target.initialSplit
     );
   }, [target, countries, countryIdToClusterKey]);
@@ -116,7 +118,18 @@ export function LocationAllocationTreemapEditDialog({
       return;
     }
 
-    const normalized = normalizeGeoSplit(draftSplit);
+    const normalizedDraft = normalizeGeoSplit(draftSplit);
+    const normalized = normalizedDraft
+      ? {
+          ...normalizedDraft,
+          allocationOrigin:
+            target.level === 'unit'
+              ? ({ level: 'unit', unit: target.title } as const)
+              : target.level === 'team'
+                ? ({ level: 'team', unit: target.breadcrumb, team: target.title } as const)
+                : ({ level: 'initiative', initiativeId: target.initiativeIds[0] } as const),
+        }
+      : undefined;
     setIsSaving(true);
     try {
       await Promise.all(
@@ -145,8 +158,20 @@ export function LocationAllocationTreemapEditDialog({
 
   const scopeHint =
     target.level === 'initiative'
-      ? 'Изменения только для этой инициативы.'
-      : `Изменения применятся ко всем ${target.initiativeIds.length} инициативам внутри ${scopeLabelForLevel(target.level)}.`;
+      ? 'Изменения применятся только к этой инициативе.'
+      : `Решение применится к ${target.initiativeIds.length} инициативам внутри ${target.level === 'team' ? 'команды' : 'юнита'} и будет отмечено как унаследованное.`;
+
+  const inheritedFrom = (() => {
+    const origin = savedSplit?.allocationOrigin;
+    if (!origin) return null;
+    if (origin.level === 'unit' && target.level !== 'unit') {
+      return `Сейчас коэффициенты получены от юнита «${origin.unit}».`;
+    }
+    if (origin.level === 'team' && target.level === 'initiative') {
+      return `Сейчас коэффициенты получены от команды «${origin.team}».`;
+    }
+    return null;
+  })();
 
   return (
     <>
@@ -158,19 +183,58 @@ export function LocationAllocationTreemapEditDialog({
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
+            <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+              <label
+                htmlFor="location-allocation-comment"
+                className="text-xs font-semibold text-foreground"
+              >
+                Комментарий к решению
+              </label>
+              <Textarea
+                id="location-allocation-comment"
+                value={draftSplit?.note ?? ''}
+                onChange={(event) => {
+                  const note = event.target.value;
+                  setDraftSplit((previous) => {
+                    const base = previous ?? savedSplit;
+                    if (!base?.entries.length) return previous;
+                    return {
+                      ...base,
+                      ...(note ? { note } : {}),
+                      ...(!note ? { note: undefined } : {}),
+                    };
+                  });
+                }}
+                placeholder="Например: доли скорректированы после согласования с регионом"
+                rows={3}
+                disabled={isSaving}
+                className="mt-2 min-h-[76px] resize-y bg-background text-sm"
+              />
+              <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                {scopeHint}
+              </p>
+              {inheritedFrom ? (
+                <p className="mt-1.5 text-[11px] font-medium leading-snug text-amber-700 dark:text-amber-300">
+                  {inheritedFrom} Сохранение здесь создаст отдельное решение для этого блока.
+                </p>
+              ) : null}
+            </div>
+
             {target.description ? (
-              <p className="mb-3 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+              <p className="mb-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
                 {target.description}
               </p>
-            ) : target.level === 'initiative' ? (
-              <p className="mb-3 text-sm text-muted-foreground italic">Описание не указано</p>
             ) : null}
-            <p className="mb-1 text-xs text-muted-foreground">{scopeHint}</p>
+
             {target.totalCostRub > 0 ? (
-              <p className="mb-4 text-sm tabular-nums">
-                <span className="text-muted-foreground">Полная стоимость за год: </span>
-                <span className="font-semibold">{formatLocationCompactM(target.totalCostRub)}</span>
-              </p>
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Распределение по рынкам
+                </p>
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  База <span className="font-semibold text-foreground">{formatLocationCompactM(target.totalCostRub)}</span>
+                </p>
+              </div>
             ) : (
               <div className="mb-4" />
             )}

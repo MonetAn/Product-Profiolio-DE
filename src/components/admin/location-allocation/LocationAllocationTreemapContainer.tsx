@@ -26,6 +26,8 @@ type Props = {
   countryIdToClusterKey?: Map<string, string>;
   showTeams?: boolean;
   showInitiatives?: boolean;
+  /** Стартовый drill-down, например выбранные во внешних панелях юнит и команда. */
+  initialFocusedPath?: string[];
   showMoney?: boolean;
   hasData?: boolean;
   contentKey?: string;
@@ -45,6 +47,7 @@ export function LocationAllocationTreemapContainer({
   countryIdToClusterKey = new Map(),
   showTeams = false,
   showInitiatives = false,
+  initialFocusedPath = [],
   showMoney = true,
   hasData = false,
   contentKey,
@@ -57,7 +60,9 @@ export function LocationAllocationTreemapContainer({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [focusedPath, setFocusedPath] = useState<string[]>([]);
+  const [focusedPath, setFocusedPath] = useState<string[]>(() =>
+    normalizeTreemapFocusPath(data, initialFocusedPath)
+  );
 
   const [tooltipData, setTooltipData] = useState<{
     node: TreemapLayoutNode;
@@ -65,6 +70,7 @@ export function LocationAllocationTreemapContainer({
   } | null>(null);
   const hoveredNodeRef = useRef<TreemapLayoutNode | null>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
+  const tooltipHideTimeoutRef = useRef<number | null>(null);
 
   const isEmpty = !data.children || data.children.length === 0;
 
@@ -88,6 +94,10 @@ export function LocationAllocationTreemapContainer({
     if (tooltipTimeoutRef.current !== null) {
       clearTimeout(tooltipTimeoutRef.current);
       tooltipTimeoutRef.current = null;
+    }
+    if (tooltipHideTimeoutRef.current !== null) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+      tooltipHideTimeoutRef.current = null;
     }
     hoveredNodeRef.current = null;
     setTooltipData(null);
@@ -156,6 +166,10 @@ export function LocationAllocationTreemapContainer({
   );
 
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
+    if (tooltipHideTimeoutRef.current !== null) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+      tooltipHideTimeoutRef.current = null;
+    }
     hoveredNodeRef.current = node;
     setTooltipData((prev) => (prev && prev.node.key !== node.key ? null : prev));
 
@@ -188,14 +202,28 @@ export function LocationAllocationTreemapContainer({
       tooltipTimeoutRef.current = null;
     }
 
-    if (node) {
-      if (hoveredNodeRef.current?.key === node.key) {
-        hoveredNodeRef.current = null;
-        setTooltipData(null);
-      }
+    if (node && hoveredNodeRef.current?.key !== node.key) {
       return;
     }
 
+    if (tooltipHideTimeoutRef.current !== null) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+    }
+    tooltipHideTimeoutRef.current = window.setTimeout(() => {
+      hoveredNodeRef.current = null;
+      setTooltipData(null);
+      tooltipHideTimeoutRef.current = null;
+    }, 140);
+  }, []);
+
+  const handleTooltipMouseEnter = useCallback(() => {
+    if (tooltipHideTimeoutRef.current !== null) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+      tooltipHideTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleTooltipMouseLeave = useCallback(() => {
     hoveredNodeRef.current = null;
     setTooltipData(null);
   }, []);
@@ -224,6 +252,8 @@ export function LocationAllocationTreemapContainer({
         countries={countries}
         countryIdToClusterKey={countryIdToClusterKey}
         showMoney={showMoney}
+        onMouseEnter={handleTooltipMouseEnter}
+        onMouseLeave={handleTooltipMouseLeave}
       />
 
       {!isEmpty && dimensions.width > 0 ? (

@@ -1,4 +1,9 @@
-import type { AdminDataRow, GeoCostSplit, GeoCostSplitEntry } from '@/lib/adminDataManager';
+import type {
+  AdminDataRow,
+  GeoCostSplit,
+  GeoCostSplitAllocationSource,
+  GeoCostSplitEntry,
+} from '@/lib/adminDataManager';
 import {
   geoCostSplitPercentsTotal,
   splitTotalIntoIntegerParts,
@@ -22,6 +27,7 @@ import {
 import type { TreemapLayoutNode } from '@/components/treemap/types';
 import type { LocationAllocationTreemapMeta } from '@/lib/locationAllocationTreemap';
 import { collectLocationTreemapInitiativeIds } from '@/lib/locationAllocationTreemap';
+import { GEO_ALLOCATION_DRIVER_BY_KEY } from '@/lib/geoAllocationDrivers';
 
 export type LocationAllocationGeoEditLevel = 'initiative' | 'team' | 'unit';
 
@@ -49,6 +55,8 @@ export type GeoHierarchyRegionRow = {
   rub: number;
   markets: GeoHierarchyMarketRow[];
 };
+
+const REVENUE_DRIVER = GEO_ALLOCATION_DRIVER_BY_KEY.geo_driver_revenue;
 
 function revenueWeight(labelRu: string): number {
   return REVENUE_RUB_BY_COUNTRY_LABEL[labelRu] ?? 0;
@@ -102,8 +110,13 @@ export function buildRevenueDefaultGeoSplit(
     kind: 'country',
     countryId: c.id,
     percent: percents[i] ?? 0,
+    allocationSource: 'revenue',
   }));
-  return { entries: entries.filter((e) => e.percent > 0) };
+  return {
+    entries: entries.filter((e) => e.percent > 0),
+    driverKey: REVENUE_DRIVER.key,
+    driverLabel: REVENUE_DRIVER.fullLabel,
+  };
 }
 
 function effectiveSplitForInitiative(
@@ -121,12 +134,52 @@ export function getRawPercentByCountryId(
   countries: MarketCountryRow[],
   scope: UnitMarketScope = 'brands_all'
 ): Map<string, number> {
+  const state = getCountryAllocationState(split, countries, scope);
   const map = new Map<string, number>();
+  for (const [countryId, value] of state) map.set(countryId, value.percent);
+  return map;
+}
+
+type CountryAllocationState = {
+  percent: number;
+  allocationSource: GeoCostSplitAllocationSource;
+};
+
+function getCountryAllocationState(
+  split: GeoCostSplit | undefined,
+  countries: MarketCountryRow[],
+  scope: UnitMarketScope = 'brands_all'
+): Map<string, CountryAllocationState> {
+  const map = new Map<string, CountryAllocationState>();
   if (!split?.entries?.length) return map;
+
+  const wholeSplitUsesRevenue = split.driverKey === REVENUE_DRIVER.key;
+
+  const add = (
+    countryId: string,
+    percent: number,
+    allocationSource: GeoCostSplitAllocationSource
+  ) => {
+    if (percent <= 0) return;
+    const previous = map.get(countryId);
+    if (!previous) {
+      map.set(countryId, { percent, allocationSource });
+      return;
+    }
+    map.set(countryId, {
+      percent: previous.percent + percent,
+      allocationSource:
+        previous.allocationSource === allocationSource ? allocationSource : 'manual',
+    });
+  };
 
   for (const entry of split.entries) {
     if (entry.kind === 'country') {
-      map.set(entry.countryId, (map.get(entry.countryId) ?? 0) + Math.round(entry.percent));
+      add(
+        entry.countryId,
+        Math.round(entry.percent),
+        wholeSplitUsesRevenue || entry.allocationSource === 'revenue' ? 'revenue' : 'manual'
+      );
       continue;
     }
     const clusterCountries = countriesInCluster(countries, entry.clusterKey, scope);
@@ -136,22 +189,44 @@ export function getRawPercentByCountryId(
     clusterCountries.forEach((c, i) => {
       const p = parts[i] ?? 0;
       if (p <= 0) return;
-      map.set(c.id, (map.get(c.id) ?? 0) + p);
+      // Доля кластера может быть введена вручную, но внутри кластера рынки
+      // всегда рассчитываются автоматически по выручке.
+      add(c.id, p, 'revenue');
     });
   }
 
   return map;
 }
 
-export function splitFromPercentMap(map: Map<string, number>): GeoCostSplit | undefined {
+export function splitFromPercentMap(
+  map: Map<string, number>,
+  sourceByCountryId?: Map<string, GeoCostSplitAllocationSource>
+): GeoCostSplit | undefined {
   const entries = [...map.entries()]
     .filter(([, p]) => p > 0)
     .map(([countryId, percent]) => ({
       kind: 'country' as const,
       countryId,
       percent: Math.round(percent),
+      ...(sourceByCountryId?.get(countryId)
+        ? { allocationSource: sourceByCountryId.get(countryId)! }
+        : {}),
     }));
   return entries.length > 0 ? { entries } : undefined;
+}
+
+function preserveDecisionMetadata(
+  next: GeoCostSplit | undefined,
+  previous: GeoCostSplit | undefined
+): GeoCostSplit | undefined {
+  if (!next) return next;
+  return {
+    ...next,
+    ...(previous?.note ? { note: previous.note } : {}),
+    ...(previous?.allocationOrigin
+      ? { allocationOrigin: previous.allocationOrigin }
+      : {}),
+  };
 }
 
 export function expandSplitToCountryEntries(
@@ -161,30 +236,52 @@ export function expandSplitToCountryEntries(
   scope: UnitMarketScope = 'brands_all'
 ): GeoCostSplitEntry[] {
   void countryIdToClusterKey;
-  const map = getRawPercentByCountryId(split, countries, scope);
-  return [...map.entries()]
-    .filter(([, p]) => p > 0)
-    .map(([countryId, percent]) => ({ kind: 'country' as const, countryId, percent }));
+  const state = getCountryAllocationState(split, countries, scope);
+  return [...state.entries()]
+    .filter(([, value]) => value.percent > 0)
+    .map(([countryId, value]) => ({
+      kind: 'country' as const,
+      countryId,
+      percent: value.percent,
+      allocationSource: value.allocationSource,
+    }));
 }
 
 export function normalizeGeoSplitEntries(entries: GeoCostSplitEntry[]): GeoCostSplitEntry[] {
-  const acc = new Map<string, number>();
+  const acc = new Map<
+    string,
+    { percent: number; allocationSource: GeoCostSplitAllocationSource }
+  >();
   for (const e of entries) {
     if (e.kind !== 'country') continue;
-    acc.set(e.countryId, (acc.get(e.countryId) ?? 0) + Math.round(e.percent));
+    const allocationSource = e.allocationSource === 'revenue' ? 'revenue' : 'manual';
+    const previous = acc.get(e.countryId);
+    acc.set(e.countryId, {
+      percent: (previous?.percent ?? 0) + Math.round(e.percent),
+      allocationSource:
+        previous && previous.allocationSource !== allocationSource
+          ? 'manual'
+          : allocationSource,
+    });
   }
-  const raw = [...acc.entries()].filter(([, p]) => p > 0);
-  const total = raw.reduce((s, [, p]) => s + p, 0);
+  const raw = [...acc.entries()].filter(([, value]) => value.percent > 0);
+  const total = raw.reduce((s, [, value]) => s + value.percent, 0);
   if (total <= 0) return [];
   if (total === 100) {
-    return raw.map(([countryId, percent]) => ({ kind: 'country', countryId, percent }));
+    return raw.map(([countryId, value]) => ({
+      kind: 'country',
+      countryId,
+      percent: value.percent,
+      allocationSource: value.allocationSource,
+    }));
   }
-  const weights = raw.map(([, p]) => p);
+  const weights = raw.map(([, value]) => value.percent);
   const normalized = distributeIntegerPercents(100, weights);
-  return raw.map(([countryId], i) => ({
+  return raw.map(([countryId, value], i) => ({
     kind: 'country' as const,
     countryId,
     percent: normalized[i] ?? 0,
+    allocationSource: value.allocationSource,
   }));
 }
 
@@ -195,7 +292,22 @@ export function aggregateGeoSplitFromInitiatives(
   countryIdToClusterKey: Map<string, string>
 ): { totalCostRub: number; split: GeoCostSplit | undefined } {
   const rubByCountry = new Map<string, number>();
+  const sourceRubByCountry = new Map<string, { revenue: number; manual: number }>();
   let totalCostRub = 0;
+  const savedSplits = initiatives.map((row) => resolveInitiativeGeoSplit(row));
+  const firstNote = savedSplits[0]?.note?.trim() ?? '';
+  const commonNote =
+    firstNote && savedSplits.every((split) => (split?.note?.trim() ?? '') === firstNote)
+      ? firstNote
+      : undefined;
+  const firstOrigin = savedSplits[0]?.allocationOrigin;
+  const commonOrigin =
+    firstOrigin &&
+    savedSplits.every(
+      (split) => JSON.stringify(split?.allocationOrigin ?? null) === JSON.stringify(firstOrigin)
+    )
+      ? firstOrigin
+      : undefined;
 
   for (const row of initiatives) {
     const cost = initiativeYearCostRub(row, yearQuarters);
@@ -209,9 +321,18 @@ export function aggregateGeoSplitFromInitiatives(
       resolveUnitMarketScope(row.unit, row.team) ?? 'brands_all'
     );
     const byMarket = allocateCostToMarkets(cost, { entries: expanded }, countryIdToClusterKey);
+    const sourceByCountry = new Map(
+      expanded
+        .filter((entry): entry is Extract<GeoCostSplitEntry, { kind: 'country' }> => entry.kind === 'country')
+        .map((entry) => [entry.countryId, entry.allocationSource ?? 'manual'] as const)
+    );
     for (const [key, rub] of byMarket) {
       if (!key.startsWith('cluster:')) {
         rubByCountry.set(key, (rubByCountry.get(key) ?? 0) + rub);
+        const source = sourceByCountry.get(key) ?? 'manual';
+        const previous = sourceRubByCountry.get(key) ?? { revenue: 0, manual: 0 };
+        previous[source] += rub;
+        sourceRubByCountry.set(key, previous);
       }
     }
   }
@@ -231,12 +352,23 @@ export function aggregateGeoSplitFromInitiatives(
       kind: 'country' as const,
       countryId: w.countryId,
       percent: percents[i] ?? 0,
+      allocationSource:
+        (sourceRubByCountry.get(w.countryId)?.manual ?? 0) > 0
+          ? ('manual' as const)
+          : ('revenue' as const),
     }))
     .filter((e) => e.percent > 0);
 
   return {
     totalCostRub,
-    split: entries.length > 0 ? { entries } : undefined,
+    split:
+      entries.length > 0
+        ? {
+            entries,
+            ...(commonNote ? { note: commonNote } : {}),
+            ...(commonOrigin ? { allocationOrigin: commonOrigin } : {}),
+          }
+        : undefined,
   };
 }
 
@@ -311,7 +443,13 @@ export function applyRegionPercentChange(
   scope: UnitMarketScope = 'brands_all'
 ): GeoCostSplit | undefined {
   void countryIdToClusterKey;
-  const percentByCountry = getRawPercentByCountryId(split, countries, scope);
+  const stateByCountry = getCountryAllocationState(split, countries, scope);
+  const percentByCountry = new Map(
+    [...stateByCountry.entries()].map(([countryId, value]) => [countryId, value.percent])
+  );
+  const sourceByCountry = new Map(
+    [...stateByCountry.entries()].map(([countryId, value]) => [countryId, value.allocationSource])
+  );
   const catalog = activeCatalogCountries(countries);
   const regionCountries = catalog.filter((c) => clusterKeyToTopRegion(c.cluster_key) === region);
   if (regionCountries.length === 0) return split;
@@ -322,9 +460,13 @@ export function applyRegionPercentChange(
 
   regionCountries.forEach((c, i) => {
     percentByCountry.set(c.id, parts[i] ?? 0);
+    sourceByCountry.set(c.id, 'revenue');
   });
 
-  return splitFromPercentMap(percentByCountry);
+  return preserveDecisionMetadata(
+    splitFromPercentMap(percentByCountry, sourceByCountry),
+    split
+  );
 }
 
 export function applyMarketPercentChange(
@@ -336,9 +478,19 @@ export function applyMarketPercentChange(
   scope: UnitMarketScope = 'brands_all'
 ): GeoCostSplit | undefined {
   void countryIdToClusterKey;
-  const percentByCountry = getRawPercentByCountryId(split, countries, scope);
+  const stateByCountry = getCountryAllocationState(split, countries, scope);
+  const percentByCountry = new Map(
+    [...stateByCountry.entries()].map(([id, value]) => [id, value.percent])
+  );
+  const sourceByCountry = new Map(
+    [...stateByCountry.entries()].map(([id, value]) => [id, value.allocationSource])
+  );
   percentByCountry.set(countryId, Math.max(0, Math.min(100, Math.round(newPercent))));
-  return splitFromPercentMap(percentByCountry);
+  sourceByCountry.set(countryId, 'manual');
+  return preserveDecisionMetadata(
+    splitFromPercentMap(percentByCountry, sourceByCountry),
+    split
+  );
 }
 
 export function resolveGeoEditTargetFromNode(

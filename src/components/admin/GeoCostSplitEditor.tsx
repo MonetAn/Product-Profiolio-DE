@@ -445,13 +445,29 @@ export function GeoCostSplitEditor({
 
   const driverColumnVisible = !hideDrivers && driverQuantityColumnVisible && Boolean(activeDriverDef);
 
+  const materializeAllocationSources = useCallback(
+    (entries: GeoCostSplitEntry[]): GeoCostSplitEntry[] =>
+      entries.map((entry) => ({
+        ...entry,
+        allocationSource:
+          entry.allocationSource ??
+          (value?.driverKey === 'geo_driver_revenue' ? 'revenue' : 'manual'),
+      })),
+    [value?.driverKey]
+  );
+
   const commitSplit = useCallback(
     (entries: GeoCostSplitEntry[], options?: { clearDriver?: boolean }) => {
       const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
+      const allocationOrigin = value?.allocationOrigin;
       if (entries.length === 0) {
         onChange(undefined);
         return;
       }
+      const shouldMaterializeSources = hideDrivers || options?.clearDriver;
+      const nextEntries = shouldMaterializeSources
+        ? materializeAllocationSources(entries)
+        : entries;
       const driverFields =
         hideDrivers || options?.clearDriver || !value?.driverKey
           ? {}
@@ -464,12 +480,21 @@ export function GeoCostSplitEditor({
                 : {}),
             };
       onChange({
-        entries,
+        entries: nextEntries,
         ...driverFields,
         ...(keepNote ? { note: keepNote } : {}),
+        ...(allocationOrigin ? { allocationOrigin } : {}),
       });
     },
-    [hideDrivers, onChange, value?.note, value?.driverKey, value?.driverLabel]
+    [
+      hideDrivers,
+      materializeAllocationSources,
+      onChange,
+      value?.note,
+      value?.driverKey,
+      value?.driverLabel,
+      value?.allocationOrigin,
+    ]
   );
 
   const updateSplitNote = useCallback(
@@ -484,10 +509,11 @@ export function GeoCostSplitEditor({
         ...(typeof value?.driverLabel === 'string' && value.driverLabel.trim()
           ? { driverLabel: value.driverLabel.trim() }
           : {}),
+        ...(value?.allocationOrigin ? { allocationOrigin: value.allocationOrigin } : {}),
         ...(text.length > 0 ? { note: text } : {}),
       });
     },
-    [onChange, value?.entries, value?.driverKey, value?.driverLabel]
+    [onChange, value?.allocationOrigin, value?.entries, value?.driverKey, value?.driverLabel]
   );
 
   const appendCountries = (ids: string[]) => {
@@ -517,7 +543,7 @@ export function GeoCostSplitEditor({
       const next = entries.map((e, i) => {
         const zi = zeroIdx.indexOf(i);
         if (zi < 0) return e;
-        return { ...e, percent: parts[zi] ?? 0 };
+        return { ...e, percent: parts[zi] ?? 0, allocationSource: 'manual' as const };
       });
       commitSplit(next, { clearDriver: true });
       return;
@@ -527,6 +553,7 @@ export function GeoCostSplitEditor({
     const next = entries.map((e, i) => ({
       ...e,
       percent: e.percent + (adds[i] ?? 0),
+      allocationSource: 'manual' as const,
     }));
     commitSplit(next, { clearDriver: true });
   };
@@ -552,10 +579,14 @@ export function GeoCostSplitEditor({
     }
     const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
     onChange({
-      entries: next,
+      entries: next.map((entry) => ({
+        ...entry,
+        allocationSource: d.key === 'geo_driver_revenue' ? 'revenue' : 'manual',
+      })),
       driverKey: d.key,
       driverLabel: d.fullLabel,
       ...(keepNote ? { note: keepNote } : {}),
+      ...(value?.allocationOrigin ? { allocationOrigin: value.allocationOrigin } : {}),
     });
   };
 
@@ -591,24 +622,28 @@ export function GeoCostSplitEditor({
 
     const keepNote = typeof value?.note === 'string' && value.note.length > 0 ? value.note : undefined;
     onChange({
-      entries: next,
+      entries: next.map((entry) => ({
+        ...entry,
+        allocationSource: 'revenue',
+      })),
       driverKey: revenueDriverDef.key,
       driverLabel: revenueDriverDef.fullLabel,
       ...(keepNote ? { note: keepNote } : {}),
+      ...(value?.allocationOrigin ? { allocationOrigin: value.allocationOrigin } : {}),
     });
   };
 
   const removeAt = (index: number) => {
     const next = split.entries.filter((_, i) => i !== index);
-    commitSplit(next);
+    commitSplit(next, { clearDriver: true });
   };
 
   const updateEntry = (index: number, patch: Partial<GeoCostSplitEntry>) => {
-    const next = split.entries.map((e, i) => {
+    const next = materializeAllocationSources(split.entries).map((e, i) => {
       if (i !== index) return e;
-      return { ...e, ...patch } as GeoCostSplitEntry;
+      return { ...e, ...patch, allocationSource: 'manual' } as GeoCostSplitEntry;
     });
-    commitSplit(next);
+    commitSplit(next, { clearDriver: true });
   };
 
   const remainder = 100 - totalPct;

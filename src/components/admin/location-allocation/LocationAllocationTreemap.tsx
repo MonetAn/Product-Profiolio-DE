@@ -82,6 +82,17 @@ export function LocationAllocationTreemap({
   const [editTarget, setEditTarget] = useState<LocationAllocationGeoEditTarget | null>(null);
 
   const autoEnabledRef = useRef({ teams: false, initiatives: false });
+  const hasTeamSelection = teamFilter != null;
+  const effectiveShowTeams = showTeams || hasTeamSelection;
+  const effectiveShowInitiatives = showInitiatives || hasTeamSelection;
+  const selectedTeamFocusPath = useMemo(
+    () =>
+      teamFilter
+        ? [teamFilter.unit, teamFilter.team.trim() || 'Без команды']
+        : [],
+    [teamFilter]
+  );
+  const selectedTeamFocusKey = selectedTeamFocusPath.join('\t');
 
   const treemapScope = useMemo(
     () => resolveLocationAllocationTreemapScope(regionFilter, marketCountry),
@@ -139,8 +150,8 @@ export function LocationAllocationTreemap({
           filteredInitiatives,
           yearQuarters,
           {
-            showTeams,
-            showInitiatives,
+            showTeams: effectiveShowTeams,
+            showInitiatives: effectiveShowInitiatives,
           },
           treemapScope,
           countries,
@@ -150,8 +161,8 @@ export function LocationAllocationTreemap({
     [
       filteredInitiatives,
       yearQuarters,
-      showTeams,
-      showInitiatives,
+      effectiveShowTeams,
+      effectiveShowInitiatives,
       treemapScope,
       countries,
       countryIdToClusterKey,
@@ -166,8 +177,9 @@ export function LocationAllocationTreemap({
   const contentKey = useMemo(
     () =>
       [
-        showTeams ? 'teams:1' : 'teams:0',
-        showInitiatives ? 'initiatives:1' : 'initiatives:0',
+        effectiveShowTeams ? 'teams:1' : 'teams:0',
+        effectiveShowInitiatives ? 'initiatives:1' : 'initiatives:0',
+        `team-focus:${selectedTeamFocusKey}`,
         yearQuarters.join('|'),
         treemapScope.kind === 'all'
           ? 'scope:all'
@@ -175,7 +187,13 @@ export function LocationAllocationTreemap({
             ? `scope:region:${treemapScope.region}`
             : `scope:market:${treemapScope.country.id}`,
       ].join(';'),
-    [showTeams, showInitiatives, yearQuarters, treemapScope]
+    [
+      effectiveShowTeams,
+      effectiveShowInitiatives,
+      selectedTeamFocusKey,
+      yearQuarters,
+      treemapScope,
+    ]
   );
 
   const handleAutoEnableTeams = useCallback(() => {
@@ -232,7 +250,7 @@ export function LocationAllocationTreemap({
       <div className="flex flex-wrap items-center gap-1 border-b border-border bg-header px-3 py-2 rounded-t-xl">
         <NestingToggle
           label="Команды"
-          checked={showTeams}
+          checked={effectiveShowTeams}
           onChange={(v) => {
             setShowTeams(v);
             if (!v) autoEnabledRef.current.teams = false;
@@ -240,7 +258,7 @@ export function LocationAllocationTreemap({
         />
         <NestingToggle
           label="Инициативы"
-          checked={showInitiatives}
+          checked={effectiveShowInitiatives}
           onChange={(v) => {
             setShowInitiatives(v);
             if (!v) autoEnabledRef.current.initiatives = false;
@@ -251,22 +269,24 @@ export function LocationAllocationTreemap({
         ) : null}
         <p className="ml-auto text-[10px] text-muted-foreground hidden sm:block">
           {treemapScope.kind === 'all'
-            ? 'В ячейке — по регионам; наведите — по рынкам; клик по инициативе — редактирование; ✎ — юнит/команда'
-            : 'В ячейке — доля фильтра и остальные регионы; наведите — рынки в фильтре'}
+            ? 'Наведение — комментарий, способ и рынки; клик по инициативе — редактирование; ✎ — юнит/команда'
+            : 'Наведение — комментарий, способ и рынки в фильтре'}
         </p>
       </div>
 
       <div className="h-[calc(100dvh-10rem)] min-h-[560px]">
         {totalValue > 0 ? (
           <LocationAllocationTreemapContainer
+            key={`location-treemap:${selectedTeamFocusKey || 'all'}`}
             data={tree}
             meta={meta}
             treemapScope={treemapScope}
             countries={countries}
             countryIdToClusterKey={countryIdToClusterKey}
             contentKey={contentKey}
-            showTeams={showTeams}
-            showInitiatives={showInitiatives}
+            showTeams={effectiveShowTeams}
+            showInitiatives={effectiveShowInitiatives}
+            initialFocusedPath={selectedTeamFocusPath}
             hasData={filteredInitiatives.length > 0}
             showMoney={canViewMoney && showMoney}
             getColor={getUnitColor}

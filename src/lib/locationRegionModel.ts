@@ -800,6 +800,16 @@ export function initiativeFactByAllClusters(
 /** Факт по отдельным рынкам (странам), сгруппированным по кластерам — для hover в тримапе аллокаций. */
 export type ClusterMarketRubMap = Map<string, Map<string, number>>;
 
+export type LocationAllocationSourceBreakdown = {
+  revenueRub: number;
+  manualRub: number;
+};
+
+export type LocationAllocationSourceByMarket = Map<
+  string,
+  LocationAllocationSourceBreakdown
+>;
+
 export function initiativeFactMarketsByCluster(
   row: AdminDataRow,
   yearQuarters: string[],
@@ -933,6 +943,90 @@ function allocateInitiativeFactMarketsByCluster(
       rub
     );
   }
+
+  return out;
+}
+
+function addAllocationSourceRub(
+  out: LocationAllocationSourceByMarket,
+  marketLabel: string,
+  source: keyof LocationAllocationSourceBreakdown,
+  rub: number
+): void {
+  if (rub <= 0) return;
+  const previous = out.get(marketLabel) ?? { revenueRub: 0, manualRub: 0 };
+  previous[source] += rub;
+  out.set(marketLabel, previous);
+}
+
+/**
+ * Рубли по рынкам с происхождением аллокации.
+ *
+ * По выручке считаются:
+ * - fallback при незаполненном geo split;
+ * - сохранённый драйвер `geo_driver_revenue` из «Заполнение → Локации»;
+ * - строки, рассчитанные из введённой доли региона/кластера.
+ */
+export function initiativeFactAllocationSourcesByMarket(
+  costRub: number,
+  row: AdminDataRow,
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): LocationAllocationSourceByMarket {
+  const out: LocationAllocationSourceByMarket = new Map();
+  const cost = Math.round(Number(costRub) || 0);
+  if (cost <= 0) return out;
+
+  const split = resolveInitiativeGeoSplit(row);
+  if (!isGeoCostSplitCompleteForCost(cost, split)) {
+    const fallback = allocateInitiativeFactMarketsByCluster(
+      cost,
+      row,
+      countries,
+      countryIdToClusterKey
+    );
+    for (const markets of fallback.values()) {
+      for (const [marketLabel, rub] of markets) {
+        addAllocationSourceRub(out, marketLabel, 'revenueRub', rub);
+      }
+    }
+    return out;
+  }
+
+  const countriesById = new Map(countries.map((country) => [country.id, country]));
+  const splitUsesRevenueDriver = split!.driverKey === 'geo_driver_revenue';
+  const rubles = rubleAmountsFromGeoPercents(
+    cost,
+    split!.entries.map((entry) => entry.percent)
+  );
+
+  split!.entries.forEach((entry, index) => {
+    const rub = rubles[index] ?? 0;
+    if (rub <= 0) return;
+
+    if (entry.kind === 'cluster') {
+      const inCluster = countriesForClusterKey(
+        entry.clusterKey,
+        countries,
+        countryIdToClusterKey
+      );
+      for (const [marketLabel, part] of distributeRubByRevenueToCountryLabels(
+        rub,
+        inCluster
+      )) {
+        addAllocationSourceRub(out, marketLabel, 'revenueRub', part);
+      }
+      return;
+    }
+
+    const country = countriesById.get(entry.countryId);
+    if (!country) return;
+    const source =
+      splitUsesRevenueDriver || entry.allocationSource === 'revenue'
+        ? 'revenueRub'
+        : 'manualRub';
+    addAllocationSourceRub(out, country.label_ru, source, rub);
+  });
 
   return out;
 }

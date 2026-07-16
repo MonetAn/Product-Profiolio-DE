@@ -4,6 +4,7 @@ import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,7 @@ function normalizeGeoSplit(split: GeoCostSplit | undefined): GeoCostSplit | unde
   return {
     entries: split.entries.map((e) => ({ ...e })),
     ...(split.note?.trim() ? { note: split.note.trim() } : {}),
+    ...(split.allocationOrigin ? { allocationOrigin: split.allocationOrigin } : {}),
   };
 }
 
@@ -64,19 +66,21 @@ export function LocationAllocationInitiativePanelBody({
   const [isSaving, setIsSaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const pendingCloseRef = useRef<(() => void) | null>(null);
+  const initiativeIdRef = useRef(initiative.id);
 
   const savedSplit = initiative.initiativeGeoCostSplit;
   const isDirty = !geoSplitsEqual(draftSplit, savedSplit);
 
   useEffect(() => {
-    setDraftSplit(initiative.initiativeGeoCostSplit);
-  }, [initiative.id]);
-
-  useEffect(() => {
+    if (initiativeIdRef.current !== initiative.id) {
+      initiativeIdRef.current = initiative.id;
+      setDraftSplit(initiative.initiativeGeoCostSplit);
+      return;
+    }
     if (!isDirty) {
       setDraftSplit(initiative.initiativeGeoCostSplit);
     }
-  }, [initiative.initiativeGeoCostSplit, isDirty]);
+  }, [initiative.id, initiative.initiativeGeoCostSplit, isDirty]);
 
   const confirmDiscard = useCallback((onProceed: () => void) => {
     pendingCloseRef.current = onProceed;
@@ -104,7 +108,16 @@ export function LocationAllocationInitiativePanelBody({
 
   const handleSave = async () => {
     if (!isDirty || isSaving) return;
-    const normalized = normalizeGeoSplit(draftSplit);
+    const normalizedDraft = normalizeGeoSplit(draftSplit);
+    const normalized = normalizedDraft
+      ? {
+          ...normalizedDraft,
+          allocationOrigin: {
+            level: 'initiative' as const,
+            initiativeId: initiative.id,
+          },
+        }
+      : undefined;
     setIsSaving(true);
     try {
       await onGeoCostSplitSave(initiative.id, normalized);
@@ -156,6 +169,43 @@ export function LocationAllocationInitiativePanelBody({
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pt-3">
           <div className="gantt-detail-panel-meta">
             {initiative.unit} › {initiative.team || 'Без команды'}
+          </div>
+
+          <div className="mb-4 rounded-lg border border-border/70 bg-muted/20 p-3">
+            <label
+              htmlFor={`location-allocation-comment-${initiative.id}`}
+              className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              Комментарий к решению
+            </label>
+            <Textarea
+              id={`location-allocation-comment-${initiative.id}`}
+              value={draftSplit?.note ?? ''}
+              onChange={(event) => {
+                const note = event.target.value;
+                setDraftSplit((previous) => {
+                  if (!previous?.entries.length) return previous;
+                  return {
+                    ...previous,
+                    ...(note ? { note } : {}),
+                    ...(!note ? { note: undefined } : {}),
+                  };
+                });
+              }}
+              placeholder="Почему выбрано такое распределение"
+              rows={3}
+              disabled={isSaving}
+              className="mt-2 min-h-[72px] resize-y bg-background text-sm"
+            />
+            {savedSplit?.allocationOrigin?.level === 'team' ? (
+              <p className="mt-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
+                Коэффициенты получены от команды «{savedSplit.allocationOrigin.team}». Сохранение создаст отдельное решение для инициативы.
+              </p>
+            ) : savedSplit?.allocationOrigin?.level === 'unit' ? (
+              <p className="mt-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
+                Коэффициенты получены от юнита «{savedSplit.allocationOrigin.unit}». Сохранение создаст отдельное решение для инициативы.
+              </p>
+            ) : null}
           </div>
 
           {yearCost > 0 ? (
