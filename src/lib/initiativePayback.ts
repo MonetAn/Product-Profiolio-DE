@@ -31,6 +31,20 @@ export interface InitiativePaybackHorizonSummary {
   isPaidOff: boolean;
 }
 
+export interface InitiativeQuarterCashFlowLine extends PlanningForecastQuarterLine {
+  /** Доходы минус расходы внутри квартала. */
+  netRub: number;
+  /** Накопительный денежный результат на конец квартала. */
+  cumulativeNetRub: number;
+}
+
+export interface InitiativeQuarterCashFlowForecast extends InitiativePaybackHorizonSummary {
+  lines: InitiativeQuarterCashFlowLine[];
+  netRub: number;
+  /** Первый квартал, на конец которого накопительный результат стал неотрицательным. */
+  breakEvenQuarter: string | null;
+}
+
 export interface InitiativePaybackDashboard {
   year: number;
   /** С начала года по текущий календарный квартал */
@@ -321,6 +335,79 @@ export interface PlanningForecastBreakdown {
   summary: InitiativePaybackHorizonSummary;
 }
 
+/**
+ * Собирает денежный поток из квартальных строк. В отличие от старого ROI-расчёта,
+ * здесь не теряются инвестиционные кварталы, в которых ещё нет дохода.
+ */
+export function buildInitiativeQuarterCashFlowForecast(
+  sourceLines: PlanningForecastQuarterLine[]
+): InitiativeQuarterCashFlowForecast | null {
+  if (sourceLines.length === 0) return null;
+
+  let periodRevenue = 0;
+  let periodCost = 0;
+  let cumulativeNetRub = 0;
+  let breakEvenQuarter: string | null = null;
+  let hasMoney = false;
+
+  const lines = [...sourceLines]
+    .sort((a, b) => compareQuarters(a.targetQuarter, b.targetQuarter))
+    .map((line) => {
+      const revenueRub = Number.isFinite(line.revenueRub) ? Math.max(0, line.revenueRub) : 0;
+      const costRub = Number.isFinite(line.costRub) ? Math.max(0, line.costRub) : 0;
+      const netRub = revenueRub - costRub;
+
+      if (revenueRub > 0 || costRub > 0) hasMoney = true;
+      periodRevenue += revenueRub;
+      periodCost += costRub;
+      cumulativeNetRub += netRub;
+
+      if (breakEvenQuarter == null && periodCost > 0 && cumulativeNetRub >= 0) {
+        breakEvenQuarter = line.targetQuarter;
+      }
+
+      return {
+        targetQuarter: line.targetQuarter,
+        revenueRub,
+        costRub,
+        netRub,
+        cumulativeNetRub,
+      };
+    });
+
+  if (!hasMoney) return null;
+
+  const ratio = periodCost > 0 ? periodRevenue / periodCost : null;
+  return {
+    lines,
+    periodRevenue,
+    periodCost,
+    ratio,
+    isPaidOff: periodCost > 0 && periodRevenue >= periodCost,
+    netRub: periodRevenue - periodCost,
+    breakEvenQuarter,
+  };
+}
+
+/** Текущий прогноз накопительного денежного результата по выбранным кварталам. */
+export function computeInitiativeQuarterCashFlowForecast(
+  quarterlyData: Record<string, InitiativePaybackQuarter | AdminQuarterData> | undefined,
+  scopeQuarters: string[]
+): InitiativeQuarterCashFlowForecast | null {
+  if (!quarterlyData || scopeQuarters.length === 0) return null;
+
+  const lines = [...scopeQuarters].sort(compareQuarters).map((targetQuarter) => {
+    const qd = quarterlyData[targetQuarter];
+    return {
+      targetQuarter,
+      revenueRub: qd?.revenueRub ?? 0,
+      costRub: qd ? quarterCost(qd) : 0,
+    };
+  });
+
+  return buildInitiativeQuarterCashFlowForecast(lines);
+}
+
 export function computePlanningForecastBreakdown(
   quarterlyData: Record<string, InitiativePaybackQuarter | AdminQuarterData> | undefined,
   scopeQuarters: string[],
@@ -331,19 +418,21 @@ export function computePlanningForecastBreakdown(
 
   const live = options?.isLivePlanningQuarter === true;
   const lines: PlanningForecastQuarterLine[] = [];
+  let hasMoney = false;
 
   for (const targetQuarter of [...scopeQuarters].sort(compareQuarters)) {
     const qd = quarterlyData[targetQuarter] as QuarterData | undefined;
-    const revenueRub = pickQuarterRevenueAtPlanning(qd, planningQuarter, live);
-    if (!revenueRub || revenueRub <= 0) continue;
+    const revenueRub = pickQuarterRevenueAtPlanning(qd, planningQuarter, live) ?? 0;
+    const costRub = pickQuarterBudgetAtPlanning(qd, planningQuarter, live);
+    if (revenueRub > 0 || costRub > 0) hasMoney = true;
     lines.push({
       targetQuarter,
       revenueRub,
-      costRub: pickQuarterBudgetAtPlanning(qd, planningQuarter, live),
+      costRub,
     });
   }
 
-  if (lines.length === 0) return null;
+  if (!hasMoney) return null;
 
   let periodRevenue = 0;
   let periodCost = 0;
