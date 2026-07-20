@@ -96,7 +96,7 @@ export function InitiativePeekModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-lg max-h-[85vh] flex flex-col p-0 gap-0"
+        className="max-w-xl max-h-[85vh] flex flex-col p-0 gap-0"
       >
         <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
           <DialogTitle className="text-xl pr-8">
@@ -157,7 +157,7 @@ export function InitiativePeekModal({
                   </div>
                 )
               ) : null}
-              {showMoney && (
+              {showMoney && !showInitiativePayback && (
                 <section>
                   <h3 className="text-sm font-medium text-muted-foreground mb-1">
                     Стоимость за выбранный период

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildInitiativeQuarterCashFlowForecast,
   computeInitiativePayback,
   computeInitiativePaybackAsOf,
   computeInitiativePaybackDashboard,
   computeInitiativePaybackForecastAtPlanningQuarter,
   computeInitiativePlanningForecastSeries,
+  computeInitiativeQuarterCashFlowForecast,
   computePlanningForecastBreakdown,
   formatPaybackEffectCostLine,
   formatPaybackNetLine,
@@ -12,6 +14,44 @@ import {
   formatPaybackRatio,
   formatPaybackVsAmounts,
 } from './initiativePayback';
+
+describe('quarterly cash-flow forecast', () => {
+  it('keeps cost-only quarters and shows the cumulative result', () => {
+    const forecast = computeInitiativeQuarterCashFlowForecast(
+      {
+        '2026-Q1': { budget: 3_000_000 },
+        '2026-Q2': { budget: 4_000_000 },
+        '2026-Q3': { budget: 4_000_000, revenueRub: 5_000_000 },
+      },
+      ['2026-Q1', '2026-Q2', '2026-Q3']
+    );
+
+    expect(forecast).toMatchObject({
+      periodRevenue: 5_000_000,
+      periodCost: 11_000_000,
+      netRub: -6_000_000,
+      ratio: 5 / 11,
+      isPaidOff: false,
+      breakEvenQuarter: null,
+    });
+    expect(forecast?.lines.map((line) => line.cumulativeNetRub)).toEqual([
+      -3_000_000,
+      -7_000_000,
+      -6_000_000,
+    ]);
+  });
+
+  it('finds the first break-even quarter', () => {
+    const forecast = buildInitiativeQuarterCashFlowForecast([
+      { targetQuarter: '2026-Q1', costRub: 3_000_000, revenueRub: 0 },
+      { targetQuarter: '2026-Q2', costRub: 1_000_000, revenueRub: 2_000_000 },
+      { targetQuarter: '2026-Q3', costRub: 1_000_000, revenueRub: 4_000_000 },
+    ]);
+
+    expect(forecast?.breakEvenQuarter).toBe('2026-Q3');
+    expect(forecast?.lines.at(-1)?.cumulativeNetRub).toBe(1_000_000);
+  });
+});
 
 describe('computeInitiativePayback', () => {
   it('returns null when no revenue quarters in period', () => {
@@ -190,6 +230,24 @@ describe('computeInitiativePlanningForecastSeries', () => {
     expect(breakdown?.lines).toHaveLength(2);
     expect(breakdown?.summary.periodCost).toBe(2_800_000);
     expect(breakdown?.summary.periodRevenue).toBe(4_000_000);
+  });
+
+  it('keeps investment quarters without revenue in a saved forecast', () => {
+    const breakdown = computePlanningForecastBreakdown(
+      {
+        '2026-Q1': { budget: 3_000_000 },
+        '2026-Q2': { budget: 4_000_000, revenueRub: 5_000_000 },
+      },
+      ['2026-Q1', '2026-Q2', '2026-Q3'],
+      '2026-Q1'
+    );
+
+    expect(breakdown?.lines).toEqual([
+      { targetQuarter: '2026-Q1', costRub: 3_000_000, revenueRub: 0 },
+      { targetQuarter: '2026-Q2', costRub: 4_000_000, revenueRub: 5_000_000 },
+      { targetQuarter: '2026-Q3', costRub: 0, revenueRub: 0 },
+    ]);
+    expect(breakdown?.summary.periodCost).toBe(7_000_000);
   });
 });
 

@@ -2,17 +2,22 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatBudget } from '@/lib/dataManager';
 import {
+  buildInitiativeQuarterCashFlowForecast,
   computeInitiativePayback,
   computeInitiativePlanningForecastSeries,
+  computeInitiativeQuarterCashFlowForecast,
   computePlanningForecastBreakdown,
+  formatPaybackRubAmount,
   formatPaybackRatio,
   formatQuarterHuman,
   paybackSummaryTitle,
   paybackToneClass,
+  type InitiativeQuarterCashFlowForecast,
   type InitiativePaybackQuarter,
   type PlanningForecastQuarterLine,
 } from '@/lib/initiativePayback';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import '@/styles/initiative-payback-panel.css';
 
 interface InitiativePaybackRevenueTotalProps {
@@ -52,16 +57,46 @@ export function InitiativePaybackRevenueTotal({
 function formatDeltaHint(delta: number, label: string): string | null {
   if (delta === 0) return null;
   const sign = delta > 0 ? '+' : '−';
-  return `${label} ${sign}${formatBudget(Math.abs(delta))}`;
+  return `${label} ${sign}${formatPaybackRubAmount(Math.abs(delta))}`;
 }
 
-interface ForecastBreakdownProps {
-  lines: PlanningForecastQuarterLine[];
+function formatSignedRub(value: number): string {
+  if (value > 0) return `+${formatPaybackRubAmount(value)}`;
+  if (value < 0) return `−${formatPaybackRubAmount(Math.abs(value))}`;
+  return '0 ₽';
+}
+
+/** Более короткая сумма для узкого квартального блока; точная сумма остаётся в подсказке. */
+function formatCashFlowBlockRub(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+
+  if (abs >= 1_000_000) {
+    const millions = Math.round((abs / 1_000_000) * 10) / 10;
+    const amount = Number.isInteger(millions) ? String(millions) : millions.toFixed(1);
+    return `${sign}${amount} млн ₽`;
+  }
+
+  if (abs >= 1_000) {
+    return `${sign}${Math.round(abs / 1_000)} тыс ₽`;
+  }
+
+  return `${sign}${Math.round(abs).toLocaleString('ru-RU')} ₽`;
+}
+
+interface QuarterCashFlowStripProps {
+  forecast: InitiativeQuarterCashFlowForecast;
   previousLines: PlanningForecastQuarterLine[] | null;
-  planningQuarterLabel: string;
+  ariaLabel: string;
+  compact?: boolean;
 }
 
-function ForecastBreakdown({ lines, previousLines, planningQuarterLabel }: ForecastBreakdownProps) {
+function QuarterCashFlowStrip({
+  forecast,
+  previousLines,
+  ariaLabel,
+  compact = false,
+}: QuarterCashFlowStripProps) {
   const prevByTarget = useMemo(() => {
     const map = new Map<string, PlanningForecastQuarterLine>();
     for (const line of previousLines ?? []) {
@@ -71,44 +106,109 @@ function ForecastBreakdown({ lines, previousLines, planningQuarterLabel }: Forec
   }, [previousLines]);
 
   return (
-    <div className="gantt-detail-payback-breakdown">
-      <p className="gantt-detail-payback-breakdown-title">
-        Из чего складывался прогноз на конец {planningQuarterLabel}
-      </p>
-      <ul className="gantt-detail-payback-breakdown-list">
-        {lines.map((line) => {
-          const prev = prevByTarget.get(line.targetQuarter);
-          const revenueDelta = prev ? line.revenueRub - prev.revenueRub : null;
-          const costDelta = prev ? line.costRub - prev.costRub : null;
-          const isNew = !prev;
+    <div
+      className={cn(
+        'initiative-payback-quarter-strip',
+        compact && 'initiative-payback-quarter-strip-compact'
+      )}
+      role="list"
+      aria-label={ariaLabel}
+      style={{
+        gridTemplateColumns: `repeat(${forecast.lines.length}, minmax(${compact ? 88 : 104}px, 1fr))`,
+      }}
+    >
+      {forecast.lines.map((line) => {
+        const prev = prevByTarget.get(line.targetQuarter);
+        const revenueDelta = prev ? line.revenueRub - prev.revenueRub : null;
+        const costDelta = prev ? line.costRub - prev.costRub : null;
+        const isNew = !prev;
+        const isPositive = line.cumulativeNetRub > 0;
+        const isNegative = line.cumulativeNetRub < 0;
+        const deltaHints = previousLines
+          ? isNew
+            ? ['Новый квартал в прогнозе']
+            : [
+                formatDeltaHint(revenueDelta ?? 0, 'доходы'),
+                formatDeltaHint(costDelta ?? 0, 'расходы'),
+              ].filter((hint): hint is string => Boolean(hint))
+          : [];
 
-          return (
-            <li key={line.targetQuarter} className="gantt-detail-payback-breakdown-row">
-              <span className="gantt-detail-payback-breakdown-q">{formatQuarterHuman(line.targetQuarter)}</span>
-              <div className="gantt-detail-payback-breakdown-values">
-                <span>
-                  затраты <strong>{formatBudget(line.costRub)}</strong>
+        return (
+          <Tooltip key={line.targetQuarter} delayDuration={120}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                role="listitem"
+                className={cn(
+                  'initiative-payback-quarter-block',
+                  isPositive && 'initiative-payback-quarter-block-positive',
+                  isNegative && 'initiative-payback-quarter-block-negative',
+                  !isPositive && !isNegative && 'initiative-payback-quarter-block-neutral'
+                )}
+                aria-label={`${formatQuarterHuman(line.targetQuarter)}: итог на конец квартала ${formatSignedRub(line.cumulativeNetRub)}`}
+              >
+                <span className="initiative-payback-quarter-label">
+                  На конец {formatQuarterHuman(line.targetQuarter)}
                 </span>
-                <span>
-                  прибыль <strong>{formatBudget(line.revenueRub)}</strong>
+                <span className="initiative-payback-quarter-result">
+                  <strong>{formatCashFlowBlockRub(line.cumulativeNetRub)}</strong>
                 </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              align="center"
+              className="initiative-payback-quarter-tooltip"
+            >
+              <p className="initiative-payback-quarter-tooltip-title">
+                {formatQuarterHuman(line.targetQuarter)}
+              </p>
+              <div className="initiative-payback-quarter-tooltip-grid">
+                <span>Доходы за квартал</span>
+                <strong>+{formatPaybackRubAmount(line.revenueRub)}</strong>
+                <span>Расходы за квартал</span>
+                <strong>−{formatPaybackRubAmount(line.costRub)}</strong>
+                <span>Результат квартала</span>
+                <strong>{formatSignedRub(line.netRub)}</strong>
               </div>
-              {(isNew || revenueDelta !== 0 || costDelta !== 0) && previousLines ? (
-                <p className="gantt-detail-payback-breakdown-delta">
-                  {isNew
-                    ? 'впервые заложили в этом квартале'
-                    : `${[
-                        formatDeltaHint(revenueDelta ?? 0, 'прибыль'),
-                        formatDeltaHint(costDelta ?? 0, 'затраты'),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')} к прошлому прогнозу`}
+              <div className="initiative-payback-quarter-tooltip-total">
+                <span>Итого на конец квартала</span>
+                <strong>{formatSignedRub(line.cumulativeNetRub)}</strong>
+              </div>
+              {deltaHints.length > 0 ? (
+                <p className="initiative-payback-quarter-tooltip-delta">
+                  К прошлому прогнозу: {deltaHints.join(' · ')}
                 </p>
               ) : null}
-            </li>
-          );
-        })}
-      </ul>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ForecastBreakdownProps {
+  lines: PlanningForecastQuarterLine[];
+  previousLines: PlanningForecastQuarterLine[] | null;
+  planningQuarterLabel: string;
+}
+
+function ForecastBreakdown({ lines, previousLines, planningQuarterLabel }: ForecastBreakdownProps) {
+  const forecast = useMemo(() => buildInitiativeQuarterCashFlowForecast(lines), [lines]);
+  if (!forecast) return null;
+
+  return (
+    <div className="gantt-detail-payback-breakdown">
+      <p className="gantt-detail-payback-breakdown-title">
+        Прогноз на конец {planningQuarterLabel}
+      </p>
+      <QuarterCashFlowStrip
+        forecast={forecast}
+        previousLines={previousLines}
+        ariaLabel={`Денежный результат по кварталам в прогнозе на конец ${planningQuarterLabel}`}
+        compact
+      />
     </div>
   );
 }
@@ -129,45 +229,53 @@ function sectionLabelClass(variant: 'gantt' | 'peek'): string {
 interface InitiativePaybackCurrentSummaryProps {
   quarterlyData?: Record<string, InitiativePaybackQuarter>;
   selectedQuarters: string[];
-  variant?: 'gantt' | 'peek';
 }
 
-/** Текущий прогноз окупаемости за выбранный период. */
+/** Текущий накопительный денежный результат за выбранный период. */
 export function InitiativePaybackCurrentSummary({
   quarterlyData,
   selectedQuarters,
-  variant = 'peek',
 }: InitiativePaybackCurrentSummaryProps) {
-  const summary = useMemo(
-    () => computeInitiativePayback(quarterlyData, selectedQuarters),
+  const forecast = useMemo(
+    () => computeInitiativeQuarterCashFlowForecast(quarterlyData, selectedQuarters),
     [quarterlyData, selectedQuarters]
   );
 
-  if (!summary) return null;
+  if (!forecast) return null;
 
   const ratioLabel =
-    summary.ratio != null ? formatPaybackRatio(summary.ratio) : `+${formatBudget(summary.periodRevenue)}`;
+    forecast.ratio != null ? formatPaybackRatio(forecast.ratio) : '—';
 
   return (
-    <section>
-      <h3 className={sectionLabelClass(variant)}>Текущий прогноз окупаемости</h3>
-      <div
-        className="initiative-payback-current-card"
-        title={paybackSummaryTitle(summary)}
-      >
-        <p className="initiative-payback-current-totals">
-          Стоимость <strong>{formatBudget(summary.periodCost)}</strong>
-          <span className="initiative-payback-current-totals-sep">·</span>
-          Прибыль <strong>{formatBudget(summary.periodRevenue)}</strong>
-        </p>
-        <span
-          className={cn(
-            'initiative-payback-current-ratio font-semibold tabular-nums',
-            summary.ratio != null && paybackToneClass(summary.isPaidOff)
-          )}
-        >
-          {ratioLabel}
-        </span>
+    <section className="initiative-payback-forecast-section">
+      <div className="initiative-payback-current-card">
+        <div className="initiative-payback-current-head">
+          <p className="initiative-payback-current-totals">
+            <span>
+              Доходы <strong>{formatPaybackRubAmount(forecast.periodRevenue)}</strong>
+            </span>
+            <span className="initiative-payback-current-totals-sep">/</span>
+            <span>
+              Расходы <strong>{formatPaybackRubAmount(forecast.periodCost)}</strong>
+            </span>
+          </p>
+          <span className="initiative-payback-current-ratio-wrap">
+            <span className="initiative-payback-current-ratio-label">Окупаемость</span>
+            <strong
+              className={cn(
+                'initiative-payback-current-ratio tabular-nums',
+                forecast.ratio != null && paybackToneClass(forecast.isPaidOff)
+              )}
+            >
+              {ratioLabel}
+            </strong>
+          </span>
+        </div>
+        <QuarterCashFlowStrip
+          forecast={forecast}
+          previousLines={null}
+          ariaLabel="Текущий прогноз денежного результата по кварталам"
+        />
       </div>
     </section>
   );
@@ -188,7 +296,7 @@ export function InitiativePaybackInfoSection({
   className,
 }: InitiativePaybackInfoSectionProps) {
   const current = useMemo(
-    () => computeInitiativePayback(quarterlyData, selectedQuarters),
+    () => computeInitiativeQuarterCashFlowForecast(quarterlyData, selectedQuarters),
     [quarterlyData, selectedQuarters]
   );
   const historyPoints = useMemo(
@@ -204,7 +312,6 @@ export function InitiativePaybackInfoSection({
         <InitiativePaybackCurrentSummary
           quarterlyData={quarterlyData}
           selectedQuarters={selectedQuarters}
-          variant={variant}
         />
       ) : null}
       {variant === 'peek' || historyPoints.length > 0 ? (
@@ -286,9 +393,9 @@ export function InitiativePaybackQuarterHistoryPanel({
                   ) : null}
                 </span>
                 <span className="gantt-detail-payback-history-totals">
-                  Стоимость <strong>{formatBudget(summary.periodCost)}</strong>
-                  <span className="gantt-detail-payback-history-totals-sep">·</span>
-                  Прибыль <strong>{formatBudget(summary.periodRevenue)}</strong>
+                  Доходы <strong>{formatPaybackRubAmount(summary.periodRevenue)}</strong>
+                  <span className="gantt-detail-payback-history-totals-sep">/</span>
+                  Расходы <strong>{formatPaybackRubAmount(summary.periodCost)}</strong>
                 </span>
               </span>
               <span

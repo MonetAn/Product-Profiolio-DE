@@ -1,17 +1,25 @@
 /* Shared payback panel (timeline detail + treemap peek card) */
 
 .initiative-payback-current-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  padding: 12px;
   border: 1px solid hsl(var(--border));
-  border-radius: 8px;
+  border-radius: 10px;
   background: hsl(var(--secondary) / 0.35);
 }
 
+.initiative-payback-current-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 11px;
+}
+
 .initiative-payback-current-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin: 1px 0 0;
   font-size: 13px;
   line-height: 1.45;
   color: hsl(var(--muted-foreground));
@@ -24,14 +32,181 @@
 }
 
 .initiative-payback-current-totals-sep {
-  margin: 0 6px;
   opacity: 0.55;
 }
 
-.initiative-payback-current-ratio {
+.initiative-payback-current-ratio-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   flex-shrink: 0;
+  gap: 2px;
+}
+
+.initiative-payback-current-ratio-label {
+  font-size: 10px;
+  line-height: 1.2;
+  color: hsl(var(--muted-foreground));
+}
+
+.initiative-payback-current-ratio {
   font-size: 18px;
   line-height: 1;
+}
+
+.initiative-payback-quarter-strip {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 1px 0 3px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.initiative-payback-quarter-block {
+  display: flex;
+  min-height: 66px;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  text-align: left;
+  cursor: help;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.initiative-payback-quarter-block:hover,
+.initiative-payback-quarter-block:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 9px rgb(15 23 42 / 0.08);
+  outline: none;
+}
+
+.initiative-payback-quarter-block-negative {
+  border-color: rgb(254 205 202);
+  color: rgb(180 35 24);
+  background: rgb(254 243 242);
+}
+
+.initiative-payback-quarter-block-negative:hover,
+.initiative-payback-quarter-block-negative:focus-visible {
+  border-color: rgb(240 68 56 / 0.55);
+}
+
+.initiative-payback-quarter-block-positive {
+  border-color: rgb(171 239 198);
+  color: rgb(6 118 71);
+  background: rgb(236 253 243);
+}
+
+.initiative-payback-quarter-block-positive:hover,
+.initiative-payback-quarter-block-positive:focus-visible {
+  border-color: rgb(18 183 106 / 0.55);
+}
+
+.initiative-payback-quarter-block-neutral {
+  border-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.65);
+}
+
+.initiative-payback-quarter-label {
+  margin-bottom: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: currentColor;
+  opacity: 0.82;
+}
+
+.initiative-payback-quarter-result {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.15;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.initiative-payback-quarter-strip-compact .initiative-payback-quarter-block {
+  min-height: 62px;
+  padding: 8px;
+}
+
+.initiative-payback-quarter-strip-compact .initiative-payback-quarter-label {
+  font-size: 9px;
+}
+
+.initiative-payback-quarter-strip-compact .initiative-payback-quarter-result {
+  font-size: 12px;
+}
+
+.initiative-payback-quarter-tooltip {
+  width: 254px;
+  padding: 10px 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.initiative-payback-quarter-tooltip-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.initiative-payback-quarter-tooltip-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.initiative-payback-quarter-tooltip-grid span {
+  color: hsl(var(--muted-foreground));
+}
+
+.initiative-payback-quarter-tooltip-grid strong,
+.initiative-payback-quarter-tooltip-total strong {
+  font-weight: 600;
+  text-align: right;
+}
+
+.initiative-payback-quarter-tooltip-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid hsl(var(--border));
+  font-size: 11px;
+}
+
+.initiative-payback-quarter-tooltip-delta {
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid hsl(var(--border));
+  font-size: 10px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .initiative-payback-quarter-block-negative {
+  border-color: rgb(240 68 56 / 0.35);
+  color: rgb(253 162 155);
+  background: rgb(240 68 56 / 0.11);
+}
+
+.dark .initiative-payback-quarter-block-positive {
+  border-color: rgb(18 183 106 / 0.35);
+  color: rgb(117 224 167);
+  background: rgb(18 183 106 / 0.11);
 }
 
 .gantt-detail-payback-history {
@@ -117,56 +292,17 @@
 }
 
 .gantt-detail-payback-breakdown {
-  padding: 8px 10px 10px 30px;
+  padding: 10px 10px 11px 30px;
   background: hsl(var(--secondary) / 0.25);
 }
 
 .gantt-detail-payback-breakdown-title {
-  margin: 0 0 8px;
+  margin: 0 0 7px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: hsl(var(--muted-foreground));
-}
-
-.gantt-detail-payback-breakdown-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.gantt-detail-payback-breakdown-row {
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.gantt-detail-payback-breakdown-q {
-  display: block;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-  margin-bottom: 2px;
-}
-
-.gantt-detail-payback-breakdown-values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  color: hsl(var(--muted-foreground));
-}
-
-.gantt-detail-payback-breakdown-values strong {
-  color: hsl(var(--foreground));
-  font-weight: 600;
-}
-
-.gantt-detail-payback-breakdown-delta {
-  margin: 3px 0 0;
-  font-size: 10px;
-  color: hsl(var(--primary));
 }
 
 .gantt-detail-payback-history-live {
@@ -220,4 +356,23 @@
   margin: 0;
   padding: 4px 2px 2px;
   line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+  .initiative-payback-current-head {
+    gap: 10px;
+  }
+
+  .initiative-payback-current-totals {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .initiative-payback-current-totals-sep {
+    display: none;
+  }
+
+  .gantt-detail-payback-breakdown {
+    padding-left: 10px;
+  }
 }
