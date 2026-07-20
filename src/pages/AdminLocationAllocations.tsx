@@ -17,6 +17,7 @@ import {
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { excludePortfolioGhostRows } from '@/lib/portfolioVisibility';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -35,6 +36,13 @@ export default function AdminLocationAllocations() {
   const saveGeoCostSplit = useCallback(
     async (id: string, split: GeoCostSplit | undefined) => {
       await updateInitiativeFieldAsync(id, 'initiativeGeoCostSplit', split);
+    },
+    [updateInitiativeFieldAsync]
+  );
+
+  const saveInitiativeTags = useCallback(
+    async (id: string, tags: InitiativeTag[]) => {
+      await updateInitiativeFieldAsync(id, 'tags', tags);
     },
     [updateInitiativeFieldAsync]
   );
@@ -135,6 +143,7 @@ export default function AdminLocationAllocations() {
               marketCountry={marketCountry}
               onMarketFilterChange={setMarketFilter}
               onGeoCostSplitSave={saveGeoCostSplit}
+              onInitiativeTagsSave={saveInitiativeTags}
             />
           )}
         </div>

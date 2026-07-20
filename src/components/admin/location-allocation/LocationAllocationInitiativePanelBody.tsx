@@ -23,6 +23,8 @@ import {
   TOP_REGION_DISPLAY_LABELS,
   TOP_REGION_ORDER,
 } from '@/lib/locationRegionModel';
+import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
+import { normalizeInitiativeTags, type InitiativeTag } from '@/lib/initiativeTags';
 
 export type LocationAllocationPanelCloseGuard = {
   hasUnsavedChanges: () => boolean;
@@ -35,6 +37,7 @@ type Props = {
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
+  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
   closeGuardRef?: React.MutableRefObject<LocationAllocationPanelCloseGuard | null>;
 };
 
@@ -57,6 +60,7 @@ export function LocationAllocationInitiativePanelBody({
   countries,
   countryIdToClusterKey,
   onGeoCostSplitSave,
+  onInitiativeTagsSave,
   closeGuardRef,
 }: Props) {
   const { toast } = useToast();
@@ -64,23 +68,31 @@ export function LocationAllocationInitiativePanelBody({
     initiative.initiativeGeoCostSplit
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [draftTags, setDraftTags] = useState<InitiativeTag[]>(
+    normalizeInitiativeTags(initiative.tags)
+  );
   const [discardOpen, setDiscardOpen] = useState(false);
   const pendingCloseRef = useRef<(() => void) | null>(null);
   const initiativeIdRef = useRef(initiative.id);
 
   const savedSplit = initiative.initiativeGeoCostSplit;
-  const isDirty = !geoSplitsEqual(draftSplit, savedSplit);
+  const savedTags = normalizeInitiativeTags(initiative.tags);
+  const geoDirty = !geoSplitsEqual(draftSplit, savedSplit);
+  const tagsDirty = JSON.stringify(draftTags) !== JSON.stringify(savedTags);
+  const isDirty = geoDirty || tagsDirty;
 
   useEffect(() => {
     if (initiativeIdRef.current !== initiative.id) {
       initiativeIdRef.current = initiative.id;
       setDraftSplit(initiative.initiativeGeoCostSplit);
+      setDraftTags(normalizeInitiativeTags(initiative.tags));
       return;
     }
     if (!isDirty) {
       setDraftSplit(initiative.initiativeGeoCostSplit);
+      setDraftTags(normalizeInitiativeTags(initiative.tags));
     }
-  }, [initiative.id, initiative.initiativeGeoCostSplit, isDirty]);
+  }, [initiative.id, initiative.initiativeGeoCostSplit, initiative.tags, isDirty]);
 
   const confirmDiscard = useCallback((onProceed: () => void) => {
     pendingCloseRef.current = onProceed;
@@ -103,6 +115,7 @@ export function LocationAllocationInitiativePanelBody({
     const proceed = pendingCloseRef.current;
     pendingCloseRef.current = null;
     setDraftSplit(savedSplit);
+    setDraftTags(savedTags);
     proceed?.();
   };
 
@@ -120,10 +133,18 @@ export function LocationAllocationInitiativePanelBody({
       : undefined;
     setIsSaving(true);
     try {
-      await onGeoCostSplitSave(initiative.id, normalized);
+      await Promise.all([
+        ...(geoDirty ? [onGeoCostSplitSave(initiative.id, normalized)] : []),
+        ...(tagsDirty ? [onInitiativeTagsSave(initiative.id, draftTags)] : []),
+      ]);
       toast({
         title: 'Сохранено',
-        description: 'Распределение по рынкам обновлено.',
+        description:
+          geoDirty && tagsDirty
+            ? 'Распределение по рынкам и теги обновлены.'
+            : tagsDirty
+              ? 'Теги инициативы обновлены.'
+              : 'Распределение по рынкам обновлено.',
       });
     } catch {
       toast({
@@ -206,6 +227,21 @@ export function LocationAllocationInitiativePanelBody({
                 Коэффициенты получены от юнита «{savedSplit.allocationOrigin.unit}». Сохранение создаст отдельное решение для инициативы.
               </p>
             ) : null}
+
+            <div className="mt-3 border-t border-border/60 pt-3">
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Теги инициативы
+                </span>
+                <span className="text-[10px] text-muted-foreground">можно выбрать несколько</span>
+              </div>
+              <InitiativeTagSelector
+                value={draftTags}
+                onChange={setDraftTags}
+                disabled={isSaving}
+                compact
+              />
+            </div>
           </div>
 
           {yearCost > 0 ? (
@@ -306,7 +342,7 @@ export function LocationAllocationInitiativePanelBody({
           <AlertDialogHeader>
             <AlertDialogTitle>Закрыть без сохранения?</AlertDialogTitle>
             <AlertDialogDescription>
-              Изменения распределения по рынкам не будут сохранены.
+              Изменения распределения по рынкам и тегов не будут сохранены.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

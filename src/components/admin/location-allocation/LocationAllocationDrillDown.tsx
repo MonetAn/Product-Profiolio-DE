@@ -22,6 +22,7 @@ import { LocationAllocationMarketSection } from '@/components/admin/location-all
 import { LocationAllocationTreemap } from '@/components/admin/location-allocation/LocationAllocationTreemap';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 type InitiativeDetailView = 'treemap' | 'timeline';
 
@@ -52,6 +53,7 @@ type Props = {
   marketCountry: MarketCountryRow | null;
   onMarketFilterChange: (country: MarketCountryRow | null) => void;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
+  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
 export function LocationAllocationDrillDown({
@@ -68,6 +70,7 @@ export function LocationAllocationDrillDown({
   marketCountry,
   onMarketFilterChange,
   onGeoCostSplitSave,
+  onInitiativeTagsSave,
 }: Props) {
   const [initiativeDetailView, setInitiativeDetailView] =
     useState<InitiativeDetailView>('treemap');
@@ -320,6 +323,7 @@ export function LocationAllocationDrillDown({
               countries={countries}
               countryIdToClusterKey={countryIdToClusterKey}
               onGeoCostSplitSave={onGeoCostSplitSave}
+              onInitiativeTagsSave={onInitiativeTagsSave}
             />
           </div>
         ) : (
@@ -334,6 +338,7 @@ export function LocationAllocationDrillDown({
               countries={countries}
               countryIdToClusterKey={countryIdToClusterKey}
               onGeoCostSplitSave={onGeoCostSplitSave}
+              onInitiativeTagsSave={onInitiativeTagsSave}
             />
           </div>
         )}

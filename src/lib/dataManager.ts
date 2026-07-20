@@ -13,6 +13,7 @@ import {
 } from './budgetTruth2026';
 import { getCurrentQuarter } from './quarterUtils';
 import { splitTreemapEncodedPath } from './treemapPathCodec';
+import type { InitiativeTag } from './initiativeTags';
 
 export {
   budgetRubForDisplay,
@@ -47,6 +48,7 @@ export interface RawDataRow {
   description: string;
   stakeholders: string;
   documentationLink?: string;
+  tags?: InitiativeTag[];
   isTimelineStub?: boolean;
   quarterlyData: Record<string, QuarterData>;
   /** UUID строки в админке; задаётся при convertFromDB для привязки к редактированию в quick flow */
@@ -222,6 +224,7 @@ export function convertFromDB(
       description: row.description || '',
       stakeholders: resolveTimelineStakeholders(row),
       documentationLink: row.documentationLink || '',
+      tags: row.tags ?? [],
       isTimelineStub: isStub,
       quarterlyData,
       adminInitiativeRowId: row.id,

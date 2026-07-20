@@ -320,6 +320,7 @@ const Admin = () => {
       | 'stakeholders'
       | 'description'
       | 'documentationLink'
+      | 'tags'
       | 'initiativeGeoCostSplit'
     >
   >;
@@ -761,6 +762,7 @@ const Admin = () => {
         'stakeholdersList',
         'description',
         'documentationLink',
+        'tags',
       ];
       if (!allowed.includes(field as keyof HubRowFieldPatch)) return;
       setHubRowPatches((prev) => {
@@ -963,6 +965,7 @@ const Admin = () => {
           stakeholdersList: rest.stakeholdersList,
           description: rest.description,
           documentationLink: rest.documentationLink,
+          tags: rest.tags ?? [],
           stakeholders:
             rest.stakeholders?.trim() ||
             stakeholdersStringFromList(rest.stakeholdersList ?? []),
@@ -988,6 +991,7 @@ const Admin = () => {
         'stakeholdersList',
         'description',
         'documentationLink',
+        'tags',
       ];
 
       for (const merged of hubDisplayData) {
@@ -1326,6 +1330,10 @@ const Admin = () => {
       }
       if (field === 'description' || field === 'documentationLink') {
         immediateUpdate(id, field, String(value));
+        return;
+      }
+      if (field === 'tags') {
+        updateInitiative(id, 'tags', value as string[], 0);
       }
     },
     [immediateUpdate, updateInitiative]
