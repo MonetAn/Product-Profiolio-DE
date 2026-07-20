@@ -8,6 +8,7 @@ import {
   isCalendarPastQuarter,
   isPortfolioMandatoryMetricFactQuarter,
 } from '@/lib/quarterUtils';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 // ===== GEO COST SPLIT (квартал: % от cost по строкам справочника market_countries) =====
 
@@ -418,6 +419,8 @@ export interface AdminDataRow {
   stakeholdersList: string[];
   description: string;
   documentationLink: string;
+  /** Технические/продуктовые теги инициативы из фиксированного справочника. */
+  tags?: InitiativeTag[];
   stakeholders: string; // Legacy field for backward compatibility
   quarterlyData: Record<string, AdminQuarterData>;
   /** Распределение стоимости по рынкам (на инициативу; сумма 100%). */

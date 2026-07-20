@@ -19,6 +19,7 @@ export type HubRowFieldPatch = Partial<
     | 'stakeholders'
     | 'description'
     | 'documentationLink'
+    | 'tags'
     | 'initiativeGeoCostSplit'
   >
 >;

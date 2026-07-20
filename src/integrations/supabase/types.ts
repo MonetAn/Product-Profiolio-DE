@@ -107,6 +107,7 @@ export type Database = {
           quarterly_data: Json
           stakeholders: string | null
           stakeholders_list: string[] | null
+          tags: string[]
           team: string
           unit: string
           updated_at: string | null
@@ -125,6 +126,7 @@ export type Database = {
           quarterly_data?: Json
           stakeholders?: string | null
           stakeholders_list?: string[] | null
+          tags?: string[]
           team: string
           unit: string
           updated_at?: string | null
@@ -143,6 +145,7 @@ export type Database = {
           quarterly_data?: Json
           stakeholders?: string | null
           stakeholders_list?: string[] | null
+          tags?: string[]
           team?: string
           unit?: string
           updated_at?: string | null

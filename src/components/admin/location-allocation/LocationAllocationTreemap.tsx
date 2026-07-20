@@ -24,6 +24,7 @@ import {
   resolveGeoEditTargetFromNode,
   type LocationAllocationGeoEditTarget,
 } from '@/lib/locationAllocationGeoEdit';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 type Props = {
   initiatives: AdminDataRow[];
@@ -35,6 +36,7 @@ type Props = {
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
+  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
 function NestingToggle({
@@ -72,6 +74,7 @@ export function LocationAllocationTreemap({
   countries,
   countryIdToClusterKey,
   onGeoCostSplitSave,
+  onInitiativeTagsSave,
 }: Props) {
   const { canViewMoney } = useAccess();
 
@@ -310,6 +313,7 @@ export function LocationAllocationTreemap({
         countries={countries}
         countryIdToClusterKey={countryIdToClusterKey}
         onGeoCostSplitSave={onGeoCostSplitSave}
+        onInitiativeTagsSave={onInitiativeTagsSave}
       />
     </div>
   );

@@ -32,6 +32,7 @@ import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
 import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
 import { Json } from '@/integrations/supabase/types';
 import { upsertPortfolioCompleted } from '@/lib/portfolioMeta';
+import { normalizeInitiativeTags } from '@/lib/initiativeTags';
 
 const FIELD_TO_COLUMN: Record<string, string> = {
   unit: 'unit',
@@ -40,6 +41,7 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   stakeholdersList: 'stakeholders_list',
   description: 'description',
   documentationLink: 'documentation_link',
+  tags: 'tags',
   stakeholders: 'stakeholders',
   isTimelineStub: 'is_timeline_stub',
   quarterlyData: 'quarterly_data',
@@ -49,6 +51,7 @@ const FIELD_TO_COLUMN: Record<string, string> = {
 /** Суффиксы ключей `debouncedUpdate` — от длинного к короткому (id в UUID с дефисами). */
 const INIT_DEBOUNCE_KEY_SUFFIXES = [
   'documentationLink',
+  'tags',
   'stakeholdersList',
   'isTimelineStub',
   'description',
@@ -128,6 +131,7 @@ function applyPatchToAdminRow(row: AdminDataRow, patch: Record<string, unknown>)
   if (p.stakeholders_list !== undefined) next.stakeholdersList = p.stakeholders_list as string[];
   if (p.description !== undefined) next.description = p.description as string;
   if (p.documentation_link !== undefined) next.documentationLink = p.documentation_link as string;
+  if (p.tags !== undefined) next.tags = normalizeInitiativeTags(p.tags);
   if (p.stakeholders !== undefined) next.stakeholders = p.stakeholders as string;
   if (p.is_timeline_stub !== undefined) next.isTimelineStub = p.is_timeline_stub as boolean;
   if (p.quarterly_data !== undefined) {
@@ -283,6 +287,7 @@ export function useInitiativeMutations() {
           stakeholders_list: data.stakeholdersList,
           description: data.description,
           documentation_link: data.documentationLink,
+          tags: normalizeInitiativeTags(data.tags),
           stakeholders: data.stakeholders,
           is_timeline_stub: data.isTimelineStub ?? false,
           quarterly_data: quarterlyDataToJson(qd),

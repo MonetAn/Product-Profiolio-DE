@@ -30,6 +30,8 @@ import {
   type LocationAllocationGeoEditTarget,
 } from '@/lib/locationAllocationGeoEdit';
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
+import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
+import { normalizeInitiativeTags, type InitiativeTag } from '@/lib/initiativeTags';
 
 type Props = {
   open: boolean;
@@ -38,6 +40,7 @@ type Props = {
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
+  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
 function normalizeGeoSplit(split: GeoCostSplit | undefined): GeoCostSplit | undefined {
@@ -64,9 +67,11 @@ export function LocationAllocationTreemapEditDialog({
   countries,
   countryIdToClusterKey,
   onGeoCostSplitSave,
+  onInitiativeTagsSave,
 }: Props) {
   const { toast } = useToast();
   const [draftSplit, setDraftSplit] = useState<GeoCostSplit | undefined>(undefined);
+  const [draftTags, setDraftTags] = useState<InitiativeTag[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
 
@@ -84,12 +89,23 @@ export function LocationAllocationTreemapEditDialog({
     );
   }, [target, countries, countryIdToClusterKey]);
 
+  const savedTags = useMemo(
+    () =>
+      target?.level === 'initiative'
+        ? normalizeInitiativeTags(target.initiatives[0]?.tags)
+        : [],
+    [target]
+  );
+
   useEffect(() => {
     if (!open || !target) return;
     setDraftSplit(savedSplit);
-  }, [open, target, savedSplit]);
+    setDraftTags(savedTags);
+  }, [open, target, savedSplit, savedTags]);
 
-  const isDirty = !geoSplitsEqual(draftSplit, savedSplit);
+  const geoDirty = !geoSplitsEqual(draftSplit, savedSplit);
+  const tagsDirty = JSON.stringify(draftTags) !== JSON.stringify(savedTags);
+  const isDirty = geoDirty || tagsDirty;
   const totalPct = geoSplitPercentTotalForCatalog(draftSplit, countries);
 
   const requestClose = useCallback(
@@ -109,7 +125,7 @@ export function LocationAllocationTreemapEditDialog({
 
   const handleSave = async () => {
     if (!target || !isDirty || isSaving) return;
-    if (totalPct !== 100) {
+    if (geoDirty && totalPct !== 100) {
       toast({
         title: 'Сумма должна быть 100%',
         description: 'Отрегулируйте доли по рынкам, кластерам или регионам.',
@@ -132,14 +148,23 @@ export function LocationAllocationTreemapEditDialog({
       : undefined;
     setIsSaving(true);
     try {
-      await Promise.all(
-        target.initiativeIds.map((id) => onGeoCostSplitSave(id, normalized))
-      );
+      await Promise.all([
+        ...(geoDirty
+          ? target.initiativeIds.map((id) => onGeoCostSplitSave(id, normalized))
+          : []),
+        ...(tagsDirty && target.level === 'initiative'
+          ? [onInitiativeTagsSave(target.initiativeIds[0], draftTags)]
+          : []),
+      ]);
       toast({
         title: 'Сохранено',
         description:
-          target.level === 'initiative'
-            ? 'Распределение по рынкам обновлено.'
+          target.level === 'initiative' && tagsDirty && geoDirty
+            ? 'Распределение по рынкам и теги обновлены.'
+            : target.level === 'initiative' && tagsDirty
+              ? 'Теги инициативы обновлены.'
+              : target.level === 'initiative'
+                ? 'Распределение по рынкам обновлено.'
             : `Распределение применено к ${target.initiativeIds.length} инициативам.`,
       });
       onOpenChange(false);
@@ -218,6 +243,21 @@ export function LocationAllocationTreemapEditDialog({
                   {inheritedFrom} Сохранение здесь создаст отдельное решение для этого блока.
                 </p>
               ) : null}
+
+              {target.level === 'initiative' ? (
+                <div className="mt-3 border-t border-border/60 pt-3">
+                  <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="text-xs font-semibold text-foreground">Теги инициативы</span>
+                    <span className="text-[11px] text-muted-foreground">можно выбрать несколько</span>
+                  </div>
+                  <InitiativeTagSelector
+                    value={draftTags}
+                    onChange={setDraftTags}
+                    disabled={isSaving}
+                    compact
+                  />
+                </div>
+              ) : null}
             </div>
 
             {target.description ? (
@@ -261,7 +301,7 @@ export function LocationAllocationTreemapEditDialog({
               <Button
                 type="button"
                 size="sm"
-                disabled={!isDirty || isSaving || totalPct !== 100}
+                disabled={!isDirty || isSaving || (geoDirty && totalPct !== 100)}
                 onClick={() => void handleSave()}
               >
                 {isSaving ? (
@@ -283,7 +323,7 @@ export function LocationAllocationTreemapEditDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Закрыть без сохранения?</AlertDialogTitle>
             <AlertDialogDescription>
-              Изменения распределения по рынкам не будут сохранены.
+              Изменения распределения по рынкам и тегов не будут сохранены.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -294,6 +334,7 @@ export function LocationAllocationTreemapEditDialog({
               onClick={() => {
                 setDiscardOpen(false);
                 setDraftSplit(savedSplit);
+                setDraftTags(savedTags);
                 onOpenChange(false);
               }}
             >

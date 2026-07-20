@@ -29,13 +29,16 @@ import {
   resolveEffortPreviewQuarters,
 } from '@/lib/adminEffortTreemapPreviewModel';
 import type { TreeNode } from '@/lib/dataManager';
+import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
+import { normalizeInitiativeTags, type InitiativeTag } from '@/lib/initiativeTags';
 const PREVIEW_ROOT = 'quick-review-root';
 
 export type DraftField =
   | 'initiative'
   | 'stakeholdersList'
   | 'description'
-  | 'documentationLink';
+  | 'documentationLink'
+  | 'tags';
 
 type Props = {
   rows: AdminDataRow[];
@@ -136,6 +139,7 @@ export function AdminQuickFlowReviewTreemapStep({
   const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
   const [localDescription, setLocalDescription] = useState('');
   const [localDocLink, setLocalDocLink] = useState('');
+  const [localTags, setLocalTags] = useState<InitiativeTag[]>([]);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -149,6 +153,7 @@ export function AdminQuickFlowReviewTreemapStep({
     setLocalStakeholders(row.stakeholdersList || []);
     setLocalDescription(row.description || '');
     setLocalDocLink(row.documentationLink || '');
+    setLocalTags(normalizeInitiativeTags(row.tags));
     // Только при открытии по id — не привязываемся к rows, иначе сбросим ввод при каждом ререндере родителя
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogRowId]);
@@ -166,7 +171,8 @@ export function AdminQuickFlowReviewTreemapStep({
       localName !== (dialogRow.initiative || '') ||
       !stakeholdersEqual(localStakeholders, dialogRow.stakeholdersList || []) ||
       localDescription !== (dialogRow.description || '') ||
-      localDocLink !== (dialogRow.documentationLink || '')
+      localDocLink !== (dialogRow.documentationLink || '') ||
+      !stakeholdersEqual(localTags, normalizeInitiativeTags(dialogRow.tags))
     );
   }, [
     dialogRow,
@@ -174,6 +180,7 @@ export function AdminQuickFlowReviewTreemapStep({
     localStakeholders,
     localDescription,
     localDocLink,
+    localTags,
     stakeholdersEqual,
   ]);
 
@@ -202,8 +209,9 @@ export function AdminQuickFlowReviewTreemapStep({
     draft(dialogRow.id, 'stakeholdersList', localStakeholders);
     draft(dialogRow.id, 'description', localDescription);
     draft(dialogRow.id, 'documentationLink', localDocLink);
+    draft(dialogRow.id, 'tags', localTags);
     closeDialog();
-  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName, localStakeholders]);
+  }, [closeDialog, dialogRow, draft, localDescription, localDocLink, localName, localStakeholders, localTags]);
 
   const treemapViewKey = `quick-flow-review-${resolvedPreviewQuarters.join(',')}-${model.contentKey.slice(0, 80)}`;
 
@@ -348,6 +356,13 @@ export function AdminQuickFlowReviewTreemapStep({
                     onChange={(e) => setLocalDescription(e.target.value)}
                     className="min-h-[240px] resize-y"
                   />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <Label className="text-sm font-medium">Теги</Label>
+                    <span className="text-xs text-muted-foreground">можно выбрать несколько</span>
+                  </div>
+                  <InitiativeTagSelector value={localTags} onChange={setLocalTags} />
                 </div>
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">

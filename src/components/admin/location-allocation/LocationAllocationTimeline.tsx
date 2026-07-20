@@ -15,6 +15,7 @@ import { initiativeYearCostRub, quartersForYear } from '@/lib/locationAllocation
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
 import { LocationAllocationInitiativePanelBody } from '@/components/admin/location-allocation/LocationAllocationInitiativePanelBody';
 import type { LocationAllocationPanelCloseGuard } from '@/components/admin/location-allocation/LocationAllocationInitiativePanelBody';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 type Props = {
   initiatives: AdminDataRow[];
@@ -26,6 +27,7 @@ type Props = {
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
+  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
 function formatHeadlineRub(rub: number): string {
@@ -42,6 +44,7 @@ export function LocationAllocationTimeline({
   countries,
   countryIdToClusterKey,
   onGeoCostSplitSave,
+  onInitiativeTagsSave,
 }: Props) {
   const detailPanelCloseGuardRef = useRef<LocationAllocationPanelCloseGuard | null>(null);
   const filteredInitiatives = useMemo(
@@ -153,11 +156,12 @@ export function LocationAllocationTimeline({
           countries={countries}
           countryIdToClusterKey={countryIdToClusterKey}
           onGeoCostSplitSave={onGeoCostSplitSave}
+          onInitiativeTagsSave={onInitiativeTagsSave}
           closeGuardRef={detailPanelCloseGuardRef}
         />
       );
     },
-    [initiativeById, yearQuarters, countries, countryIdToClusterKey, onGeoCostSplitSave]
+    [initiativeById, yearQuarters, countries, countryIdToClusterKey, onGeoCostSplitSave, onInitiativeTagsSave]
   );
 
   const filterHint = (() => {

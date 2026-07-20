@@ -45,6 +45,7 @@ import {
   AdminQuarterMoneyHistory,
 } from '@/components/admin/AdminQuarterValueHistory';
 import { Button } from '@/components/ui/button';
+import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -941,6 +942,20 @@ const InitiativeDetailDialog = ({
               className={`min-h-[180px] resize-y ${!initiative.description?.trim() ? 'ring-2 ring-primary/55' : ''}`}
             />
           </div>
+
+          {/* Initiative tags */}
+          {!initiative.isTimelineStub ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <Label className="text-sm font-medium">Теги</Label>
+                <span className="text-xs text-muted-foreground">можно выбрать несколько</span>
+              </div>
+              <InitiativeTagSelector
+                value={initiative.tags}
+                onChange={(tags) => onDataChange(initiative.id, 'tags', tags)}
+              />
+            </div>
+          ) : null}
 
           {/* Documentation Link */}
           <div className="space-y-2">
