@@ -19,6 +19,7 @@ type RegionKpiBlockProps = {
   label: TopRegionLabel;
   actualRub: number;
   planRub: number;
+  sharePct: number;
   onClick?: () => void;
   selected?: boolean;
 };
@@ -27,6 +28,7 @@ function RegionKpiBlock({
   label,
   actualRub,
   planRub,
+  sharePct,
   onClick,
   selected,
 }: RegionKpiBlockProps) {
@@ -53,8 +55,13 @@ function RegionKpiBlock({
       <p className="text-[11px] font-semibold text-foreground/80 leading-snug line-clamp-2">
         {regionTitle}
       </p>
-      <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground sm:text-2xl">
-        {actualRub > 0 ? formatLocationCompactM(actualRub) : '—'}
+      <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-xl font-semibold tabular-nums tracking-tight text-foreground sm:text-2xl">
+        <span>{actualRub > 0 ? formatLocationCompactM(actualRub) : '—'}</span>
+        {actualRub > 0 ? (
+          <span className="text-sm font-normal text-muted-foreground sm:text-base">
+            ({sharePct >= 10 ? sharePct.toFixed(0) : sharePct.toFixed(1)}%)
+          </span>
+        ) : null}
       </p>
       <p className="mt-1.5 text-xs leading-snug">
         {planRub > 0 && actualRub > 0 && deltaAbs >= 1 && pct != null ? (
@@ -87,6 +94,13 @@ function RegionKpiBlock({
 
 type Props = {
   year: number;
+  periodLabel?: string;
+  scopeLabel?: string;
+  filterContextLabel?: string;
+  parentScope?: {
+    label: string;
+    totalRub: number;
+  } | null;
   totalRub: number;
   rows: RegionComparisonRow[];
   selectedRegion?: TopRegionLabel | null;
@@ -95,11 +109,24 @@ type Props = {
 
 export function LocationRegionKpiCards({
   year,
+  periodLabel,
+  scopeLabel = 'Dodo Engineering',
+  filterContextLabel,
+  parentScope = null,
   totalRub,
   rows,
   selectedRegion = null,
   onSelectRegion,
 }: Props) {
+  const parentShare =
+    parentScope && parentScope.totalRub > 0
+      ? (totalRub / parentScope.totalRub) * 100
+      : null;
+  const regionActualTotalRub = rows.reduce(
+    (sum, row) => sum + row.actualRub,
+    0
+  );
+
   if (totalRub <= 0 && rows.every((r) => r.planRub <= 0 && r.actualRub <= 0)) {
     return (
       <p className="text-sm text-muted-foreground">Нет данных по регионам.</p>
@@ -119,11 +146,22 @@ export function LocationRegionKpiCards({
           )}
         >
           <p className="text-sm font-medium text-muted-foreground">
-            Бюджет Dodo Engineering {year}
+            Бюджет {scopeLabel} · {periodLabel ?? year}
+            {filterContextLabel ? ` · ${filterContextLabel}` : ''}
           </p>
           <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-foreground sm:text-4xl">
             {totalRub > 0 ? formatLocationCompactM(totalRub) : '—'}
           </p>
+          {parentScope && parentScope.totalRub > 0 ? (
+            <p className="mt-1.5 text-xs tabular-nums text-muted-foreground/80">
+              из{' '}
+              <span className="font-medium text-muted-foreground">
+                {formatLocationCompactM(parentScope.totalRub)}
+              </span>{' '}
+              · {parentScope.label}
+              {parentShare != null ? ` · ${parentShare.toFixed(0)}%` : ''}
+            </p>
+          ) : null}
         </button>
 
         <div className="border-t border-border/70 bg-muted/25 px-4 py-3 sm:px-5 sm:py-4">
@@ -139,6 +177,11 @@ export function LocationRegionKpiCards({
                 label={row.region}
                 actualRub={row.actualRub}
                 planRub={row.planRub}
+                sharePct={
+                  regionActualTotalRub > 0
+                    ? (row.actualRub / regionActualTotalRub) * 100
+                    : 0
+                }
                 selected={selectedRegion === row.region}
                 onClick={
                   onSelectRegion

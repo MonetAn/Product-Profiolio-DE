@@ -214,8 +214,11 @@ export function EmbedToolbar({
       <div className="flex-1 min-w-[8px]" />
 
       <div className="flex items-center gap-1.5 shrink-0 text-[11px] font-medium whitespace-nowrap bg-secondary rounded px-2 py-1">
-        {totals.budget > 0 && (
+        {totals.budget > 0 && selectedUnit && (
           <>
+            <span className="text-muted-foreground font-normal">
+              Стоимость юнита {selectedUnit}:
+            </span>
             <span className="font-bold tabular-nums">{formatBudgetShort(totals.budget)}</span>
             <span className="w-px h-3.5 bg-border/70" aria-hidden />
           </>

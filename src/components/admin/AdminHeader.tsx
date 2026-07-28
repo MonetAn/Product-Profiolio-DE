@@ -8,7 +8,6 @@ import {
   Globe2,
   ShieldAlert,
   Link2,
-  Split,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
@@ -18,10 +17,12 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 import { AdminBuildStamp } from './AdminBuildStamp';
+import { DevBackendStamp } from '@/components/DevBackendStamp';
+import { isAdminActivityEnabled } from '@/lib/supabaseBackend';
+import { AllocationNotificationsBell } from '@/components/AllocationNotificationsBell';
 
 export type ViewMode =
   | 'initiatives'
-  | 'locationAllocations'
   | 'fillAnalytics'
   | 'people'
   | 'markets'
@@ -63,8 +64,9 @@ const AdminHeader = ({
   const [searchParams] = useSearchParams();
   const { isSuperAdmin, hasEarlyAccess } = useAccess();
   const showUnification = canManageCrossInitiatives({ hasEarlyAccess });
-  /** Люди, рынки, доступ, активность — только super_admin. */
+  /** Люди, рынки, доступ — только super_admin. Активность — ещё и только локально. */
   const showEngineeringNav = isSuperAdmin;
+  const showActivityNav = showEngineeringNav && isAdminActivityEnabled();
 
   // Build URLs preserving current filters
   const initiativesUrl = useMemo(() => {
@@ -86,13 +88,11 @@ const AdminHeader = ({
     return queryString ? `/?${queryString}` : '/';
   }, [searchParams]);
 
-  const locationAllocationsUrl = '/admin/location-allocations';
-
   const marketsUrl = '/admin/markets';
 
   const accessUrl = '/admin/access';
   const activityUrl = '/admin/activity';
-  const sensitiveUrl = '/admin/sensitive';
+  const sensitiveUrl = '/admin/additional';
   const unificationUrl = useMemo(() => {
     const queryString = searchParams.toString();
     return queryString ? `/admin/unification?${queryString}` : '/admin/unification';
@@ -178,7 +178,7 @@ const AdminHeader = ({
               </ToggleGroupItem>
             </Link>
           )}
-          {showEngineeringNav && (
+          {showActivityNav && (
             <Link to={activityUrl}>
               <ToggleGroupItem 
                 value="activity" 
@@ -196,24 +196,17 @@ const AdminHeader = ({
                 className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
               >
                 <ShieldAlert className="h-4 w-4" />
-                <span className="hidden sm:inline">Sensitive</span>
+                <span className="hidden sm:inline">Дополнительное</span>
               </ToggleGroupItem>
             </Link>
           )}
-          <Link to={locationAllocationsUrl}>
-            <ToggleGroupItem
-              value="locationAllocations"
-              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Split className="h-4 w-4" />
-              <span className="hidden sm:inline">Аллокации</span>
-            </ToggleGroupItem>
-          </Link>
         </ToggleGroup>
       </div>
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
+        <DevBackendStamp />
+        <AllocationNotificationsBell />
         {isSuperAdmin ? <AdminBuildStamp /> : null}
         {currentView === 'initiatives' && (
           <UnifiedSettingsMenu

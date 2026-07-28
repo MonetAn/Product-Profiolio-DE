@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,8 +29,9 @@ import {
   type LocationAllocationGeoEditTarget,
 } from '@/lib/locationAllocationGeoEdit';
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
-import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
 import { normalizeInitiativeTags, type InitiativeTag } from '@/lib/initiativeTags';
+import { InitiativeAllocationComments } from '@/components/admin/location-allocation/InitiativeAllocationComments';
+import { LocationAllocationGeoReadSummary } from '@/components/admin/location-allocation/LocationAllocationGeoReadSummary';
 
 type Props = {
   open: boolean;
@@ -41,6 +41,8 @@ type Props = {
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
+  focusedCommentId?: string | null;
+  readOnly?: boolean;
 };
 
 function normalizeGeoSplit(split: GeoCostSplit | undefined): GeoCostSplit | undefined {
@@ -68,14 +70,24 @@ export function LocationAllocationTreemapEditDialog({
   countryIdToClusterKey,
   onGeoCostSplitSave,
   onInitiativeTagsSave,
+  focusedCommentId = null,
+  readOnly = false,
 }: Props) {
   const { toast } = useToast();
   const [draftSplit, setDraftSplit] = useState<GeoCostSplit | undefined>(undefined);
   const [draftTags, setDraftTags] = useState<InitiativeTag[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [discardDestination, setDiscardDestination] = useState<'close' | 'read'>(
+    'close'
+  );
+  const [coefficientConfirmOpen, setCoefficientConfirmOpen] = useState(false);
+  const [mode, setMode] = useState<'read' | 'edit'>('read');
+  const [savedSplit, setSavedSplit] = useState<GeoCostSplit | undefined>(
+    undefined
+  );
 
-  const savedSplit = useMemo(() => {
+  const initialSavedSplit = useMemo(() => {
     if (!target) return undefined;
     const expandedEntries = expandSplitToCountryEntries(
       target.initialSplit,
@@ -99,9 +111,13 @@ export function LocationAllocationTreemapEditDialog({
 
   useEffect(() => {
     if (!open || !target) return;
-    setDraftSplit(savedSplit);
+    setSavedSplit(initialSavedSplit);
+    setDraftSplit(initialSavedSplit);
     setDraftTags(savedTags);
-  }, [open, target, savedSplit, savedTags]);
+    setMode('read');
+    setDiscardOpen(false);
+    setCoefficientConfirmOpen(false);
+  }, [open, target, initialSavedSplit, savedTags]);
 
   const geoDirty = !geoSplitsEqual(draftSplit, savedSplit);
   const tagsDirty = JSON.stringify(draftTags) !== JSON.stringify(savedTags);
@@ -115,6 +131,7 @@ export function LocationAllocationTreemapEditDialog({
         return;
       }
       if (isDirty) {
+        setDiscardDestination('close');
         setDiscardOpen(true);
         return;
       }
@@ -124,7 +141,7 @@ export function LocationAllocationTreemapEditDialog({
   );
 
   const handleSave = async () => {
-    if (!target || !isDirty || isSaving) return;
+    if (readOnly || !target || !isDirty || isSaving) return;
     if (geoDirty && totalPct !== 100) {
       toast({
         title: 'Сумма должна быть 100%',
@@ -167,7 +184,9 @@ export function LocationAllocationTreemapEditDialog({
                 ? 'Распределение по рынкам обновлено.'
             : `Распределение применено к ${target.initiativeIds.length} инициативам.`,
       });
-      onOpenChange(false);
+      setSavedSplit(normalized);
+      setDraftSplit(normalized);
+      setMode('read');
     } catch {
       toast({
         title: 'Не удалось сохранить',
@@ -180,11 +199,6 @@ export function LocationAllocationTreemapEditDialog({
   };
 
   if (!target) return null;
-
-  const scopeHint =
-    target.level === 'initiative'
-      ? 'Изменения применятся только к этой инициативе.'
-      : `Решение применится к ${target.initiativeIds.length} инициативам внутри ${target.level === 'team' ? 'команды' : 'юнита'} и будет отмечено как унаследованное.`;
 
   const inheritedFrom = (() => {
     const origin = savedSplit?.allocationOrigin;
@@ -208,122 +222,207 @@ export function LocationAllocationTreemapEditDialog({
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
-            <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <label
-                htmlFor="location-allocation-comment"
-                className="text-xs font-semibold text-foreground"
-              >
-                Комментарий к решению
-              </label>
-              <Textarea
-                id="location-allocation-comment"
-                value={draftSplit?.note ?? ''}
-                onChange={(event) => {
-                  const note = event.target.value;
-                  setDraftSplit((previous) => {
-                    const base = previous ?? savedSplit;
-                    if (!base?.entries.length) return previous;
-                    return {
-                      ...base,
-                      ...(note ? { note } : {}),
-                      ...(!note ? { note: undefined } : {}),
-                    };
-                  });
-                }}
-                placeholder="Например: доли скорректированы после согласования с регионом"
-                rows={3}
-                disabled={isSaving}
-                className="mt-2 min-h-[76px] resize-y bg-background text-sm"
-              />
-              <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                {scopeHint}
-              </p>
-              {inheritedFrom ? (
-                <p className="mt-1.5 text-[11px] font-medium leading-snug text-amber-700 dark:text-amber-300">
-                  {inheritedFrom} Сохранение здесь создаст отдельное решение для этого блока.
-                </p>
-              ) : null}
-
-              {target.level === 'initiative' ? (
-                <div className="mt-3 border-t border-border/60 pt-3">
-                  <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="text-xs font-semibold text-foreground">Теги инициативы</span>
-                    <span className="text-[11px] text-muted-foreground">можно выбрать несколько</span>
-                  </div>
-                  <InitiativeTagSelector
-                    value={draftTags}
-                    onChange={setDraftTags}
-                    disabled={isSaving}
-                    compact
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            {target.description ? (
-              <p className="mb-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                {target.description}
-              </p>
+            {!readOnly ? (
+              <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+                <InitiativeAllocationComments
+                  scope={
+                    target.level === 'initiative'
+                      ? {
+                          type: 'initiative',
+                          initiativeId: target.initiativeIds[0],
+                        }
+                      : target.level === 'team'
+                        ? {
+                            type: 'team',
+                            unit: target.breadcrumb,
+                            team: target.title,
+                          }
+                        : {
+                            type: 'unit',
+                            unit: target.title,
+                          }
+                  }
+                  legacyNote={
+                    target.level === 'initiative' ? savedSplit?.note : undefined
+                  }
+                  compact
+                  hideEmptyState
+                  focusedCommentId={focusedCommentId}
+                />
+                {inheritedFrom ? (
+                  <p className="mt-1.5 text-[11px] font-medium leading-snug text-amber-700 dark:text-amber-300">
+                    {inheritedFrom} Изменение распределения здесь создаст отдельное решение для этого блока.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
-            {target.totalCostRub > 0 ? (
-              <div className="mb-3 flex items-baseline justify-between gap-3">
+            {target.description ? (
+              <div className="mb-4 space-y-1.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Распределение по рынкам
+                  Описание
                 </p>
-                <p className="text-xs tabular-nums text-muted-foreground">
-                  База <span className="font-semibold text-foreground">{formatLocationCompactM(target.totalCostRub)}</span>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
+                  {target.description}
                 </p>
               </div>
-            ) : (
-              <div className="mb-4" />
-            )}
+            ) : null}
 
-            <LocationAllocationHierarchicalGeoEditor
-              split={draftSplit}
-              totalCostRub={target.totalCostRub}
-              countries={countries}
-              countryIdToClusterKey={countryIdToClusterKey}
-              onChange={setDraftSplit}
-              disabled={isSaving}
-            />
+            {mode === 'read' ? (
+              <LocationAllocationGeoReadSummary
+                split={savedSplit}
+                totalCostRub={target.totalCostRub}
+                countries={countries}
+                countryIdToClusterKey={countryIdToClusterKey}
+                onEdit={
+                  readOnly
+                    ? undefined
+                    : () => {
+                        setDraftSplit(savedSplit);
+                        setMode('edit');
+                      }
+                }
+              />
+            ) : (
+              <>
+                {target.totalCostRub > 0 ? (
+                  <div className="mb-3 flex items-baseline justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Редактирование распределения
+                    </p>
+                    <p className="text-xs tabular-nums text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        {formatLocationCompactM(target.totalCostRub)}
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mb-4" />
+                )}
+
+                <LocationAllocationHierarchicalGeoEditor
+                  split={draftSplit}
+                  totalCostRub={target.totalCostRub}
+                  countries={countries}
+                  countryIdToClusterKey={countryIdToClusterKey}
+                  onChange={setDraftSplit}
+                  disabled={isSaving}
+                />
+              </>
+            )}
           </div>
 
-          <DialogFooter className="shrink-0 border-t border-border bg-card px-5 py-3 sm:justify-between">
-            <p className="text-[11px] text-muted-foreground self-center">
-              {isDirty ? 'Есть несохранённые изменения' : 'Все изменения сохранены'}
-              {totalPct !== 100 ? ` · Σ ${totalPct}%` : null}
-            </p>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => requestClose(false)}>
-                Отмена
-              </Button>
+          {mode === 'read' ? (
+            <DialogFooter className="shrink-0 border-t border-border bg-card px-5 py-3">
               <Button
                 type="button"
+                variant="outline"
                 size="sm"
-                disabled={!isDirty || isSaving || (geoDirty && totalPct !== 100)}
-                onClick={() => void handleSave()}
+                onClick={() => requestClose(false)}
               >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
-                    Сохранение…
-                  </>
-                ) : (
-                  'Сохранить'
-                )}
+                Закрыть
               </Button>
-            </div>
-          </DialogFooter>
+            </DialogFooter>
+          ) : (
+            <DialogFooter className="shrink-0 border-t border-border bg-card px-5 py-3 sm:justify-between">
+              <p className="self-center text-[11px] text-muted-foreground">
+                {isDirty
+                  ? 'Есть несохранённые изменения'
+                  : 'Изменений пока нет'}
+                {totalPct !== 100 ? ` · Σ ${totalPct}%` : null}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (isDirty) {
+                      setDiscardDestination('read');
+                      setDiscardOpen(true);
+                      return;
+                    }
+                    setDraftSplit(savedSplit);
+                    setMode('read');
+                  }}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    !isDirty || isSaving || (geoDirty && totalPct !== 100)
+                  }
+                  onClick={() => {
+                    if (geoDirty) {
+                      setCoefficientConfirmOpen(true);
+                    } else {
+                      void handleSave();
+                    }
+                  }}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2
+                        className="mr-1.5 h-3.5 w-3.5 animate-spin"
+                        aria-hidden
+                      />
+                      Сохранение…
+                    </>
+                  ) : geoDirty ? (
+                    'Заменить коэффициенты'
+                  ) : (
+                    'Сохранить'
+                  )}
+                </Button>
+              </div>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={coefficientConfirmOpen}
+        onOpenChange={setCoefficientConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Заменить коэффициенты?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Текущее распределение по регионам и рынкам будет заменено
+              {target.initiativeIds.length > 1
+                ? ` для ${target.initiativeIds.length} инициатив`
+                : ''}.
+              История комментариев останется без изменений.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={() => {
+                setCoefficientConfirmOpen(false);
+                void handleSave();
+              }}
+            >
+              Заменить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Закрыть без сохранения?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {discardDestination === 'read'
+                ? 'Отменить изменения?'
+                : 'Закрыть без сохранения?'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Изменения распределения по рынкам и тегов не будут сохранены.
+              Изменения распределения по рынкам не будут сохранены. Добавленные
+              комментарии уже находятся в истории.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -335,10 +434,16 @@ export function LocationAllocationTreemapEditDialog({
                 setDiscardOpen(false);
                 setDraftSplit(savedSplit);
                 setDraftTags(savedTags);
-                onOpenChange(false);
+                if (discardDestination === 'read') {
+                  setMode('read');
+                } else {
+                  onOpenChange(false);
+                }
               }}
             >
-              Закрыть без сохранения
+              {discardDestination === 'read'
+                ? 'Отменить изменения'
+                : 'Закрыть без сохранения'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

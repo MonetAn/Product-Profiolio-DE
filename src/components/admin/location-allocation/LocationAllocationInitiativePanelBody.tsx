@@ -4,7 +4,6 @@ import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { GeoCostSplitEditor } from '@/components/admin/GeoCostSplitEditor';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,8 +22,10 @@ import {
   TOP_REGION_DISPLAY_LABELS,
   TOP_REGION_ORDER,
 } from '@/lib/locationRegionModel';
-import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
 import { normalizeInitiativeTags, type InitiativeTag } from '@/lib/initiativeTags';
+import { InitiativeAllocationComments } from '@/components/admin/location-allocation/InitiativeAllocationComments';
+import { LocationAllocationQuarterPlanFact } from '@/components/admin/location-allocation/LocationAllocationQuarterPlanFact';
+import { LocationAllocationGeoReadSummary } from '@/components/admin/location-allocation/LocationAllocationGeoReadSummary';
 
 export type LocationAllocationPanelCloseGuard = {
   hasUnsavedChanges: () => boolean;
@@ -39,6 +40,7 @@ type Props = {
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
   closeGuardRef?: React.MutableRefObject<LocationAllocationPanelCloseGuard | null>;
+  readOnly?: boolean;
 };
 
 function normalizeGeoSplit(split: GeoCostSplit | undefined): GeoCostSplit | undefined {
@@ -62,6 +64,7 @@ export function LocationAllocationInitiativePanelBody({
   onGeoCostSplitSave,
   onInitiativeTagsSave,
   closeGuardRef,
+  readOnly = false,
 }: Props) {
   const { toast } = useToast();
   const [draftSplit, setDraftSplit] = useState<GeoCostSplit | undefined>(
@@ -72,6 +75,7 @@ export function LocationAllocationInitiativePanelBody({
     normalizeInitiativeTags(initiative.tags)
   );
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [coefficientConfirmOpen, setCoefficientConfirmOpen] = useState(false);
   const pendingCloseRef = useRef<(() => void) | null>(null);
   const initiativeIdRef = useRef(initiative.id);
 
@@ -79,7 +83,7 @@ export function LocationAllocationInitiativePanelBody({
   const savedTags = normalizeInitiativeTags(initiative.tags);
   const geoDirty = !geoSplitsEqual(draftSplit, savedSplit);
   const tagsDirty = JSON.stringify(draftTags) !== JSON.stringify(savedTags);
-  const isDirty = geoDirty || tagsDirty;
+  const isDirty = !readOnly && (geoDirty || tagsDirty);
 
   useEffect(() => {
     if (initiativeIdRef.current !== initiative.id) {
@@ -119,8 +123,8 @@ export function LocationAllocationInitiativePanelBody({
     proceed?.();
   };
 
-  const handleSave = async () => {
-    if (!isDirty || isSaving) return;
+  const performSave = async () => {
+    if (readOnly || !isDirty || isSaving) return;
     const normalizedDraft = normalizeGeoSplit(draftSplit);
     const normalized = normalizedDraft
       ? {
@@ -192,57 +196,40 @@ export function LocationAllocationInitiativePanelBody({
             {initiative.unit} › {initiative.team || 'Без команды'}
           </div>
 
-          <div className="mb-4 rounded-lg border border-border/70 bg-muted/20 p-3">
-            <label
-              htmlFor={`location-allocation-comment-${initiative.id}`}
-              className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-            >
-              Комментарий к решению
-            </label>
-            <Textarea
-              id={`location-allocation-comment-${initiative.id}`}
-              value={draftSplit?.note ?? ''}
-              onChange={(event) => {
-                const note = event.target.value;
-                setDraftSplit((previous) => {
-                  if (!previous?.entries.length) return previous;
-                  return {
-                    ...previous,
-                    ...(note ? { note } : {}),
-                    ...(!note ? { note: undefined } : {}),
-                  };
-                });
-              }}
-              placeholder="Почему выбрано такое распределение"
-              rows={3}
-              disabled={isSaving}
-              className="mt-2 min-h-[72px] resize-y bg-background text-sm"
-            />
-            {savedSplit?.allocationOrigin?.level === 'team' ? (
-              <p className="mt-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
-                Коэффициенты получены от команды «{savedSplit.allocationOrigin.team}». Сохранение создаст отдельное решение для инициативы.
-              </p>
-            ) : savedSplit?.allocationOrigin?.level === 'unit' ? (
-              <p className="mt-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
-                Коэффициенты получены от юнита «{savedSplit.allocationOrigin.unit}». Сохранение создаст отдельное решение для инициативы.
-              </p>
-            ) : null}
-
-            <div className="mt-3 border-t border-border/60 pt-3">
-              <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Теги инициативы
-                </span>
-                <span className="text-[10px] text-muted-foreground">можно выбрать несколько</span>
-              </div>
-              <InitiativeTagSelector
-                value={draftTags}
-                onChange={setDraftTags}
-                disabled={isSaving}
+          {!readOnly ? (
+            <div className="mb-4 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <InitiativeAllocationComments
+                scope={{ type: 'initiative', initiativeId: initiative.id }}
+                legacyNote={savedSplit?.note}
                 compact
               />
+              {savedSplit?.allocationOrigin?.level === 'team' ? (
+                <p className="mt-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
+                  Коэффициенты получены от команды «{savedSplit.allocationOrigin.team}». Сохранение создаст отдельное решение для инициативы.
+                </p>
+              ) : savedSplit?.allocationOrigin?.level === 'unit' ? (
+                <p className="mt-1.5 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
+                  Коэффициенты получены от юнита «{savedSplit.allocationOrigin.unit}». Сохранение создаст отдельное решение для инициативы.
+                </p>
+              ) : null}
             </div>
-          </div>
+          ) : null}
+
+          {initiative.description?.trim() ? (
+            <div className="mb-4 space-y-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Описание
+              </p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85">
+                {initiative.description}
+              </p>
+            </div>
+          ) : null}
+
+          <LocationAllocationQuarterPlanFact
+            initiative={initiative}
+            quarters={yearQuarters}
+          />
 
           {yearCost > 0 ? (
             <div className="mb-4 space-y-2">
@@ -286,7 +273,16 @@ export function LocationAllocationInitiativePanelBody({
             </div>
           ) : null}
 
-          {yearCost > 0 && marketCountriesGeo.length > 0 ? (
+          {readOnly && yearCost > 0 ? (
+            <div className="border-t border-border/60 pb-4 pt-4">
+              <LocationAllocationGeoReadSummary
+                split={savedSplit}
+                totalCostRub={yearCost}
+                countries={countries}
+                countryIdToClusterKey={countryIdToClusterKey}
+              />
+            </div>
+          ) : yearCost > 0 && marketCountriesGeo.length > 0 ? (
             <div className="space-y-2 border-t border-border/60 pt-4 pb-4">
               <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Распределение по рынкам
@@ -304,7 +300,8 @@ export function LocationAllocationInitiativePanelBody({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border bg-card px-4 py-3 shadow-[0_-6px_16px_hsl(var(--background)/0.65)]">
+        {!readOnly ? (
+          <div className="shrink-0 border-t border-border bg-card px-4 py-3 shadow-[0_-6px_16px_hsl(var(--background)/0.65)]">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] text-muted-foreground leading-snug">
               {isDirty ? 'Есть несохранённые изменения' : 'Все изменения сохранены'}
@@ -314,7 +311,13 @@ export function LocationAllocationInitiativePanelBody({
               size="sm"
               className="min-w-[7.5rem]"
               disabled={!isDirty || isSaving}
-              onClick={() => void handleSave()}
+              onClick={() => {
+                if (geoDirty) {
+                  setCoefficientConfirmOpen(true);
+                } else {
+                  void performSave();
+                }
+              }}
             >
               {isSaving ? (
                 <>
@@ -322,12 +325,40 @@ export function LocationAllocationInitiativePanelBody({
                   Сохранение…
                 </>
               ) : (
-                'Сохранить'
+                geoDirty ? 'Заменить коэффициенты' : 'Сохранить'
               )}
             </Button>
           </div>
-        </div>
+          </div>
+        ) : null}
       </div>
+
+      <AlertDialog
+        open={coefficientConfirmOpen}
+        onOpenChange={setCoefficientConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Заменить коэффициенты?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Текущее распределение по регионам и рынкам будет заменено. История
+              комментариев останется без изменений.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={() => {
+                setCoefficientConfirmOpen(false);
+                void performSave();
+              }}
+            >
+              Заменить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={discardOpen}
@@ -342,7 +373,7 @@ export function LocationAllocationInitiativePanelBody({
           <AlertDialogHeader>
             <AlertDialogTitle>Закрыть без сохранения?</AlertDialogTitle>
             <AlertDialogDescription>
-              Изменения распределения по рынкам и тегов не будут сохранены.
+              Изменения распределения по рынкам и тегов не будут сохранены. Добавленные комментарии уже находятся в истории.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

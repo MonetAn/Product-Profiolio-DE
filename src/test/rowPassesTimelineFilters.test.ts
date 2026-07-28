@@ -7,7 +7,7 @@ const baseRow = (overrides: Partial<RawDataRow> = {}): RawDataRow =>
     team: 'Team 1',
     initiative: 'Initiative X',
     stakeholders: 'Alice',
-    quarterlyData: { '2026-Q1': { budget: 100 } },
+    quarterlyData: { '2026-Q1': { budget: 5_000 } },
     isTimelineStub: false,
     ...overrides,
   }) as RawDataRow;
@@ -87,8 +87,8 @@ describe('rowPassesTimelineFilters', () => {
       rowPassesTimelineFilters(
         baseRow({
           quarterlyData: {
-            '2026-Q1': { budget: 100, onTrack: false },
-            '2026-Q2': { budget: 100, onTrack: true },
+            '2026-Q1': { budget: 5_000, onTrack: false },
+            '2026-Q2': { budget: 5_000, onTrack: true },
           },
         }),
         {

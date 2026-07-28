@@ -582,6 +582,35 @@ export type Database = {
           },
         ]
       }
+      allocation_unit_leaders: {
+        Row: {
+          allowed_user_id: string
+          unit: string
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          allowed_user_id: string
+          unit: string
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          allowed_user_id?: string
+          unit?: string
+          created_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "allocation_unit_leaders_allowed_user_id_fkey"
+            columns: ["allowed_user_id"]
+            isOneToOne: false
+            referencedRelation: "allowed_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       allowed_users: {
         Row: {
           id: string
@@ -596,6 +625,7 @@ export type Database = {
           member_team: string | null
           member_affiliations: Json | null
           early_access: boolean
+          avatar_url: string | null
         }
         Insert: {
           id?: string
@@ -610,6 +640,7 @@ export type Database = {
           member_team?: string | null
           member_affiliations?: Json | null
           early_access?: boolean
+          avatar_url?: string | null
         }
         Update: {
           id?: string
@@ -624,6 +655,7 @@ export type Database = {
           member_team?: string | null
           member_affiliations?: Json | null
           early_access?: boolean
+          avatar_url?: string | null
         }
         Relationships: []
       }

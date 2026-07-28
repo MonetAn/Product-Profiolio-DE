@@ -6,7 +6,6 @@ import {
   formatLocationDeltaM,
   formatLocationFullAmount,
 } from '@/lib/locationDisplayFormat';
-import { LocationEntityProportionLine } from '@/components/admin/location-allocation/LocationEntityStackBar';
 import { cn } from '@/lib/utils';
 
 const DELTA_ABOVE = '#5B8FD4';
@@ -56,6 +55,11 @@ function AllocationAmountCell({ row }: { row: UnitRegionDetailRow }) {
       {row.factRub > 0 ? (
         <span className="font-semibold text-foreground tabular-nums">
           {formatLocationCompactM(row.factRub)}
+          <span className="ml-1 font-normal text-muted-foreground">
+            ({row.regionBudgetSharePct >= 10
+              ? row.regionBudgetSharePct.toFixed(0)
+              : row.regionBudgetSharePct.toFixed(1)}%)
+          </span>
         </span>
       ) : null}
       {row.planRub > 0 ? (
@@ -105,11 +109,6 @@ export function LocationRegionEntityRankedList({
   );
 
   const regionFactTotal = ranked.reduce((s, r) => s + r.factRub, 0);
-  const maxEntityFactRub = useMemo(
-    () => ranked.reduce((m, r) => Math.max(m, r.factRub), 0),
-    [ranked]
-  );
-
   const title = contextLabel ? `${titleLabel} · ${contextLabel}` : titleLabel;
 
   const shareLabel = overviewMode ? 'от общего' : 'бюджета региона';
@@ -229,13 +228,14 @@ export function LocationRegionEntityRankedList({
             <span className="text-right text-[10px] tabular-nums text-muted-foreground self-center">
               {index + 1}
             </span>
-            <LocationEntityProportionLine
-              name={row.name}
-              factRub={row.factRub}
-              maxFactRub={maxEntityFactRub}
-              emphasized={emphasized}
-              selected={selected}
-            />
+            <span
+              className={cn(
+                'min-w-0 self-center truncate text-[11px] font-medium leading-tight',
+                emphasized || selected ? 'text-foreground' : 'text-foreground/90'
+              )}
+            >
+              {row.name}
+            </span>
             <span className="text-[10px] self-center">
               <AllocationAmountCell row={row} />
             </span>
@@ -350,7 +350,7 @@ export function LocationRegionEntityRankedList({
           )}
           style={
             scrollable
-              ? { maxHeight: listViewportPx, minHeight: listViewportPx }
+              ? { maxHeight: listViewportPx }
               : undefined
           }
           onMouseEnter={scrollable ? updateScrollHints : undefined}

@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import {
@@ -17,14 +16,17 @@ import { LocationAllocationTreemapContainer } from '@/components/admin/location-
 import { LocationAllocationTreemapEditDialog } from '@/components/admin/location-allocation/LocationAllocationTreemapEditDialog';
 import { quartersForYear } from '@/lib/locationAllocationModel';
 import { getUnitColor } from '@/lib/dataManager';
-import { useAccess } from '@/hooks/useAccess';
-import { cn } from '@/lib/utils';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
 import {
   resolveGeoEditTargetFromNode,
+  resolveGeoEditTargetFromScope,
+  type LocationAllocationGeoEditScope,
   type LocationAllocationGeoEditTarget,
 } from '@/lib/locationAllocationGeoEdit';
 import type { InitiativeTag } from '@/lib/initiativeTags';
+import type { LocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
+import { useLocationAllocationCommentSummary } from '@/hooks/useLocationAllocationCommentSummary';
+import { locationAllocationFilterFocusPath } from '@/lib/locationAllocationFilterNavigation';
 
 type Props = {
   initiatives: AdminDataRow[];
@@ -37,32 +39,18 @@ type Props = {
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
+  headcount?: LocationHeadcountIndex;
+  showTeams: boolean;
+  onShowTeamsChange: (show: boolean) => void;
+  showInitiatives: boolean;
+  onShowInitiativesChange: (show: boolean) => void;
+  onNavigateToRoot?: () => void;
+  focusedComment?: {
+    id: string;
+    scope: LocationAllocationGeoEditScope;
+  } | null;
+  readOnly?: boolean;
 };
-
-function NestingToggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="hidden" />
-      <span
-        className={cn(
-          'w-3.5 h-3.5 border rounded flex items-center justify-center',
-          checked ? 'bg-primary border-primary text-primary-foreground' : 'border-border'
-        )}
-      >
-        {checked && <Check size={10} />}
-      </span>
-      <span>{label}</span>
-    </label>
-  );
-}
 
 export function LocationAllocationTreemap({
   initiatives,
@@ -75,27 +63,33 @@ export function LocationAllocationTreemap({
   countryIdToClusterKey,
   onGeoCostSplitSave,
   onInitiativeTagsSave,
+  headcount,
+  showTeams,
+  onShowTeamsChange,
+  showInitiatives,
+  onShowInitiativesChange,
+  onNavigateToRoot,
+  focusedComment = null,
+  readOnly = false,
 }: Props) {
-  const { canViewMoney } = useAccess();
+  const commentSummaryQuery =
+    useLocationAllocationCommentSummary(initiatives, {
+      enabled: !readOnly,
+    });
 
-  const [showTeams, setShowTeams] = useState(false);
-  const [showInitiatives, setShowInitiatives] = useState(false);
-  const [showMoney, setShowMoney] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<LocationAllocationGeoEditTarget | null>(null);
+  const handledFocusedCommentRef = useRef<string | null>(null);
 
   const autoEnabledRef = useRef({ teams: false, initiatives: false });
   const hasTeamSelection = teamFilter != null;
   const effectiveShowTeams = showTeams || hasTeamSelection;
   const effectiveShowInitiatives = showInitiatives || hasTeamSelection;
-  const selectedTeamFocusPath = useMemo(
-    () =>
-      teamFilter
-        ? [teamFilter.unit, teamFilter.team.trim() || 'Без команды']
-        : [],
-    [teamFilter]
+  const selectedFilterFocusPath = useMemo(
+    () => locationAllocationFilterFocusPath(unitFilter, teamFilter),
+    [teamFilter, unitFilter]
   );
-  const selectedTeamFocusKey = selectedTeamFocusPath.join('\t');
+  const selectedFilterFocusKey = selectedFilterFocusPath.join('\t');
 
   const treemapScope = useMemo(
     () => resolveLocationAllocationTreemapScope(regionFilter, marketCountry),
@@ -136,9 +130,10 @@ export function LocationAllocationTreemap({
         filteredInitiatives,
         yearQuarters,
         countries,
-        countryIdToClusterKey
+        countryIdToClusterKey,
+        headcount
       ),
-    [filteredInitiatives, yearQuarters, countries, countryIdToClusterKey]
+    [filteredInitiatives, yearQuarters, countries, countryIdToClusterKey, headcount]
   );
 
   const initiativesById = useMemo(
@@ -182,7 +177,7 @@ export function LocationAllocationTreemap({
       [
         effectiveShowTeams ? 'teams:1' : 'teams:0',
         effectiveShowInitiatives ? 'initiatives:1' : 'initiatives:0',
-        `team-focus:${selectedTeamFocusKey}`,
+        `filter-focus:${selectedFilterFocusKey}`,
         yearQuarters.join('|'),
         treemapScope.kind === 'all'
           ? 'scope:all'
@@ -193,7 +188,7 @@ export function LocationAllocationTreemap({
     [
       effectiveShowTeams,
       effectiveShowInitiatives,
-      selectedTeamFocusKey,
+      selectedFilterFocusKey,
       yearQuarters,
       treemapScope,
     ]
@@ -201,31 +196,31 @@ export function LocationAllocationTreemap({
 
   const handleAutoEnableTeams = useCallback(() => {
     if (!showTeams) {
-      setShowTeams(true);
+      onShowTeamsChange(true);
       autoEnabledRef.current.teams = true;
     }
-  }, [showTeams]);
+  }, [showTeams, onShowTeamsChange]);
 
   const handleAutoEnableInitiatives = useCallback(() => {
     if (!showInitiatives) {
-      setShowInitiatives(true);
+      onShowInitiativesChange(true);
       autoEnabledRef.current.initiatives = true;
     }
-  }, [showInitiatives]);
+  }, [showInitiatives, onShowInitiativesChange]);
 
   const handleAutoDisableTeams = useCallback(() => {
     if (autoEnabledRef.current.teams) {
-      setShowTeams(false);
+      onShowTeamsChange(false);
       autoEnabledRef.current.teams = false;
     }
-  }, []);
+  }, [onShowTeamsChange]);
 
   const handleAutoDisableInitiatives = useCallback(() => {
     if (autoEnabledRef.current.initiatives) {
-      setShowInitiatives(false);
+      onShowInitiativesChange(false);
       autoEnabledRef.current.initiatives = false;
     }
-  }, []);
+  }, [onShowInitiativesChange]);
 
   const handleEditNode = useCallback(
     (node: TreemapLayoutNode) => {
@@ -244,43 +239,43 @@ export function LocationAllocationTreemap({
     [meta, initiativesById, yearQuarters, countries, countryIdToClusterKey]
   );
 
+  useEffect(() => {
+    if (
+      !focusedComment ||
+      handledFocusedCommentRef.current === focusedComment.id ||
+      yearQuarters.length === 0
+    ) {
+      return;
+    }
+    const target = resolveGeoEditTargetFromScope(
+      focusedComment.scope,
+      filteredInitiatives,
+      yearQuarters,
+      countries,
+      countryIdToClusterKey
+    );
+    if (!target) return;
+    handledFocusedCommentRef.current = focusedComment.id;
+    setEditTarget(target);
+    setEditOpen(true);
+  }, [
+    focusedComment,
+    filteredInitiatives,
+    yearQuarters,
+    countries,
+    countryIdToClusterKey,
+  ]);
+
   if (yearQuarters.length === 0) {
     return null;
   }
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center gap-1 border-b border-border bg-header px-3 py-2 rounded-t-xl">
-        <NestingToggle
-          label="Команды"
-          checked={effectiveShowTeams}
-          onChange={(v) => {
-            setShowTeams(v);
-            if (!v) autoEnabledRef.current.teams = false;
-          }}
-        />
-        <NestingToggle
-          label="Инициативы"
-          checked={effectiveShowInitiatives}
-          onChange={(v) => {
-            setShowInitiatives(v);
-            if (!v) autoEnabledRef.current.initiatives = false;
-          }}
-        />
-        {canViewMoney ? (
-          <NestingToggle label="Деньги" checked={showMoney} onChange={setShowMoney} />
-        ) : null}
-        <p className="ml-auto text-[10px] text-muted-foreground hidden sm:block">
-          {treemapScope.kind === 'all'
-            ? 'Наведение — комментарий, способ и рынки; клик по инициативе — редактирование; ✎ — юнит/команда'
-            : 'Наведение — комментарий, способ и рынки в фильтре'}
-        </p>
-      </div>
-
-      <div className="h-[calc(100dvh-10rem)] min-h-[560px]">
+      <div className="h-[calc(100dvh-8rem)] min-h-[560px]">
         {totalValue > 0 ? (
           <LocationAllocationTreemapContainer
-            key={`location-treemap:${selectedTeamFocusKey || 'all'}`}
+            key={`location-treemap:${selectedFilterFocusKey || 'all'}`}
             data={tree}
             meta={meta}
             treemapScope={treemapScope}
@@ -289,15 +284,17 @@ export function LocationAllocationTreemap({
             contentKey={contentKey}
             showTeams={effectiveShowTeams}
             showInitiatives={effectiveShowInitiatives}
-            initialFocusedPath={selectedTeamFocusPath}
+            initialFocusedPath={selectedFilterFocusPath}
             hasData={filteredInitiatives.length > 0}
-            showMoney={canViewMoney && showMoney}
+            showMoney
             getColor={getUnitColor}
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
             onAutoDisableTeams={handleAutoDisableTeams}
             onAutoDisableInitiatives={handleAutoDisableInitiatives}
+            onNavigateToRoot={onNavigateToRoot}
             onEditNode={handleEditNode}
+            commentSummary={readOnly ? undefined : commentSummaryQuery.data}
           />
         ) : (
           <p className="flex h-full items-center justify-center text-sm text-muted-foreground px-4 text-center">
@@ -314,6 +311,8 @@ export function LocationAllocationTreemap({
         countryIdToClusterKey={countryIdToClusterKey}
         onGeoCostSplitSave={onGeoCostSplitSave}
         onInitiativeTagsSave={onInitiativeTagsSave}
+        focusedCommentId={focusedComment?.id ?? null}
+        readOnly={readOnly}
       />
     </div>
   );

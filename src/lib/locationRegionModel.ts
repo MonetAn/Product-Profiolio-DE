@@ -731,15 +731,43 @@ export function buildRegionComparisonRows(
   initiatives: AdminDataRow[],
   year: number,
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  marketCountry: MarketCountryRow | null = null
 ): RegionComparisonRow[] {
   const yearQuarters = quartersForYear(initiatives, year);
   const planAcc = emptyRegionMap();
   const actualAcc = emptyRegionMap();
+  const marketRegion = marketCountry
+    ? clusterKeyToTopRegion(
+        countryIdToClusterKey.get(marketCountry.id) ?? marketCountry.cluster_key
+      )
+    : null;
 
   for (const row of initiatives) {
     const cost = initiativeYearCostRub(row, yearQuarters);
     if (cost <= 0) continue;
+
+    if (marketCountry) {
+      if (!marketRegion) continue;
+      const { fact, plan } = initiativeLocationAmounts(
+        row,
+        cost,
+        null,
+        marketCountry,
+        countries,
+        countryIdToClusterKey
+      );
+      if (fact > 0) {
+        actualAcc.set(
+          marketRegion,
+          (actualAcc.get(marketRegion) ?? 0) + fact
+        );
+      }
+      if (plan > 0) {
+        planAcc.set(marketRegion, (planAcc.get(marketRegion) ?? 0) + plan);
+      }
+      continue;
+    }
 
     const scope = resolveUnitMarketScope(row.unit, row.team);
     if (scope) {

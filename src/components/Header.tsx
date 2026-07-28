@@ -1,4 +1,4 @@
-import { Search, Sliders } from 'lucide-react';
+import { Search, Sliders, Split } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -7,13 +7,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { DevBackendStamp } from '@/components/DevBackendStamp';
+import { AllocationNotificationsBell } from '@/components/AllocationNotificationsBell';
 
-export type ViewType = 'budget' | 'stakeholders' | 'timeline' | 'crossInitiatives';
+export type ViewType =
+  | 'budget'
+  | 'stakeholders'
+  | 'timeline'
+  | 'crossInitiatives'
+  | 'allocations';
 
 interface HeaderProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
-  onSearchClick: () => void;
+  onSearchClick?: () => void;
   isAdmin?: boolean;
   /** Четвёртая вкладка «Кросс-инициативы» (ранний доступ). */
   showCrossInitiativesTab?: boolean;
@@ -84,6 +91,22 @@ const Header = ({
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
         </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
+            currentView === 'allocations'
+              ? 'text-foreground'
+              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+          }`}
+          onClick={() => onViewChange('allocations')}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Split size={14} />
+            Аллокации
+          </span>
+          {currentView === 'allocations' && (
+            <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
+          )}
+        </button>
         {showCrossInitiativesTab && (
           <button
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
@@ -103,14 +126,18 @@ const Header = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
-        <button
-          onClick={onSearchClick}
-          className="flex items-center gap-2 px-3 py-1.5 bg-secondary border border-border rounded-lg text-muted-foreground text-sm hover:border-muted-foreground transition-colors"
-        >
-          <Search size={16} />
-          <span>Поиск...</span>
-          <kbd className="text-xs px-1.5 py-0.5 bg-card border border-border rounded">/</kbd>
-        </button>
+        <DevBackendStamp />
+        <AllocationNotificationsBell />
+        {onSearchClick ? (
+          <button
+            onClick={onSearchClick}
+            className="flex items-center gap-2 px-3 py-1.5 bg-secondary border border-border rounded-lg text-muted-foreground text-sm hover:border-muted-foreground transition-colors"
+          >
+            <Search size={16} />
+            <span>Поиск...</span>
+            <kbd className="text-xs px-1.5 py-0.5 bg-card border border-border rounded">/</kbd>
+          </button>
+        ) : null}
 
         {isAdmin && (
           <TooltipProvider>

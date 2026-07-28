@@ -63,6 +63,9 @@ export type LocationAllocationTreemapMeta = {
     LocationAllocationSourceByMarket
   >;
   initiativeRowById: Map<string, AdminDataRow>;
+  /** Активные люди из справочника; пустые карты означают, что данных пока нет. */
+  headcountByUnit?: Map<string, number>;
+  headcountByTeam?: Map<string, number>;
 };
 
 type RowWithCost = { row: AdminDataRow; cost: number };
@@ -323,7 +326,11 @@ export function buildLocationAllocationTreemapMeta(
   initiatives: AdminDataRow[],
   yearQuarters: string[],
   countries: MarketCountryRow[],
-  countryIdToClusterKey: Map<string, string>
+  countryIdToClusterKey: Map<string, string>,
+  headcount?: {
+    byUnit: Map<string, number>;
+    byTeam: Map<string, number>;
+  }
 ): LocationAllocationTreemapMeta {
   const yearCostByInitiativeId = new Map<string, number>();
   const regionBreakdownByInitiativeId = new Map<string, Map<TopRegionLabel, number>>();
@@ -367,7 +374,28 @@ export function buildLocationAllocationTreemapMeta(
     clusterMarketBreakdownByInitiativeId,
     allocationSourceByMarketByInitiativeId,
     initiativeRowById,
+    headcountByUnit: headcount?.byUnit ?? new Map(),
+    headcountByTeam: headcount?.byTeam ?? new Map(),
   };
+}
+
+export function resolveLocationTreemapNodeHeadcount(
+  node: TreemapLayoutNode,
+  meta: LocationAllocationTreemapMeta
+): number | null {
+  if (node.isUnit || node.data.isUnit) {
+    const unit = (node.data.unit || node.name).trim();
+    const value = meta.headcountByUnit?.get(unit);
+    return value != null && value > 0 ? value : null;
+  }
+  if (node.isTeam || node.data.isTeam) {
+    const unit = node.data.unit?.trim() ?? '';
+    const team = (node.data.team || node.name).trim();
+    if (!unit || !team) return null;
+    const value = meta.headcountByTeam?.get(`${unit}\t${team}`);
+    return value != null && value > 0 ? value : null;
+  }
+  return null;
 }
 
 function normalizeTreemapTeamName(team: string | undefined): string {

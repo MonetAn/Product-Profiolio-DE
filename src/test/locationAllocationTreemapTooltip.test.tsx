@@ -7,7 +7,7 @@ import { buildLocationAllocationTreemapMeta } from '@/lib/locationAllocationTree
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 
 describe('LocationAllocationTreemapTooltip', () => {
-  it('shows comment, inheritance, source split and markets in the compact hover', () => {
+  it('shows a compact, non-interactive market summary with the full title', () => {
     const countries: MarketCountryRow[] = [
       {
         id: 'ru',
@@ -22,6 +22,30 @@ describe('LocationAllocationTreemapTooltip', () => {
         cluster_key: 'Europe',
         label_ru: 'Польша',
         sort_order: 2,
+        is_active: true,
+        created_at: '',
+      },
+      {
+        id: 'kz',
+        cluster_key: 'Central Asia',
+        label_ru: 'Казахстан',
+        sort_order: 3,
+        is_active: true,
+        created_at: '',
+      },
+      {
+        id: 'ae',
+        cluster_key: 'MENA',
+        label_ru: 'ОАЭ',
+        sort_order: 4,
+        is_active: true,
+        created_at: '',
+      },
+      {
+        id: 'drinkit',
+        cluster_key: 'Drinkit',
+        label_ru: 'Drinkit',
+        sort_order: 5,
         is_active: true,
         created_at: '',
       },
@@ -52,13 +76,31 @@ describe('LocationAllocationTreemapTooltip', () => {
           {
             kind: 'country',
             countryId: 'ru',
-            percent: 60,
+            percent: 40,
             allocationSource: 'revenue',
           },
           {
             kind: 'country',
             countryId: 'pl',
-            percent: 40,
+            percent: 20,
+            allocationSource: 'manual',
+          },
+          {
+            kind: 'country',
+            countryId: 'kz',
+            percent: 20,
+            allocationSource: 'revenue',
+          },
+          {
+            kind: 'country',
+            countryId: 'ae',
+            percent: 10,
+            allocationSource: 'manual',
+          },
+          {
+            kind: 'country',
+            countryId: 'drinkit',
+            percent: 10,
             allocationSource: 'manual',
           },
         ],
@@ -73,6 +115,9 @@ describe('LocationAllocationTreemapTooltip', () => {
     const countryIdToClusterKey = new Map([
       ['ru', 'Russia'],
       ['pl', 'Europe'],
+      ['kz', 'Central Asia'],
+      ['ae', 'MENA'],
+      ['drinkit', 'Drinkit'],
     ]);
     const meta = buildLocationAllocationTreemapMeta(
       [row],
@@ -80,12 +125,14 @@ describe('LocationAllocationTreemapTooltip', () => {
       countries,
       countryIdToClusterKey
     );
+    const longTitle =
+      'Checkout platform migration with a complete transition to the new payment architecture';
     const node = {
       key: 'initiative-1',
       path: 'Core/Platform/Checkout',
-      name: 'Checkout',
+      name: longTitle,
       data: {
-        name: 'Checkout',
+        name: longTitle,
         value: 1_000_000,
         unit: 'Core',
         team: 'Platform',
@@ -104,7 +151,7 @@ describe('LocationAllocationTreemapTooltip', () => {
       isInitiative: true,
     } satisfies TreemapLayoutNode;
 
-    render(
+    const { rerender } = render(
       <LocationAllocationTreemapTooltip
         data={{ node, position: { x: 200, y: 200 } }}
         meta={meta}
@@ -115,8 +162,47 @@ describe('LocationAllocationTreemapTooltip', () => {
 
     expect(screen.getByText('Командное решение')).toBeInTheDocument();
     expect(screen.getByText('↳ Коэффициенты от команды «Platform»')).toBeInTheDocument();
-    expect(screen.getByText('Как распределено')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Выручка 60% · вручную 40%/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(longTitle)).not.toHaveClass('truncate');
     expect(screen.getByText('Россия')).toBeInTheDocument();
+    expect(screen.getByText('Казахстан')).toBeInTheDocument();
     expect(screen.getByText('Польша')).toBeInTheDocument();
+    expect(screen.getByText('ОАЭ')).toBeInTheDocument();
+    expect(screen.getByText('Drinkit')).toBeInTheDocument();
+    expect(screen.queryByText('Ещё 2 рынка')).not.toBeInTheDocument();
+    const tooltip = document.querySelector('.location-allocation-treemap-tooltip');
+    expect(tooltip).toHaveClass('pointer-events-none');
+    expect(tooltip?.querySelector('.overflow-y-auto')).not.toBeInTheDocument();
+
+    const revenueOnlyRow: AdminDataRow = {
+      ...row,
+      initiativeGeoCostSplit: {
+        ...row.initiativeGeoCostSplit,
+        entries: row.initiativeGeoCostSplit.entries.map((entry) => ({
+          ...entry,
+          allocationSource: 'revenue',
+        })),
+      },
+    };
+    const revenueOnlyMeta = buildLocationAllocationTreemapMeta(
+      [revenueOnlyRow],
+      ['2026-Q1'],
+      countries,
+      countryIdToClusterKey
+    );
+
+    rerender(
+      <LocationAllocationTreemapTooltip
+        data={{ node, position: { x: 200, y: 200 } }}
+        meta={revenueOnlyMeta}
+        countries={countries}
+        countryIdToClusterKey={countryIdToClusterKey}
+      />
+    );
+
+    expect(screen.getByText('По выручке')).toBeInTheDocument();
+    expect(screen.queryByText(/100% по выручке/)).not.toBeInTheDocument();
   });
 });

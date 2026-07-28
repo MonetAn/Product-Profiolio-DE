@@ -49,6 +49,26 @@ interface DetailPanelData {
   focusQuarter?: string;
 }
 
+type GanttHierarchyGrouping = {
+  mode: 'unit-team' | 'team';
+  headcountByUnit: Map<string, number>;
+  headcountByTeam: Map<string, number>;
+};
+
+type GanttDisplayItem =
+  | {
+      type: 'unit' | 'team';
+      key: string;
+      label: string;
+      headcount: number | null;
+    }
+  | {
+      type: 'row';
+      key: string;
+      row: RawDataRow;
+      rowIndex: number;
+    };
+
 interface GanttViewProps {
   rawData: RawDataRow[];
   selectedQuarters: string[];
@@ -105,6 +125,8 @@ interface GanttViewProps {
     hasUnsavedChanges: () => boolean;
     confirmDiscard: (onProceed: () => void) => void;
   } | null>;
+  /** Опциональные групповые заголовки для страницы аллокаций. */
+  hierarchyGrouping?: GanttHierarchyGrouping;
 }
 
 const GanttView = ({
@@ -137,6 +159,7 @@ const GanttView = ({
   fixedDetailPanel = false,
   renderDetailPanelBody,
   detailPanelCloseGuardRef,
+  hierarchyGrouping,
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
@@ -286,6 +309,117 @@ const GanttView = ({
   /** % имеет смысл при сужении охвата (юнит/команда/стейкхолдер), не на общем портфеле. */
   const showBudgetSharePercent =
     selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0;
+
+  const displayItems = useMemo<GanttDisplayItem[]>(() => {
+    if (!hierarchyGrouping) {
+      return filteredData.map((row, rowIndex) => ({
+        type: 'row',
+        key:
+          row.adminInitiativeRowId ??
+          `${row.unit}|${row.team}|${row.initiative}|${rowIndex}`,
+        row,
+        rowIndex,
+      }));
+    }
+
+    type GroupedRow = { row: RawDataRow; rowIndex: number };
+    type TeamGroup = {
+      team: string;
+      total: number;
+      rows: GroupedRow[];
+    };
+    type UnitGroup = {
+      unit: string;
+      total: number;
+      teams: Map<string, TeamGroup>;
+    };
+
+    const units = new Map<string, UnitGroup>();
+    filteredData.forEach((row, rowIndex) => {
+      const unit = row.unit.trim() || 'Без юнита';
+      const team = row.team.trim() || 'Без команды';
+      const amount = Math.max(
+        0,
+        sortByCost
+          ? sortByCost(row)
+          : timelineVisiblePeriodCost(
+              row,
+              selectedQuarters,
+              periodCostOpts
+            )
+      );
+      const unitGroup =
+        units.get(unit) ?? {
+          unit,
+          total: 0,
+          teams: new Map<string, TeamGroup>(),
+        };
+      const teamGroup =
+        unitGroup.teams.get(team) ?? {
+          team,
+          total: 0,
+          rows: [],
+        };
+      teamGroup.total += amount;
+      teamGroup.rows.push({ row, rowIndex });
+      unitGroup.total += amount;
+      unitGroup.teams.set(team, teamGroup);
+      units.set(unit, unitGroup);
+    });
+
+    const sortedUnits = [...units.values()].sort(
+      (a, b) =>
+        b.total - a.total || a.unit.localeCompare(b.unit, 'ru')
+    );
+    const items: GanttDisplayItem[] = [];
+    for (const unitGroup of sortedUnits) {
+      if (hierarchyGrouping.mode === 'unit-team') {
+        const headcount =
+          hierarchyGrouping.headcountByUnit.get(unitGroup.unit);
+        items.push({
+          type: 'unit',
+          key: `unit:${unitGroup.unit}`,
+          label: unitGroup.unit,
+          headcount:
+            headcount != null && headcount > 0 ? headcount : null,
+        });
+      }
+
+      const sortedTeams = [...unitGroup.teams.values()].sort(
+        (a, b) =>
+          b.total - a.total || a.team.localeCompare(b.team, 'ru')
+      );
+      for (const teamGroup of sortedTeams) {
+        const teamKey = `${unitGroup.unit}\t${teamGroup.team}`;
+        const headcount =
+          hierarchyGrouping.headcountByTeam.get(teamKey);
+        items.push({
+          type: 'team',
+          key: `team:${teamKey}`,
+          label: teamGroup.team,
+          headcount:
+            headcount != null && headcount > 0 ? headcount : null,
+        });
+        for (const groupedRow of teamGroup.rows) {
+          items.push({
+            type: 'row',
+            key:
+              groupedRow.row.adminInitiativeRowId ??
+              `${unitGroup.unit}|${teamGroup.team}|${groupedRow.row.initiative}|${groupedRow.rowIndex}`,
+            row: groupedRow.row,
+            rowIndex: groupedRow.rowIndex,
+          });
+        }
+      }
+    }
+    return items;
+  }, [
+    filteredData,
+    hierarchyGrouping,
+    periodCostOpts,
+    selectedQuarters,
+    sortByCost,
+  ]);
 
   // Scroll to highlighted initiative
   useEffect(() => {
@@ -1049,7 +1183,40 @@ const GanttView = ({
           </div>
 
           <div className="gantt-rows-block">
-        {filteredData.map((row, idx) => {
+        {displayItems.map((item) => {
+          if (item.type !== 'row') {
+            return (
+              <div
+                key={item.key}
+                className={cn(
+                  'gantt-hierarchy-row',
+                  item.type === 'unit'
+                    ? 'gantt-hierarchy-unit'
+                    : 'gantt-hierarchy-team'
+                )}
+              >
+                <div className="gantt-hierarchy-label">
+                  <span className="truncate">{item.label}</span>
+                  {item.headcount != null ? (
+                    <span
+                      className="gantt-hierarchy-headcount"
+                      title="Текущий состав по данным раздела «Люди»"
+                    >
+                      {item.headcount} чел.
+                    </span>
+                  ) : null}
+                </div>
+                <div
+                  className="gantt-hierarchy-track"
+                  style={{
+                    width: selectedQuarters.length * quarterWidth,
+                  }}
+                />
+              </div>
+            );
+          }
+
+          const { row, rowIndex: idx } = item;
           const totalCost = calculateTotalBudget(row);
           const periodCost = timelineVisiblePeriodCost(row, selectedQuarters, periodCostOpts);
           const allQuarters = getInitiativeQuarters(row);
@@ -1060,7 +1227,7 @@ const GanttView = ({
 
           return (
             <div 
-              key={row.adminInitiativeRowId ?? `${row.unit}|${row.team}|${row.initiative}|${idx}`} 
+              key={item.key}
               ref={isHighlighted ? highlightedRef : null}
               className={cn('gantt-row', isHighlighted && 'highlighted', row.isTimelineStub && 'gantt-row-is-stub', isDetailSelected && 'gantt-row-detail-selected')}
             >
@@ -1104,9 +1271,22 @@ const GanttView = ({
                     <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
                     {regionPaymentsAll ? (
                       <div className="gantt-region-breakdown">
-                        {regionPaymentsAll.regions.map(({ label, shortLabel }) => {
-                          const regionRub = regionPaymentsAll.getRegionRub(row, label);
+                        {(() => {
+                          const regionRows = regionPaymentsAll.regions.map(
+                            ({ label, shortLabel }) => ({
+                              label,
+                              shortLabel,
+                              rub: regionPaymentsAll.getRegionRub(row, label),
+                            })
+                          );
+                          const regionTotal = regionRows.reduce(
+                            (sum, region) => sum + Math.max(0, region.rub),
+                            0
+                          );
+                          return regionRows.map(({ label, shortLabel, rub: regionRub }) => {
                           const active = regionPaymentsAll.activeRegion === label;
+                          const regionPercent =
+                            regionTotal > 0 ? Math.round((regionRub / regionTotal) * 100) : 0;
                           return (
                             <span
                               key={label}
@@ -1115,15 +1295,25 @@ const GanttView = ({
                                 active && 'gantt-region-chip-active',
                                 regionRub <= 0 && 'gantt-region-chip-zero'
                               )}
-                              title={`${label}: ${regionRub > 0 ? formatBudget(regionRub) : '—'}`}
+                              title={`${label}: ${
+                                regionRub > 0
+                                  ? `${formatBudget(regionRub)} (${regionPercent}%)`
+                                  : '—'
+                              }`}
                             >
                               <span className="gantt-region-chip-label">{shortLabel}</span>
                               <span className="gantt-region-chip-value">
                                 {regionRub > 0 ? formatBudgetShort(regionRub) : '—'}
                               </span>
+                              {regionRub > 0 ? (
+                                <span className="gantt-region-chip-percent">
+                                  ({regionPercent}%)
+                                </span>
+                              ) : null}
                             </span>
                           );
-                        })}
+                          });
+                        })()}
                       </div>
                     ) : regionPayment ? (() => {
                       const regionRub = regionPayment.getRegionRubForRow(row);

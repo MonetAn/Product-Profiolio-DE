@@ -1,11 +1,12 @@
 import { memo, useMemo } from 'react';
-import { Pencil } from 'lucide-react';
+import { MessageSquareText } from 'lucide-react';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
 import type { LocationAllocationTreemapMeta, LocationAllocationTreemapScope } from '@/lib/locationAllocationTreemap';
 import {
   collectLocationTreemapInitiativeIds,
   resolveLocationTreemapNodeYearCost,
   resolveLocationTreemapNodeScopedCost,
+  resolveLocationTreemapNodeHeadcount,
   sumLocationTreemapRegionBreakdown,
   treemapScopeLabel,
 } from '@/lib/locationAllocationTreemap';
@@ -16,6 +17,12 @@ import {
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
+import { locationTeamKey } from '@/lib/locationAllocationPlanning';
+import {
+  EMPTY_LOCATION_COMMENT_COUNT,
+  type LocationAllocationCommentCount,
+  type LocationAllocationCommentSummary,
+} from '@/lib/locationAllocationCommentSummary';
 
 function getLuminance(hex: string): number {
   const rgb = parseInt(hex.slice(1), 16);
@@ -30,16 +37,41 @@ function getTextColorClass(bgColor: string): string {
   return getLuminance(bgColor) > 0.4 ? 'text-gray-900' : 'text-white';
 }
 
+function commentButtonLabel(
+  node: TreemapLayoutNode,
+  count: LocationAllocationCommentCount
+): string {
+  const openLabel = node.isUnit
+    ? `${count.openCount} нерешённых внутри юнита, включая команды и инициативы`
+    : node.isTeam
+      ? `${count.openCount} нерешённых внутри команды, включая инициативы`
+      : `${count.openCount} нерешённых комментариев`;
+  if (count.openCount > 0 && count.unreadCount > 0) {
+    return `${openLabel} · ${count.unreadCount} новых сообщений`;
+  }
+  if (count.openCount > 0) return openLabel;
+  if (count.unreadCount > 0) {
+    return `${count.unreadCount} новых сообщений`;
+  }
+  return 'Открыть комментарии';
+}
+
 const ParentHeader = memo(function ParentHeader({
   node,
   textColorClass,
   isTiny,
   isSmall,
+  headcount,
+  commentCount,
+  onCommentClick,
 }: {
   node: TreemapLayoutNode;
   textColorClass: string;
   isTiny: boolean;
   isSmall: boolean;
+  headcount: number | null;
+  commentCount: LocationAllocationCommentCount;
+  onCommentClick?: () => void;
 }) {
   if (node.height < 30) return null;
 
@@ -49,16 +81,38 @@ const ParentHeader = memo(function ParentHeader({
 
   return (
     <div
-      className={`absolute top-0.5 left-1 right-1 flex items-center font-semibold z-20 pointer-events-none ${labelClass} ${nameSize}`}
+      className={`absolute left-1 right-1 top-0.5 z-20 flex min-w-0 items-center gap-1 font-semibold pointer-events-none ${labelClass} ${nameSize}`}
       style={{
-        textShadow: '0 1px 3px rgba(0,0,0,0.85), 0 0 1px rgba(0,0,0,0.6)',
         whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
         lineHeight: '1.2',
       }}
     >
-      <span className="truncate">{node.name}</span>
+      <span className="min-w-0 truncate">
+        {node.name}
+        {headcount != null ? ` · ${headcount} чел.` : ''}
+      </span>
+      {onCommentClick ? (
+        <button
+          type="button"
+          className="relative inline-flex h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-md bg-black/25 px-1.5 text-white/95 hover:bg-black/40 hover:text-white pointer-events-auto"
+          title={commentButtonLabel(node, commentCount)}
+          aria-label={commentButtonLabel(node, commentCount)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onCommentClick();
+          }}
+        >
+          {commentCount.unreadCount > 0 ? (
+            <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
+          ) : null}
+          <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.1} />
+          {commentCount.openCount > 0 ? (
+            <span className="text-[9px] font-semibold tabular-nums">
+              {commentCount.openCount}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
     </div>
   );
 });
@@ -109,6 +163,10 @@ const CellCenterStack = memo(function CellCenterStack({
     () => sumLocationTreemapRegionBreakdown(initiativeIds, meta),
     [initiativeIds, meta]
   );
+  const headcount = useMemo(
+    () => resolveLocationTreemapNodeHeadcount(node, meta),
+    [node, meta]
+  );
 
   const isFiltered = treemapScope.kind !== 'all';
   const primaryCost = isFiltered ? scopedCost : fullCost;
@@ -144,8 +202,6 @@ const CellCenterStack = memo(function CellCenterStack({
 
   if (node.height < 30) return null;
 
-  const shadow =
-    textColorClass === 'text-white' ? '0 1px 3px rgba(0,0,0,0.85)' : 'none';
   const labelClass =
     node.isUnit || node.isTeam ? 'text-white' : textColorClass;
   const nameSize = isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]';
@@ -155,15 +211,18 @@ const CellCenterStack = memo(function CellCenterStack({
     textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700/90';
 
   return (
-    <div
-      className="absolute inset-0 flex flex-col items-center justify-center text-center p-1 pointer-events-none z-10"
-      style={{ textShadow: shadow }}
-    >
+    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-1 pointer-events-none z-10">
       <div
         className={`font-semibold leading-tight max-w-full truncate px-0.5 ${labelClass} ${nameSize}`}
       >
         {node.name}
       </div>
+
+      {headcount != null && !isTiny ? (
+        <div className={`mt-0.5 leading-tight ${mutedClass} ${regionSize}`}>
+          {headcount} чел.
+        </div>
+      ) : null}
 
       {showMoney && primaryCost > 0 && !isTiny ? (
         <div className={`mt-0.5 tabular-nums leading-tight ${labelClass} ${totalSize}`}>
@@ -229,6 +288,7 @@ export type LocationAllocationTreemapNodeProps = {
   totalValue?: number;
   showMoney?: boolean;
   onEditClick?: (node: TreemapLayoutNode) => void;
+  commentSummary?: LocationAllocationCommentSummary;
 };
 
 export const LocationAllocationTreemapNode = memo(function LocationAllocationTreemapNode({
@@ -249,6 +309,7 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
   totalValue = 0,
   showMoney = true,
   onEditClick,
+  commentSummary,
 }: LocationAllocationTreemapNodeProps) {
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
@@ -257,6 +318,37 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
   const y = node.y0 - parentY;
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
+  const showsParentHeader = Boolean(hasChildren && shouldRenderChildren);
+  const headcount = useMemo(
+    () => resolveLocationTreemapNodeHeadcount(node, meta),
+    [node, meta]
+  );
+  const commentCount = useMemo<LocationAllocationCommentCount>(() => {
+    if (!commentSummary) return EMPTY_LOCATION_COMMENT_COUNT;
+    if (node.isInitiative) {
+      const initiativeId = collectLocationTreemapInitiativeIds(node, meta)[0];
+      return (
+        (initiativeId
+          ? commentSummary.byInitiative.get(initiativeId)
+          : null) ?? EMPTY_LOCATION_COMMENT_COUNT
+      );
+    }
+    if (node.isTeam) {
+      const unit = node.data.unit?.trim() ?? '';
+      const team = node.data.team?.trim() || node.name.trim() || 'Без команды';
+      return (
+        commentSummary.byTeam.get(locationTeamKey(unit, team)) ??
+        EMPTY_LOCATION_COMMENT_COUNT
+      );
+    }
+    if (node.isUnit) {
+      const unit = node.data.unit?.trim() || node.name.trim();
+      return (
+        commentSummary.byUnit.get(unit) ?? EMPTY_LOCATION_COMMENT_COUNT
+      );
+    }
+    return EMPTY_LOCATION_COMMENT_COUNT;
+  }, [commentSummary, meta, node]);
 
   const classNames = [
     'treemap-node',
@@ -301,18 +393,30 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
 
   return (
     <div className={classNames} style={boxStyle} {...eventHandlers}>
-      {onEditClick && !node.isInitiative && node.height >= 28 && node.width >= 36 ? (
+      {onEditClick &&
+      !node.isInitiative &&
+      !showsParentHeader &&
+      node.height >= 30 &&
+      node.width >= 42 ? (
         <button
           type="button"
-          className="absolute top-0.5 right-0.5 z-30 flex h-6 w-6 items-center justify-center rounded-md bg-black/25 text-white/95 hover:bg-black/40 hover:text-white pointer-events-auto"
-          title="Редактировать аллокации"
-          aria-label="Редактировать аллокации"
+          className="absolute left-1 top-1 z-30 flex h-7 min-w-7 items-center justify-center gap-1 rounded-md bg-black/25 px-1.5 text-white/95 hover:bg-black/40 hover:text-white pointer-events-auto"
+          title={commentButtonLabel(node, commentCount)}
+          aria-label={commentButtonLabel(node, commentCount)}
           onClick={(e) => {
             e.stopPropagation();
             onEditClick(node);
           }}
         >
-          <Pencil className="h-3 w-3" strokeWidth={2.25} />
+          {commentCount.unreadCount > 0 ? (
+            <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
+          ) : null}
+          <MessageSquareText className="h-4 w-4" strokeWidth={2.1} />
+          {commentCount.openCount > 0 ? (
+            <span className="text-[10px] font-semibold tabular-nums">
+              {commentCount.openCount}
+            </span>
+          ) : null}
         </button>
       ) : null}
       {hasChildren && shouldRenderChildren ? (
@@ -321,6 +425,13 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
           textColorClass={textColorClass}
           isTiny={isTiny}
           isSmall={isSmall}
+          headcount={headcount}
+          commentCount={commentCount}
+          onCommentClick={
+            onEditClick && !node.isInitiative
+              ? () => onEditClick(node)
+              : undefined
+          }
         />
       ) : (
         <CellCenterStack
@@ -356,6 +467,7 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
               totalValue={totalValue}
               showMoney={showMoney}
               onEditClick={onEditClick}
+              commentSummary={commentSummary}
             />
           ))
         : null}
