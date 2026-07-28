@@ -359,9 +359,10 @@ export function LocationAllocationDrillDown({
   );
 
   useEffect(() => {
-    if (unitFilter && unitFilter !== previousUnitFilterRef.current) {
-      setTreemapShowTeams(true);
-      setTreemapShowInitiatives(true);
+    if (unitFilter !== previousUnitFilterRef.current) {
+      const showNestedLevels = Boolean(unitFilter);
+      setTreemapShowTeams(showNestedLevels);
+      setTreemapShowInitiatives(showNestedLevels);
     }
     previousUnitFilterRef.current = unitFilter;
   }, [unitFilter]);
@@ -401,6 +402,12 @@ export function LocationAllocationDrillDown({
     [effectiveTeamFilter, onTeamFilterChange]
   );
 
+  const handleResetFilters = useCallback(() => {
+    setTreemapShowTeams(false);
+    setTreemapShowInitiatives(false);
+    onResetFilters();
+  }, [onResetFilters]);
+
   const handleTreemapNavigateToRoot = useCallback(() => {
     setTreemapShowTeams(false);
     setTreemapShowInitiatives(false);
@@ -430,7 +437,7 @@ export function LocationAllocationDrillDown({
               period={period}
               defaultPeriod={defaultPeriod}
               onPeriodChange={onPeriodChange}
-              onResetFilters={onResetFilters}
+              onResetFilters={handleResetFilters}
               region={regionFilter}
               onRegionChange={onRegionFilterChange}
               unit={effectiveUnitFilter}

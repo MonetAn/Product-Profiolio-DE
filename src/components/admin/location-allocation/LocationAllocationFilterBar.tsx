@@ -342,6 +342,9 @@ export function LocationAllocationFilterBar({
               if (nextUnit) {
                 onShowTeamsChange(true);
                 onShowInitiativesChange(true);
+              } else {
+                onShowTeamsChange(false);
+                onShowInitiativesChange(false);
               }
             }}
           >
