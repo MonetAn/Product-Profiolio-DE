@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, MessageSquareText } from 'lucide-react';
-import type { AdminDataRow } from '@/lib/adminDataManager';
+import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import { getInitiativeDisplayName } from '@/lib/adminDataManager';
 import type { Person, PersonAssignment } from '@/lib/peopleDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
@@ -40,6 +40,9 @@ import {
   EMPTY_LOCATION_COMMENT_COUNT,
   type LocationAllocationCommentCount,
 } from '@/lib/locationAllocationCommentSummary';
+import { LocationAllocationTreemapEditDialog } from '@/components/admin/location-allocation/LocationAllocationTreemapEditDialog';
+import { resolveGeoEditTargetFromScope } from '@/lib/locationAllocationGeoEdit';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 type Props = {
   initiatives: AdminDataRow[];
@@ -53,6 +56,8 @@ type Props = {
   teamMetrics?: LocationAllocationTeamMetric[];
   readOnly?: boolean;
   selectedUnit?: string | null;
+  onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
+  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
 type MetricKind = 'fot2025Rub' | 'fot2026Rub' | 'peopleCountOverride';
@@ -196,6 +201,8 @@ export function LocationAllocationTeamView({
   teamMetrics = [],
   readOnly = false,
   selectedUnit = null,
+  onGeoCostSplitSave,
+  onInitiativeTagsSave,
 }: Props) {
   const {
     byTeam: liveMetricByTeam,
@@ -266,6 +273,28 @@ export function LocationAllocationTeamView({
 
   const selectedInitiative =
     initiatives.find((row) => row.id === selectedInitiativeId) ?? null;
+  const selectedInitiativeTarget = useMemo(
+    () =>
+      selectedInitiative
+        ? resolveGeoEditTargetFromScope(
+            {
+              type: 'initiative',
+              initiativeId: selectedInitiative.id,
+            },
+            initiatives,
+            selectedQuarters,
+            countries,
+            countryIdToClusterKey
+          )
+        : null,
+    [
+      countries,
+      countryIdToClusterKey,
+      initiatives,
+      selectedInitiative,
+      selectedQuarters,
+    ]
+  );
 
   useEffect(() => {
     if (!selectedUnit) return;
@@ -846,36 +875,18 @@ export function LocationAllocationTeamView({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={selectedInitiative != null}
+      <LocationAllocationTreemapEditDialog
+        open={selectedInitiativeTarget != null}
         onOpenChange={(open) => {
           if (!open) setSelectedInitiativeId(null);
         }}
-      >
-        <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedInitiative
-                ? getInitiativeDisplayName(selectedInitiative)
-                : 'Комментарии к инициативе'}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedInitiative
-                ? `${selectedInitiative.unit} › ${selectedInitiative.team}`
-                : 'Комментарии к инициативе'}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedInitiative ? (
-            <InitiativeAllocationComments
-              scope={{
-                type: 'initiative',
-                initiativeId: selectedInitiative.id,
-              }}
-              legacyNote={selectedInitiative.initiativeGeoCostSplit?.note}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+        target={selectedInitiativeTarget}
+        countries={countries}
+        countryIdToClusterKey={countryIdToClusterKey}
+        onGeoCostSplitSave={onGeoCostSplitSave}
+        onInitiativeTagsSave={onInitiativeTagsSave}
+        readOnly={readOnly}
+      />
     </>
   );
 }

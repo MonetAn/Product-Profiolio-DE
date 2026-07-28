@@ -537,6 +537,8 @@ export function LocationAllocationDrillDown({
             teamMetrics={teamMetrics}
             readOnly={readOnly}
             selectedUnit={effectiveUnitFilter}
+            onGeoCostSplitSave={onGeoCostSplitSave}
+            onInitiativeTagsSave={onInitiativeTagsSave}
           />
         )}
       </div>
