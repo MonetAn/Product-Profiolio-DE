@@ -160,10 +160,10 @@ function teamCountLabel(count: number): string {
 
 function RegionPaymentSummary({
   payments,
-  align = 'start',
+  prominent = false,
 }: {
   payments: InitiativeRegionPayment[];
-  align?: 'start' | 'end';
+  prominent?: boolean;
 }) {
   if (payments.length === 0) {
     return (
@@ -175,14 +175,19 @@ function RegionPaymentSummary({
 
   return (
     <div
-      className={`flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground ${
-        align === 'end' ? 'justify-end' : ''
+      className={`flex flex-wrap gap-x-2 gap-y-0.5 ${
+        prominent ? 'text-xs' : 'text-[10px]'
       }`}
     >
       {payments.map((payment) => (
         <span key={payment.region} className="whitespace-nowrap tabular-nums">
-          {TOP_REGION_SHORT_LABELS[payment.region]}{' '}
-          {formatLocationCompactM(payment.rub)} ({Math.round(payment.percent)}%)
+          <span className="font-medium text-foreground/80">
+            {TOP_REGION_SHORT_LABELS[payment.region]}{' '}
+            {formatLocationCompactM(payment.rub)}
+          </span>{' '}
+          <span className="text-muted-foreground">
+            ({Math.round(payment.percent)}%)
+          </span>
         </span>
       ))}
     </div>
@@ -374,8 +379,8 @@ export function LocationAllocationTeamView({
             key={group.unit}
             className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
           >
-            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/25 px-3 py-3">
-              <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/25 px-3 py-3">
+              <div className="flex min-w-[260px] flex-1 items-start gap-1.5">
                 <button
                   type="button"
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -402,7 +407,7 @@ export function LocationAllocationTeamView({
                     aria-hidden
                   />
                 </button>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Юнит · {teamCountLabel(group.teams.length)}
                   </p>
@@ -427,18 +432,15 @@ export function LocationAllocationTeamView({
                       <CommentBadge count={unitCommentCount} level="unit" />
                     ) : null}
                   </button>
+                  <div className="mt-1">
+                    <RegionPaymentSummary
+                      payments={unitRegionPayments}
+                      prominent
+                    />
+                  </div>
                 </div>
               </div>
               <div className="flex max-w-full shrink-0 flex-wrap items-end justify-end gap-x-5 gap-y-2 text-right">
-                <div className="max-w-[430px]">
-                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Регионы · выбранный период
-                  </p>
-                  <RegionPaymentSummary
-                    payments={unitRegionPayments}
-                    align="end"
-                  />
-                </div>
                 <div>
                   <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                     ФОТ 2025
