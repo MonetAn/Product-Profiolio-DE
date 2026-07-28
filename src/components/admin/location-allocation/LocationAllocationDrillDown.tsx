@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { LocationRegionKpiCards } from '@/components/admin/location-allocation/LocationRegionKpiCards';
@@ -108,6 +108,7 @@ export function LocationAllocationDrillDown({
     useState<InitiativeDetailView>('treemap');
   const [treemapShowTeams, setTreemapShowTeams] = useState(false);
   const [treemapShowInitiatives, setTreemapShowInitiatives] = useState(false);
+  const previousUnitFilterRef = useRef<string | null>(null);
 
   const visibleInitiatives = initiatives;
 
@@ -356,6 +357,14 @@ export function LocationAllocationDrillDown({
       countryIdToClusterKey,
     ]
   );
+
+  useEffect(() => {
+    if (unitFilter && unitFilter !== previousUnitFilterRef.current) {
+      setTreemapShowTeams(true);
+      setTreemapShowInitiatives(true);
+    }
+    previousUnitFilterRef.current = unitFilter;
+  }, [unitFilter]);
 
   useEffect(() => {
     if (unitFilter && !effectiveUnitFilter) {

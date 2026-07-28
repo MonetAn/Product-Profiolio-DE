@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header, { type ViewType } from '@/components/Header';
@@ -23,15 +23,19 @@ import {
 } from '@/hooks/useLocationAllocationWorkspace';
 import { useAccess } from '@/hooks/useAccess';
 import {
+  buildLocationAllocationPeriodOptions,
   resolveLocationAllocationPeriod,
+  resolveLocationAllocationDatasetQuarters,
   type LocationAllocationPeriodOption,
 } from '@/lib/locationAllocationPeriod';
 
 const CURRENT_YEAR = new Date().getFullYear();
+const DEFAULT_ALLOCATION_UNIT = 'Data Office';
 
 export default function AdminLocationAllocations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const defaultUnitAppliedRef = useRef(false);
   const { isAdmin, hasEarlyAccess } = useAccess();
   const regionFilter = topRegionFromUrlSlug(searchParams.get('region') || '');
   const unitFilter = unitFromUrlParam(searchParams.get('unit') || '');
@@ -105,35 +109,42 @@ export default function AdminLocationAllocations() {
   const readOnly = workspace?.readOnly ?? false;
   const geoSplitMutation = useLocationAllocationGeoSplitMutation();
 
+  useEffect(() => {
+    if (defaultUnitAppliedRef.current) return;
+    defaultUnitAppliedRef.current = true;
+    if (searchParams.has('unit') || searchParams.has('comment')) return;
+
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set('unit', unitToUrlParam(DEFAULT_ALLOCATION_UNIT));
+        return next;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
+
   const periodOptions = useMemo<LocationAllocationPeriodOption[]>(() => {
-    const quarters = [
+    const availableQuarters = [
       ...new Set(
         initiatives.flatMap((row) =>
           Object.keys(row.quarterlyData).filter((key) => /^\d{4}-Q[1-4]$/.test(key))
         )
       ),
     ].sort();
-    const years = [...new Set(quarters.map((quarter) => Number(quarter.slice(0, 4))))]
-      .filter(Number.isFinite)
-      .sort((a, b) => b - a);
-    return years.flatMap((year) => {
-      const yearQuarters = quarters.filter((quarter) => quarter.startsWith(`${year}-`));
-      return [
-        {
-          value: String(year),
-          label: `${year} · весь год`,
-          year,
-          quarters: yearQuarters,
-        },
-        ...yearQuarters.map((quarter) => ({
-          value: quarter,
-          label: quarter.replace('-', ' · '),
-          year,
-          quarters: [quarter],
-        })),
-      ];
+    const datasetQuarters = resolveLocationAllocationDatasetQuarters({
+      availableQuarters,
+      periodStart: workspace?.dataset.periodStart,
+      periodEnd: workspace?.dataset.periodEnd,
+      datasetLabel: workspace?.dataset.label,
     });
-  }, [initiatives]);
+    return buildLocationAllocationPeriodOptions(datasetQuarters);
+  }, [
+    initiatives,
+    workspace?.dataset.label,
+    workspace?.dataset.periodEnd,
+    workspace?.dataset.periodStart,
+  ]);
 
   const requestedPeriod = searchParams.get('period') || '';
   const defaultPeriod =
