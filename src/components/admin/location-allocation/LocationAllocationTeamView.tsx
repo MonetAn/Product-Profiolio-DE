@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, MessageSquareText } from 'lucide-react';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import { getInitiativeDisplayName } from '@/lib/adminDataManager';
@@ -52,6 +52,7 @@ type Props = {
   countryIdToClusterKey: Map<string, string>;
   teamMetrics?: LocationAllocationTeamMetric[];
   readOnly?: boolean;
+  selectedUnit?: string | null;
 };
 
 type MetricKind = 'fot2025Rub' | 'fot2026Rub' | 'peopleCountOverride';
@@ -194,6 +195,7 @@ export function LocationAllocationTeamView({
   countryIdToClusterKey,
   teamMetrics = [],
   readOnly = false,
+  selectedUnit = null,
 }: Props) {
   const {
     byTeam: liveMetricByTeam,
@@ -226,7 +228,7 @@ export function LocationAllocationTeamView({
   const [unitLabelDraft, setUnitLabelDraft] = useState('');
   const [selectedInitiativeId, setSelectedInitiativeId] = useState<string | null>(null);
   const [expandedUnits, setExpandedUnits] = useState<Set<string>>(
-    () => new Set()
+    () => new Set(selectedUnit ? [selectedUnit] : [])
   );
 
   const allRowsByTeam = useMemo(() => {
@@ -264,6 +266,16 @@ export function LocationAllocationTeamView({
 
   const selectedInitiative =
     initiatives.find((row) => row.id === selectedInitiativeId) ?? null;
+
+  useEffect(() => {
+    if (!selectedUnit) return;
+    setExpandedUnits((current) => {
+      if (current.has(selectedUnit)) return current;
+      const next = new Set(current);
+      next.add(selectedUnit);
+      return next;
+    });
+  }, [selectedUnit]);
 
   const openMetricEditor = (
     unit: string,

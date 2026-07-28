@@ -529,6 +529,7 @@ export function LocationAllocationDrillDown({
             countryIdToClusterKey={countryIdToClusterKey}
             teamMetrics={teamMetrics}
             readOnly={readOnly}
+            selectedUnit={effectiveUnitFilter}
           />
         )}
       </div>
