@@ -453,15 +453,25 @@ export function LocationAllocationDrillDown({
                 setInitiativeDetailView(value);
               }
             }}
-            className="h-8 rounded-lg border border-border bg-muted/30 p-0.5"
+            className="h-8 shrink-0 rounded-lg border border-border bg-secondary p-0.5"
+            aria-label="Вид аллокаций"
           >
-            <ToggleGroupItem value="treemap" className="h-7 px-3 text-xs">
+            <ToggleGroupItem
+              value="treemap"
+              className="h-7 rounded-md px-3 text-xs font-medium transition-all data-[state=on]:bg-primary data-[state=on]:font-semibold data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary"
+            >
               Тримап
             </ToggleGroupItem>
-            <ToggleGroupItem value="timeline" className="h-7 px-3 text-xs">
+            <ToggleGroupItem
+              value="timeline"
+              className="h-7 rounded-md px-3 text-xs font-medium transition-all data-[state=on]:bg-primary data-[state=on]:font-semibold data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary"
+            >
               Таймлайн
             </ToggleGroupItem>
-            <ToggleGroupItem value="teams" className="h-7 px-3 text-xs">
+            <ToggleGroupItem
+              value="teams"
+              className="h-7 rounded-md px-3 text-xs font-medium transition-all data-[state=on]:bg-primary data-[state=on]:font-semibold data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary"
+            >
               Таблица
             </ToggleGroupItem>
           </ToggleGroup>
