@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { LocationRegionKpiCards } from '@/components/admin/location-allocation/LocationRegionKpiCards';
@@ -108,6 +108,7 @@ export function LocationAllocationDrillDown({
     useState<InitiativeDetailView>('treemap');
   const [treemapShowTeams, setTreemapShowTeams] = useState(false);
   const [treemapShowInitiatives, setTreemapShowInitiatives] = useState(false);
+  const previousUnitFilterRef = useRef<string | null>(null);
 
   const visibleInitiatives = initiatives;
 
@@ -358,6 +359,15 @@ export function LocationAllocationDrillDown({
   );
 
   useEffect(() => {
+    if (unitFilter !== previousUnitFilterRef.current) {
+      const showNestedLevels = Boolean(unitFilter);
+      setTreemapShowTeams(showNestedLevels);
+      setTreemapShowInitiatives(showNestedLevels);
+    }
+    previousUnitFilterRef.current = unitFilter;
+  }, [unitFilter]);
+
+  useEffect(() => {
     if (unitFilter && !effectiveUnitFilter) {
       onUnitFilterChange(null);
     }
@@ -392,6 +402,12 @@ export function LocationAllocationDrillDown({
     [effectiveTeamFilter, onTeamFilterChange]
   );
 
+  const handleResetFilters = useCallback(() => {
+    setTreemapShowTeams(false);
+    setTreemapShowInitiatives(false);
+    onResetFilters();
+  }, [onResetFilters]);
+
   const handleTreemapNavigateToRoot = useCallback(() => {
     setTreemapShowTeams(false);
     setTreemapShowInitiatives(false);
@@ -421,7 +437,7 @@ export function LocationAllocationDrillDown({
               period={period}
               defaultPeriod={defaultPeriod}
               onPeriodChange={onPeriodChange}
-              onResetFilters={onResetFilters}
+              onResetFilters={handleResetFilters}
               region={regionFilter}
               onRegionChange={onRegionFilterChange}
               unit={effectiveUnitFilter}
@@ -444,15 +460,25 @@ export function LocationAllocationDrillDown({
                 setInitiativeDetailView(value);
               }
             }}
-            className="h-8 rounded-lg border border-border bg-muted/30 p-0.5"
+            className="h-8 shrink-0 rounded-lg border border-border bg-secondary p-0.5"
+            aria-label="Вид аллокаций"
           >
-            <ToggleGroupItem value="treemap" className="h-7 px-3 text-xs">
+            <ToggleGroupItem
+              value="treemap"
+              className="h-7 rounded-md px-3 text-xs font-medium transition-all data-[state=on]:bg-primary data-[state=on]:font-semibold data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary"
+            >
               Тримап
             </ToggleGroupItem>
-            <ToggleGroupItem value="timeline" className="h-7 px-3 text-xs">
+            <ToggleGroupItem
+              value="timeline"
+              className="h-7 rounded-md px-3 text-xs font-medium transition-all data-[state=on]:bg-primary data-[state=on]:font-semibold data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary"
+            >
               Таймлайн
             </ToggleGroupItem>
-            <ToggleGroupItem value="teams" className="h-7 px-3 text-xs">
+            <ToggleGroupItem
+              value="teams"
+              className="h-7 rounded-md px-3 text-xs font-medium transition-all data-[state=on]:bg-primary data-[state=on]:font-semibold data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary"
+            >
               Таблица
             </ToggleGroupItem>
           </ToggleGroup>
@@ -510,6 +536,9 @@ export function LocationAllocationDrillDown({
             countryIdToClusterKey={countryIdToClusterKey}
             teamMetrics={teamMetrics}
             readOnly={readOnly}
+            selectedUnit={effectiveUnitFilter}
+            onGeoCostSplitSave={onGeoCostSplitSave}
+            onInitiativeTagsSave={onInitiativeTagsSave}
           />
         )}
       </div>

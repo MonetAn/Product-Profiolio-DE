@@ -22,6 +22,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  formatLocationAllocationQuarterSpan,
+  isCompleteLocationAllocationYear,
   resolveLocationAllocationPeriod,
   type LocationAllocationPeriodOption,
 } from '@/lib/locationAllocationPeriod';
@@ -251,6 +253,10 @@ export function LocationAllocationFilterBar({
                   quarter.startsWith(`${year}-`)
                 );
                 const fullYearSelected = period === year;
+                const completeYear = isCompleteLocationAllocationYear(
+                  year,
+                  yearQuarters
+                );
                 return (
                   <div key={year} className="space-y-1">
                     <button
@@ -264,7 +270,11 @@ export function LocationAllocationFilterBar({
                       }}
                     >
                       <span>{year}</span>
-                      <span className="text-[10px] font-normal">Весь год</span>
+                      <span className="text-[10px] font-normal">
+                        {completeYear
+                          ? 'Весь год'
+                          : formatLocationAllocationQuarterSpan(yearQuarters)}
+                      </span>
                     </button>
                     <div className="grid grid-cols-4 gap-1">
                       {yearQuarters.map((quarter) => {
@@ -332,6 +342,9 @@ export function LocationAllocationFilterBar({
               if (nextUnit) {
                 onShowTeamsChange(true);
                 onShowInitiativesChange(true);
+              } else {
+                onShowTeamsChange(false);
+                onShowInitiativesChange(false);
               }
             }}
           >
