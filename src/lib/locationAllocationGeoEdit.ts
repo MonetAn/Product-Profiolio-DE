@@ -42,6 +42,11 @@ export type LocationAllocationGeoEditTarget = {
   initialSplit: GeoCostSplit | undefined;
 };
 
+export type LocationAllocationGeoEditScope =
+  | { type: 'initiative'; initiativeId: string }
+  | { type: 'team'; unit: string; team: string }
+  | { type: 'unit'; unit: string };
+
 export type GeoHierarchyMarketRow = {
   countryId: string;
   label: string;
@@ -560,6 +565,68 @@ export function resolveGeoEditTargetFromNode(
   }
 
   return null;
+}
+
+export function resolveGeoEditTargetFromScope(
+  scope: LocationAllocationGeoEditScope,
+  allInitiatives: AdminDataRow[],
+  yearQuarters: string[],
+  countries: MarketCountryRow[],
+  countryIdToClusterKey: Map<string, string>
+): LocationAllocationGeoEditTarget | null {
+  const initiatives = allInitiatives
+    .filter((row) => {
+      if (scope.type === 'initiative') return row.id === scope.initiativeId;
+      if (scope.type === 'team') {
+        return row.unit === scope.unit && row.team === scope.team;
+      }
+      return row.unit === scope.unit;
+    })
+    .filter((row) => initiativeYearCostRub(row, yearQuarters) > 0);
+  if (initiatives.length === 0) return null;
+
+  const { totalCostRub, split } = aggregateGeoSplitFromInitiatives(
+    initiatives,
+    yearQuarters,
+    countries,
+    countryIdToClusterKey
+  );
+
+  if (scope.type === 'initiative') {
+    const row = initiatives[0];
+    return {
+      level: 'initiative',
+      title: row.initiative,
+      breadcrumb: `${row.unit} › ${row.team || 'Без команды'}`,
+      description: row.description?.trim() ?? '',
+      initiativeIds: [row.id],
+      initiatives,
+      totalCostRub,
+      initialSplit: effectiveSplitForInitiative(row, countries),
+    };
+  }
+  if (scope.type === 'team') {
+    return {
+      level: 'team',
+      title: scope.team,
+      breadcrumb: scope.unit,
+      description: '',
+      initiativeIds: initiatives.map((row) => row.id),
+      initiatives,
+      totalCostRub,
+      initialSplit: split,
+    };
+  }
+  return {
+    level: 'unit',
+    title: scope.unit,
+    breadcrumb: 'Dodo Engineering',
+    description: '',
+    initiativeIds: initiatives.map((row) => row.id),
+    initiatives,
+    totalCostRub,
+    initialSplit: split,
+  };
 }
 
 export function scopeLabelForLevel(level: LocationAllocationGeoEditLevel): string {

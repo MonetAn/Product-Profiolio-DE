@@ -17,6 +17,9 @@ import type { LocationAllocationTreemapMeta, LocationAllocationTreemapScope } fr
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { normalizeTreemapFocusPath, splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import '@/styles/treemap.css';
+import type { LocationAllocationCommentSummary } from '@/lib/locationAllocationCommentSummary';
+
+const TOOLTIP_HIDE_DELAY_MS = 45;
 
 type Props = {
   data: TreeNode;
@@ -36,7 +39,9 @@ type Props = {
   onAutoEnableInitiatives?: () => void;
   onAutoDisableTeams?: () => void;
   onAutoDisableInitiatives?: () => void;
+  onNavigateToRoot?: () => void;
   onEditNode?: (node: TreemapLayoutNode) => void;
+  commentSummary?: LocationAllocationCommentSummary;
 };
 
 export function LocationAllocationTreemapContainer({
@@ -56,7 +61,9 @@ export function LocationAllocationTreemapContainer({
   onAutoEnableInitiatives,
   onAutoDisableTeams,
   onAutoDisableInitiatives,
+  onNavigateToRoot,
   onEditNode,
+  commentSummary,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -136,13 +143,14 @@ export function LocationAllocationTreemapContainer({
     [onAutoDisableInitiatives, onAutoDisableTeams]
   );
 
-  const handleNavigateBack = useCallback(() => {
+  const handleNavigateToRoot = useCallback(() => {
     if (focusedPath.length === 0) return;
     const oldLength = focusedPath.length;
-    const newPath = focusedPath.slice(0, -1);
+    const newPath: string[] = [];
     applyZoomOutAutoDisable(oldLength, newPath.length);
     setFocusedPath(newPath);
-  }, [focusedPath, applyZoomOutAutoDisable]);
+    onNavigateToRoot?.();
+  }, [focusedPath, applyZoomOutAutoDisable, onNavigateToRoot]);
 
   const handleNodeClick = useCallback(
     (node: TreemapLayoutNode) => {
@@ -213,19 +221,7 @@ export function LocationAllocationTreemapContainer({
       hoveredNodeRef.current = null;
       setTooltipData(null);
       tooltipHideTimeoutRef.current = null;
-    }, 140);
-  }, []);
-
-  const handleTooltipMouseEnter = useCallback(() => {
-    if (tooltipHideTimeoutRef.current !== null) {
-      clearTimeout(tooltipHideTimeoutRef.current);
-      tooltipHideTimeoutRef.current = null;
-    }
-  }, []);
-
-  const handleTooltipMouseLeave = useCallback(() => {
-    hoveredNodeRef.current = null;
-    setTooltipData(null);
+    }, TOOLTIP_HIDE_DELAY_MS);
   }, []);
 
   const canZoomOut = focusedPath.length > 0;
@@ -239,8 +235,8 @@ export function LocationAllocationTreemapContainer({
       <button
         type="button"
         className={`navigate-back-button ${canZoomOut ? 'visible' : ''}`}
-        onClick={handleNavigateBack}
-        title="Подняться на уровень выше"
+        onClick={handleNavigateToRoot}
+        title="Вернуться на верхний уровень"
       >
         <ArrowUp size={28} strokeWidth={2.5} />
       </button>
@@ -252,8 +248,6 @@ export function LocationAllocationTreemapContainer({
         countries={countries}
         countryIdToClusterKey={countryIdToClusterKey}
         showMoney={showMoney}
-        onMouseEnter={handleTooltipMouseEnter}
-        onMouseLeave={handleTooltipMouseLeave}
       />
 
       {!isEmpty && dimensions.width > 0 ? (
@@ -285,6 +279,7 @@ export function LocationAllocationTreemapContainer({
               totalValue={totalValue}
               showMoney={showMoney}
               onEditClick={onEditNode}
+              commentSummary={commentSummary}
             />
           ))}
         </div>

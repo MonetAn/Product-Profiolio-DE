@@ -28,7 +28,7 @@ interface FilterBarProps {
   allStakeholders: string[];
   selectedStakeholders: string[];
   onStakeholdersChange: (stakeholders: string[]) => void;
-  
+
   // Period selector
   availableYears: string[];
   availableQuarters: string[];
@@ -104,7 +104,7 @@ function threeBucketPercentages(a: number, b: number, c: number): [number, numbe
   if (total <= 0) return [0, 0, 0];
   const raw = [(a / total) * 100, (b / total) * 100, (c / total) * 100];
   const floors = raw.map((r) => Math.floor(r));
-  let remainder = 100 - floors.reduce((s, x) => s + x, 0);
+  const remainder = 100 - floors.reduce((s, x) => s + x, 0);
   const byFrac = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((x, y) => y.frac - x.frac);
   const out: [number, number, number] = [floors[0], floors[1], floors[2]];
   for (let k = 0; k < remainder; k++) {

@@ -1,11 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
-import AdminHeader from '@/components/admin/AdminHeader';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import Header, { type ViewType } from '@/components/Header';
 import { LocationAllocationDrillDown } from '@/components/admin/location-allocation/LocationAllocationDrillDown';
-import { useInitiatives } from '@/hooks/useInitiatives';
-import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
-import { useMarketCountries, buildCountryIdToClusterMap } from '@/hooks/useMarketCountries';
+import { buildCountryIdToClusterMap } from '@/hooks/useMarketCountries';
 import type { GeoCostSplit } from '@/lib/adminDataManager';
 import {
   topRegionFromUrlSlug,
@@ -18,33 +16,159 @@ import {
 } from '@/lib/locationRegionModel';
 import { excludePortfolioGhostRows } from '@/lib/portfolioVisibility';
 import type { InitiativeTag } from '@/lib/initiativeTags';
+import { buildLocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
+import {
+  useLocationAllocationGeoSplitMutation,
+  useLocationAllocationWorkspace,
+} from '@/hooks/useLocationAllocationWorkspace';
+import { useAccess } from '@/hooks/useAccess';
+import {
+  resolveLocationAllocationPeriod,
+  type LocationAllocationPeriodOption,
+} from '@/lib/locationAllocationPeriod';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 export default function AdminLocationAllocations() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isAdmin, hasEarlyAccess } = useAccess();
   const regionFilter = topRegionFromUrlSlug(searchParams.get('region') || '');
   const unitFilter = unitFromUrlParam(searchParams.get('unit') || '');
   const teamFilter = teamFromUrlParam(searchParams.get('team') || '');
   const marketCountryId = searchParams.get('market') || '';
+  const focusedComment = useMemo(() => {
+    const id = searchParams.get('comment')?.trim() ?? '';
+    const scopeType = searchParams.get('commentScope');
+    if (!id) return null;
+    if (scopeType === 'initiative') {
+      const initiativeId = searchParams.get('initiative')?.trim() ?? '';
+      return initiativeId
+        ? {
+            id,
+            scope: {
+              type: 'initiative' as const,
+              initiativeId,
+            },
+          }
+        : null;
+    }
+    if (scopeType === 'team' && unitFilter && teamFilter) {
+      return {
+        id,
+        scope: {
+          type: 'team' as const,
+          unit: unitFilter,
+          team: teamFilter,
+        },
+      };
+    }
+    if (scopeType === 'unit' && unitFilter) {
+      return {
+        id,
+        scope: {
+          type: 'unit' as const,
+          unit: unitFilter,
+        },
+      };
+    }
+    return null;
+  }, [searchParams, teamFilter, unitFilter]);
 
-  const { data: initiativesRaw = [], isLoading: loadingInitiatives } = useInitiatives({ tableAll: true });
+  const {
+    data: workspace,
+    isLoading,
+    isError,
+    error,
+  } = useLocationAllocationWorkspace();
+  const initiativesRaw = useMemo(
+    () => workspace?.initiatives ?? [],
+    [workspace?.initiatives]
+  );
   const initiatives = useMemo(() => excludePortfolioGhostRows(initiativesRaw), [initiativesRaw]);
-  const { data: countries = [], isLoading: loadingCountries } = useMarketCountries();
-  const { updateInitiativeFieldAsync } = useInitiativeMutations();
+  const countries = useMemo(
+    () => workspace?.countries ?? [],
+    [workspace?.countries]
+  );
+  const people = useMemo(
+    () => workspace?.people ?? [],
+    [workspace?.people]
+  );
+  const assignments = useMemo(
+    () => workspace?.assignments ?? [],
+    [workspace?.assignments]
+  );
+  const teamMetrics = useMemo(
+    () => workspace?.teamMetrics ?? [],
+    [workspace?.teamMetrics]
+  );
+  const readOnly = workspace?.readOnly ?? false;
+  const geoSplitMutation = useLocationAllocationGeoSplitMutation();
+
+  const periodOptions = useMemo<LocationAllocationPeriodOption[]>(() => {
+    const quarters = [
+      ...new Set(
+        initiatives.flatMap((row) =>
+          Object.keys(row.quarterlyData).filter((key) => /^\d{4}-Q[1-4]$/.test(key))
+        )
+      ),
+    ].sort();
+    const years = [...new Set(quarters.map((quarter) => Number(quarter.slice(0, 4))))]
+      .filter(Number.isFinite)
+      .sort((a, b) => b - a);
+    return years.flatMap((year) => {
+      const yearQuarters = quarters.filter((quarter) => quarter.startsWith(`${year}-`));
+      return [
+        {
+          value: String(year),
+          label: `${year} · весь год`,
+          year,
+          quarters: yearQuarters,
+        },
+        ...yearQuarters.map((quarter) => ({
+          value: quarter,
+          label: quarter.replace('-', ' · '),
+          year,
+          quarters: [quarter],
+        })),
+      ];
+    });
+  }, [initiatives]);
+
+  const requestedPeriod = searchParams.get('period') || '';
+  const defaultPeriod =
+    periodOptions.find((option) => option.value === String(CURRENT_YEAR))?.value ??
+    periodOptions[0]?.value ??
+    String(CURRENT_YEAR);
+  const selectedPeriod = useMemo(() => {
+    const requested = resolveLocationAllocationPeriod(requestedPeriod, periodOptions);
+    if (requested) return requested;
+    return (
+      periodOptions.find((option) => option.value === String(CURRENT_YEAR)) ??
+      periodOptions[0] ?? {
+        value: String(CURRENT_YEAR),
+        label: `${CURRENT_YEAR} · весь год`,
+        year: CURRENT_YEAR,
+        quarters: Array.from({ length: 4 }, (_, index) => `${CURRENT_YEAR}-Q${index + 1}`),
+      }
+    );
+  }, [periodOptions, requestedPeriod]);
+
+  const headcount = useMemo(() => buildLocationHeadcountIndex(people), [people]);
 
   const saveGeoCostSplit = useCallback(
     async (id: string, split: GeoCostSplit | undefined) => {
-      await updateInitiativeFieldAsync(id, 'initiativeGeoCostSplit', split);
+      if (readOnly) {
+        throw new Error('Исторический набор доступен только для просмотра');
+      }
+      await geoSplitMutation.mutateAsync({ initiativeId: id, split });
     },
-    [updateInitiativeFieldAsync]
+    [geoSplitMutation, readOnly]
   );
 
   const saveInitiativeTags = useCallback(
-    async (id: string, tags: InitiativeTag[]) => {
-      await updateInitiativeFieldAsync(id, 'tags', tags);
-    },
-    [updateInitiativeFieldAsync]
+    async (_id: string, _tags: InitiativeTag[]) => {},
+    []
   );
 
   const setRegionFilter = useCallback(
@@ -52,9 +176,6 @@ export default function AdminLocationAllocations() {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
         next.delete('cluster');
-        next.delete('unit');
-        next.delete('team');
-        next.delete('market');
         const slug = topRegionToUrlSlug(region);
         if (slug) next.set('region', slug);
         else next.delete('region');
@@ -106,6 +227,30 @@ export default function AdminLocationAllocations() {
     [setSearchParams]
   );
 
+  const setPeriod = useCallback(
+    (period: string) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('period', period);
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
+
+  const resetFilters = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('period');
+      next.delete('region');
+      next.delete('cluster');
+      next.delete('unit');
+      next.delete('team');
+      next.delete('market');
+      return next;
+    });
+  }, [setSearchParams]);
+
   const countryIdToClusterKey = useMemo(
     () => buildCountryIdToClusterMap(countries),
     [countries]
@@ -115,36 +260,78 @@ export default function AdminLocationAllocations() {
     () => countries.find((c) => c.id === marketCountryId) ?? null,
     [countries, marketCountryId]
   );
-  const isLoading = loadingInitiatives || loadingCountries;
+  const handleViewChange = useCallback(
+    (view: ViewType) => {
+      if (view === 'allocations') return;
+      navigate('/', { state: { dashboardView: view } });
+    },
+    [navigate]
+  );
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
-      <AdminHeader currentView="locationAllocations" />
+      <Header
+        currentView="allocations"
+        onViewChange={handleViewChange}
+        isAdmin={isAdmin}
+        adminTo="/admin"
+        showCrossInitiativesTab={hasEarlyAccess}
+      />
 
-      <main className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-4 sm:p-6 pb-10">
-        <div className="mx-auto w-full max-w-[1200px] space-y-4">
+      <main className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-4 pt-[72px] sm:p-6 sm:pt-[80px] pb-10">
+        <div className="mx-auto w-full max-w-[1440px] space-y-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
               <Loader2 className="h-5 w-5 animate-spin" />
               Загрузка…
             </div>
+          ) : isError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">
+              Не удалось загрузить аллокации: {error instanceof Error ? error.message : 'попробуйте обновить страницу'}
+            </div>
           ) : (
-            <LocationAllocationDrillDown
-              initiatives={initiatives}
-              countries={countries}
-              countryIdToClusterKey={countryIdToClusterKey}
-              year={CURRENT_YEAR}
-              regionFilter={regionFilter}
-              onRegionFilterChange={setRegionFilter}
-              unitFilter={unitFilter}
-              onUnitFilterChange={setUnitFilter}
-              teamFilter={teamFilter}
-              onTeamFilterChange={setTeamFilter}
-              marketCountry={marketCountry}
-              onMarketFilterChange={setMarketFilter}
-              onGeoCostSplitSave={saveGeoCostSplit}
-              onInitiativeTagsSave={saveInitiativeTags}
-            />
+            <>
+              {readOnly ? (
+                <div className="rounded-xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-800/70 dark:bg-amber-950/25 dark:text-amber-100">
+                  <p className="font-semibold">
+                    Исторический набор «{workspace?.dataset.label}»
+                  </p>
+                  <p className="mt-0.5 text-xs text-amber-900/75 dark:text-amber-100/70">
+                    Аллокации доступны только для просмотра. Редактирование и
+                    комментарии остаются в текущем наборе данных.
+                  </p>
+                </div>
+              ) : null}
+              <LocationAllocationDrillDown
+                initiatives={initiatives}
+                countries={countries}
+                countryIdToClusterKey={countryIdToClusterKey}
+                year={selectedPeriod.year}
+                period={selectedPeriod.value}
+                defaultPeriod={defaultPeriod}
+                periodLabel={selectedPeriod.label}
+                periodOptions={periodOptions}
+                selectedQuarters={selectedPeriod.quarters}
+                onPeriodChange={setPeriod}
+                onResetFilters={resetFilters}
+                regionFilter={regionFilter}
+                onRegionFilterChange={setRegionFilter}
+                unitFilter={unitFilter}
+                onUnitFilterChange={setUnitFilter}
+                teamFilter={teamFilter}
+                onTeamFilterChange={setTeamFilter}
+                marketCountry={marketCountry}
+                onMarketFilterChange={setMarketFilter}
+                onGeoCostSplitSave={saveGeoCostSplit}
+                onInitiativeTagsSave={saveInitiativeTags}
+                people={people}
+                assignments={assignments}
+                headcount={headcount}
+                teamMetrics={teamMetrics}
+                readOnly={readOnly}
+                focusedComment={readOnly ? null : focusedComment}
+              />
+            </>
           )}
         </div>
       </main>

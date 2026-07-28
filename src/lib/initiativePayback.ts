@@ -270,7 +270,6 @@ export function computeInitiativePaybackAsOf(
   if (!quarterlyData || scopeQuarters.length === 0) return null;
 
   const eligibleTargets = scopeQuarters
-    .filter((q) => compareQuarters(q, asOfQuarter) <= 0)
     .filter((q) => {
       const rev = pickRevenueRubAsOf(quarterlyData[q] as QuarterData, asOfQuarter);
       return typeof rev === 'number' && rev > 0;
@@ -561,7 +560,11 @@ export function formatPaybackEffectCostLine(revenueRub: number, costRub: number)
 
 export function formatPaybackNetLine(revenueRub: number, costRub: number): string {
   const net = revenueRub - costRub;
-  const body = formatPaybackRubAmount(Math.abs(net));
+  const abs = Math.abs(net);
+  const body =
+    abs >= 100_000 && abs < 1_000_000
+      ? `${Math.round((abs / 1_000_000) * 10) / 10} млн ₽`
+      : formatPaybackRubAmount(abs);
   if (net > 0) return `+${body}`;
   if (net < 0) return `–${body}`;
   return body;

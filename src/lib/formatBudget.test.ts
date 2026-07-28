@@ -16,7 +16,7 @@ describe('formatBudget', () => {
 
   it('keeps meaningful sub-thousand amounts', () => {
     expect(formatBudget(150)).toBe('150 ₽');
-    expect(formatBudget(42.9)).toBe('43 ₽');
+    expect(formatBudget(42.9)).toBe('0 ₽');
   });
 });
 

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef } from 'react';
+import { UsersRound } from 'lucide-react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import GanttView from '@/components/GanttView';
 import { calculateTotalBudget, convertFromDB, type RawDataRow } from '@/lib/dataManager';
@@ -16,6 +17,10 @@ import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
 import { LocationAllocationInitiativePanelBody } from '@/components/admin/location-allocation/LocationAllocationInitiativePanelBody';
 import type { LocationAllocationPanelCloseGuard } from '@/components/admin/location-allocation/LocationAllocationInitiativePanelBody';
 import type { InitiativeTag } from '@/lib/initiativeTags';
+import {
+  locationTeamKey,
+  type LocationHeadcountIndex,
+} from '@/lib/locationAllocationPlanning';
 
 type Props = {
   initiatives: AdminDataRow[];
@@ -26,8 +31,10 @@ type Props = {
   marketCountry?: MarketCountryRow | null;
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
+  headcount: LocationHeadcountIndex;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
+  readOnly?: boolean;
 };
 
 function formatHeadlineRub(rub: number): string {
@@ -43,8 +50,10 @@ export function LocationAllocationTimeline({
   marketCountry = null,
   countries,
   countryIdToClusterKey,
+  headcount,
   onGeoCostSplitSave,
   onInitiativeTagsSave,
+  readOnly = false,
 }: Props) {
   const detailPanelCloseGuardRef = useRef<LocationAllocationPanelCloseGuard | null>(null);
   const filteredInitiatives = useMemo(
@@ -158,10 +167,11 @@ export function LocationAllocationTimeline({
           onGeoCostSplitSave={onGeoCostSplitSave}
           onInitiativeTagsSave={onInitiativeTagsSave}
           closeGuardRef={detailPanelCloseGuardRef}
+          readOnly={readOnly}
         />
       );
     },
-    [initiativeById, yearQuarters, countries, countryIdToClusterKey, onGeoCostSplitSave, onInitiativeTagsSave]
+    [initiativeById, yearQuarters, countries, countryIdToClusterKey, onGeoCostSplitSave, onInitiativeTagsSave, readOnly]
   );
 
   const filterHint = (() => {
@@ -171,6 +181,35 @@ export function LocationAllocationTimeline({
     if (teamFilter) parts.push(teamFilter.team);
     return parts.length > 0 ? parts.join(' · ') : 'все регионы';
   })();
+  const scopeHeadcount = useMemo(() => {
+    if (headcount.byUnit.size === 0) return null;
+    if (teamFilter) {
+      const value = headcount.byTeam.get(
+        locationTeamKey(teamFilter.unit, teamFilter.team)
+      );
+      return value != null && value > 0 ? value : null;
+    }
+    if (unitFilter) {
+      const value = headcount.byUnit.get(unitFilter);
+      return value != null && value > 0 ? value : null;
+    }
+    const total = [...headcount.byUnit.values()].reduce(
+      (sum, value) => sum + value,
+      0
+    );
+    return total > 0 ? total : null;
+  }, [headcount, teamFilter, unitFilter]);
+  const hierarchyGrouping = useMemo(
+    () =>
+      teamFilter
+        ? undefined
+        : {
+            mode: unitFilter ? ('team' as const) : ('unit-team' as const),
+            headcountByUnit: headcount.byUnit,
+            headcountByTeam: headcount.byTeam,
+          },
+    [headcount, teamFilter, unitFilter]
+  );
 
   if (filteredInitiatives.length === 0) {
     return (
@@ -191,10 +230,23 @@ export function LocationAllocationTimeline({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {filterHint} · {filteredInitiatives.length} иниц.
-          {regionFilter ? ' · сортировка по платежу региона' : ' · сортировка по полной стоимости'}
-        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <p>
+            {filterHint} · {filteredInitiatives.length} иниц.
+            {regionFilter
+              ? ' · сортировка по платежу региона'
+              : ' · сортировка по полной стоимости'}
+          </p>
+          {scopeHeadcount != null ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 font-medium tabular-nums text-foreground/75"
+              title="Текущий состав по данным раздела «Люди», не историческое значение выбранного периода"
+            >
+              <UsersRound className="h-3 w-3" aria-hidden />
+              {scopeHeadcount} чел. сейчас
+            </span>
+          ) : null}
+        </div>
         <p className="text-xs tabular-nums text-muted-foreground">
           {regionFilter ? (
             <>
@@ -241,6 +293,7 @@ export function LocationAllocationTimeline({
           fixedDetailPanel
           detailPanelCloseGuardRef={detailPanelCloseGuardRef}
           renderDetailPanelBody={renderDetailPanelBody}
+          hierarchyGrouping={hierarchyGrouping}
         />
       </div>
     </div>

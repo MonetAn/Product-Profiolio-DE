@@ -109,6 +109,65 @@
   min-width: 0;
 }
 
+.gantt-hierarchy-row {
+  display: grid;
+  grid-template-columns: 320px var(--gantt-timeline-width, minmax(0, 1fr));
+  min-width: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.gantt-hierarchy-unit {
+  min-height: 36px;
+  background: hsl(var(--muted) / 0.6);
+}
+
+.gantt-hierarchy-team {
+  min-height: 31px;
+  background: hsl(var(--muted) / 0.28);
+}
+
+.gantt-hierarchy-label {
+  position: sticky;
+  left: 0;
+  z-index: 14;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border-right: 1px solid hsl(var(--border));
+  background: inherit;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 650;
+  box-shadow: 4px 0 12px -6px hsl(0 0% 0% / 0.14);
+}
+
+.gantt-hierarchy-team .gantt-hierarchy-label {
+  padding-left: 26px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.gantt-hierarchy-headcount {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-hierarchy-track {
+  min-width: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(160px - 1px),
+    hsl(var(--border) / 0.55) calc(160px - 1px),
+    hsl(var(--border) / 0.55) 160px
+  );
+}
+
 .gantt-rows {
   flex: 1;
   min-width: 0;
@@ -313,6 +372,13 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.gantt-region-chip-percent {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0.82;
 }
 
 .gantt-region-chip-active {
@@ -1257,8 +1323,6 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
   padding-top: 12px;
   border-top: 1px solid hsl(var(--border));
 }
-
-@import './initiative-payback-panel.css';
 
 .gantt-detail-panel-quarters > .gantt-detail-panel-label {
   margin-bottom: 10px;

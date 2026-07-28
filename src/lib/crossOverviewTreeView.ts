@@ -22,7 +22,7 @@ export function coerceCrossOverviewVisibility(
   }
   if (showTeams) {
     return {
-      showUnits: showUnits || showTeams,
+      showUnits,
       showTeams: true,
       showInitiatives: true,
     };

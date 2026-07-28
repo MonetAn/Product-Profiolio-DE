@@ -41,6 +41,7 @@ import { useAccess } from '@/hooks/useAccess';
 import { useSensitiveDashboardMask } from '@/hooks/useSensitiveDashboardMask';
 import { useBudgetTruth2026 } from '@/hooks/useBudgetTruth2026';
 import { useCrossInitiatives } from '@/hooks/useCrossInitiatives';
+import { useActivePortfolioDataset } from '@/hooks/useActivePortfolioDataset';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import type { UnificationBudgetContext } from '@/lib/unificationBudget';
 import { filterQuarters2026 } from '@/lib/budgetTruth2026';
@@ -61,11 +62,11 @@ const Index = () => {
   const { user } = useAuth();
   useRecordDailyPresence('portfolio', !!user);
   const { isAdmin, isSuperAdmin, canAccess, canViewMoney, scope, hasEarlyAccess } = useAccess();
-  const { data: crossBundle, isLoading: crossBundleLoading } = useCrossInitiatives({
+  const { data: liveCrossBundle, isLoading: liveCrossBundleLoading } = useCrossInitiatives({
     enabled: hasEarlyAccess,
   });
   /** Полный каталог для расчёта кросс-инициатив (как в админке «Кросс-инициатива»). */
-  const { data: crossInitiativeCatalog } = useInitiatives({
+  const { data: liveCrossInitiativeCatalog } = useInitiatives({
     tableAll: hasEarlyAccess,
     enabled: hasEarlyAccess,
   });
@@ -81,10 +82,41 @@ const Index = () => {
     buildFilteredUrl,
   } = useFilterParams();
   const adminEntryUrl = useMemo(() => buildFilteredUrl('/admin'), [buildFilteredUrl]);
-  // Fetch data from database
-  const { data: dbData, isLoading, error, refetch } = useInitiatives();
-  const { data: budgetDepartmentAllocations = [] } = useBudgetDepartmentAllocations();
-  const { data: budgetTruth2026 } = useBudgetTruth2026();
+  // Live-запросы остаются безопасным fallback до применения миграции наборов.
+  const liveInitiativesQuery = useInitiatives();
+  const liveAllocationsQuery = useBudgetDepartmentAllocations();
+  const liveBudgetTruthQuery = useBudgetTruth2026();
+  const activeDatasetQuery = useActivePortfolioDataset();
+  const activeDataset = activeDatasetQuery.data;
+  const dbData = activeDataset?.initiatives ?? liveInitiativesQuery.data;
+  const budgetDepartmentAllocations = useMemo(
+    () => activeDataset?.budgetDepartmentAllocations ?? liveAllocationsQuery.data ?? [],
+    [activeDataset?.budgetDepartmentAllocations, liveAllocationsQuery.data]
+  );
+  const budgetTruth2026 =
+    activeDataset?.budgetTruth2026 ?? liveBudgetTruthQuery.data;
+  const crossBundle = activeDataset?.crossBundle ?? liveCrossBundle;
+  const crossInitiativeCatalog =
+    activeDataset?.initiatives ?? liveCrossInitiativeCatalog;
+  const isLoading = activeDatasetQuery.isLoading || liveInitiativesQuery.isLoading;
+  const crossBundleLoading =
+    activeDatasetQuery.isLoading || (!activeDataset && liveCrossBundleLoading);
+  const error =
+    liveInitiativesQuery.error ??
+    (!activeDataset && !liveInitiativesQuery.data ? activeDatasetQuery.error : null);
+  const refetch = useCallback(async () => {
+    await Promise.all([
+      activeDatasetQuery.refetch(),
+      liveInitiativesQuery.refetch(),
+      liveAllocationsQuery.refetch(),
+      liveBudgetTruthQuery.refetch(),
+    ]);
+  }, [
+    activeDatasetQuery,
+    liveAllocationsQuery,
+    liveBudgetTruthQuery,
+    liveInitiativesQuery,
+  ]);
 
   // Data state (derived from DB or CSV fallback)
   const [rawData, setRawData] = useState<RawDataRow[]>([]);
@@ -95,7 +127,14 @@ const Index = () => {
   const [isUsingCSV, setIsUsingCSV] = useState(false);
 
   // View state
-  const [currentView, setCurrentView] = useState<ViewType>('budget');
+  const requestedDashboardView = (
+    location.state as { dashboardView?: ViewType } | null
+  )?.dashboardView;
+  const [currentView, setCurrentView] = useState<ViewType>(
+    requestedDashboardView && requestedDashboardView !== 'allocations'
+      ? requestedDashboardView
+      : 'budget'
+  );
   const [portfolioData, setPortfolioData] = useState<TreeNode>({ name: 'Все Unit', children: [], isRoot: true });
   const [stakeholdersData, setStakeholdersData] = useState<TreeNode>({ name: 'Все стейкхолдеры', children: [], isRoot: true });
   const [currentRoot, setCurrentRoot] = useState<TreeNode>({ name: 'Все Unit', children: [], isRoot: true });
@@ -655,6 +694,10 @@ const Index = () => {
 
   // View switching
   const handleViewChange = (view: ViewType) => {
+    if (view === 'allocations') {
+      navigate('/allocations');
+      return;
+    }
     if (view === 'crossInitiatives' && !hasEarlyAccess) {
       setCurrentView('budget');
       return;

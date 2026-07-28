@@ -20,9 +20,9 @@ import AdminLocationAllocations from "./pages/AdminLocationAllocations";
 import Auth from "./pages/Auth";
 import EmbedPortfolio from "./pages/EmbedPortfolio";
 import NotFound from "./pages/NotFound";
-import PeoplePlatformAllocationsMock from "./pages/PeoplePlatformAllocationsMock";
 import Unification from "./pages/Unification";
 import { EarlyAccessRoute } from "@/components/EarlyAccessRoute";
+import { isAdminActivityEnabled } from "@/lib/supabaseBackend";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,12 +41,16 @@ const App = () => (
       <BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
             <Routes>
-            <Route path="/mock/people-platform-allocations" element={<PeoplePlatformAllocationsMock />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/embed/:slug" element={<EmbedPortfolio />} />
             <Route path="/" element={
               <ProtectedRoute>
                 <Index />
+              </ProtectedRoute>
+            } />
+            <Route path="/allocations" element={
+              <ProtectedRoute>
+                <AdminLocationAllocations />
               </ProtectedRoute>
             } />
             <Route path="/unification" element={<Navigate to="/admin/unification" replace />} />
@@ -67,11 +71,7 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/admin/location-allocations" element={
-              <ProtectedRoute>
-                <AdminRoute>
-                  <AdminLocationAllocations />
-                </AdminRoute>
-              </ProtectedRoute>
+              <Navigate to="/allocations" replace />
             } />
             <Route path="/admin/people-effort" element={
               <ProtectedRoute>
@@ -108,15 +108,19 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/admin/activity" element={
-              <ProtectedRoute>
-                <AdminRoute>
-                  <AdminSuperAdminRoute>
-                    <AdminActivity />
-                  </AdminSuperAdminRoute>
-                </AdminRoute>
-              </ProtectedRoute>
+              isAdminActivityEnabled() ? (
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <AdminSuperAdminRoute>
+                      <AdminActivity />
+                    </AdminSuperAdminRoute>
+                  </AdminRoute>
+                </ProtectedRoute>
+              ) : (
+                <Navigate to="/admin" replace />
+              )
             } />
-            <Route path="/admin/sensitive" element={
+            <Route path="/admin/additional" element={
               <ProtectedRoute>
                 <AdminRoute>
                   <AdminSuperAdminRoute>
@@ -125,6 +129,7 @@ const App = () => (
                 </AdminRoute>
               </ProtectedRoute>
             } />
+            <Route path="/admin/sensitive" element={<Navigate to="/admin/additional" replace />} />
             <Route path="/admin/fill-analytics" element={
               <ProtectedRoute>
                 <AdminRoute>

@@ -21,6 +21,7 @@ import { normalizeTeamName } from '@/lib/sensitiveScopes';
 import { Navigate } from 'react-router-dom';
 import { AdminTreemapLayoutSettings } from '@/components/admin/AdminTreemapLayoutSettings';
 import { AdminPublicEmbedLinks } from '@/components/admin/AdminPublicEmbedLinks';
+import { AdminPortfolioDatasets } from '@/components/admin/AdminPortfolioDatasets';
 
 type SensitiveRow = Database['public']['Tables']['sensitive_scopes']['Row'];
 
@@ -151,7 +152,7 @@ export default function AdminSensitive() {
       toast({ title: 'Не удалось добавить', description: error.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Добавлено в sensitive' });
+    toast({ title: 'Добавлено в скрытые области' });
     await loadScopes();
   };
 
@@ -186,11 +187,21 @@ export default function AdminSensitive() {
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-amber-600" aria-hidden />
-            Sensitive — скрытые юниты и команды
+            Дополнительное
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Для обычных админов и пользователей строки с этими юнитами/командами не попадают в выборку. Супер-админ
-            на дашборде по умолчанию тоже не видит их, пока не включит галочку «Sensitive».
+            История наборов данных, публичные ссылки, настройки тримапа и скрытые области.
+          </p>
+        </div>
+
+        <AdminPortfolioDatasets />
+
+        <div>
+          <h2 className="text-sm font-semibold">Скрытые юниты и команды</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Для обычных админов и пользователей строки с этими юнитами или командами не
+            попадают в выборку. Супер-админ на дашборде по умолчанию тоже не видит их, пока
+            не включит галочку «Sensitive».
           </p>
         </div>
 

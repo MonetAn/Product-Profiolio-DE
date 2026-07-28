@@ -25,6 +25,7 @@ const buildOptions = {
   selectedStakeholders: [] as string[],
   showTeams: true,
   showInitiatives: true,
+  includeNonPnlBudgets: true,
 };
 
 describe('buildPortfolioRestTree', () => {
@@ -57,7 +58,7 @@ describe('buildPortfolioRestTree', () => {
         initiative: 'In cross',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { cost: 100, effortCoefficient: 1 } },
+        quarterlyData: { '2026-Q1': { budget: 100, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i1',
       },
       {
@@ -66,7 +67,7 @@ describe('buildPortfolioRestTree', () => {
         initiative: 'Local only',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { cost: 50, effortCoefficient: 1 } },
+        quarterlyData: { '2026-Q1': { budget: 50, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i2',
       },
     ];
@@ -112,7 +113,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
         initiative: 'A',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { cost: 100, effortCoefficient: 1 } },
+        quarterlyData: { '2026-Q1': { budget: 100, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i1',
       },
       {
@@ -121,7 +122,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
         initiative: 'B',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { cost: 40, effortCoefficient: 1 } },
+        quarterlyData: { '2026-Q1': { budget: 40, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i2',
       },
     ];
@@ -183,7 +184,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
           initiative: 'A',
           description: '',
           stakeholders: '',
-          quarterlyData: { '2026-Q1': { cost: 10, effortCoefficient: 1 } },
+          quarterlyData: { '2026-Q1': { budget: 10, effortCoefficient: 1 } },
           adminInitiativeRowId: 'i1',
         },
       ],
@@ -267,7 +268,7 @@ describe('buildDashboardCrossPortfolioTree', () => {
         initiative: 'A',
         description: '',
         stakeholders: '',
-        quarterlyData: { '2026-Q1': { cost: 10, effortCoefficient: 1 } },
+        quarterlyData: { '2026-Q1': { budget: 10, effortCoefficient: 1 } },
         adminInitiativeRowId: 'i1',
       },
     ];
@@ -320,7 +321,36 @@ describe('buildDashboardCrossPortfolioTree', () => {
       bundle,
       initiativeById,
       ['2026-Q1'],
-      undefined,
+      {
+        baselineByTeam: new Map([
+          [
+            'U1\tTeam A',
+            {
+              unit: 'U1',
+              team: 'Team A',
+              q1: 100,
+              q2: 0,
+              q3: 0,
+              q4: 0,
+              rubAll: 100,
+              rubPnlIt: 100,
+            },
+          ],
+          [
+            'U2\tTeam B',
+            {
+              unit: 'U2',
+              team: 'Team B',
+              q1: 100,
+              q2: 0,
+              q3: 0,
+              q4: 0,
+              rubAll: 100,
+              rubPnlIt: 100,
+            },
+          ],
+        ]),
+      },
       [],
       { ...buildOptions, selectedTeams: ['Team A'] }
     );

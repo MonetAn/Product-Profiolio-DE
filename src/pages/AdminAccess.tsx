@@ -10,6 +10,8 @@ import {
   X,
   SlidersHorizontal,
   ChevronDown,
+  Crown,
+  ImageUp,
 } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,6 +47,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { Database, Json } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/components/ui/avatar';
 
 type AllowedUserRow = Database['public']['Tables']['allowed_users']['Row'];
 
@@ -94,6 +101,7 @@ const ALLOWED_USERS_SELECT_COLUMNS = [
   'can_view_money',
   'member_affiliations',
   'early_access',
+  'avatar_url',
 ].join(', ');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -177,6 +185,14 @@ export default function AdminAccess() {
 
   const [orgDisplayName, setOrgDisplayName] = useState('');
   const [orgAffiliations, setOrgAffiliations] = useState<OrgAffiliationRow[]>([]);
+  const [orgAvatarUrl, setOrgAvatarUrl] = useState<string | null>(null);
+  const [orgAvatarFile, setOrgAvatarFile] = useState<File | null>(null);
+  const [orgAvatarPreviewUrl, setOrgAvatarPreviewUrl] = useState<string | null>(null);
+  const [leaderUnits, setLeaderUnits] = useState<string[]>([]);
+  const [leaderUnitsByUser, setLeaderUnitsByUser] = useState<
+    Record<string, string[]>
+  >({});
+  const [leaderPopoverOpen, setLeaderPopoverOpen] = useState(false);
   const [orgAffPopoverOpen, setOrgAffPopoverOpen] = useState(false);
   const [orgPairFilter, setOrgPairFilter] = useState('');
 
@@ -225,15 +241,32 @@ export default function AdminAccess() {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('allowed_users')
-      .select(ALLOWED_USERS_SELECT_COLUMNS)
-      .order('created_at', { ascending: false });
+    const [usersResult, leadersResult] = await Promise.all([
+      supabase
+        .from('allowed_users')
+        .select(ALLOWED_USERS_SELECT_COLUMNS)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('allocation_unit_leaders')
+        .select('allowed_user_id, unit'),
+    ]);
+    const { data, error } = usersResult;
     if (error) {
       toast({ title: 'Ошибка загрузки', description: error.message, variant: 'destructive' });
       setList([]);
     } else {
       setList(data ?? []);
+    }
+    if (!leadersResult.error) {
+      const next: Record<string, string[]> = {};
+      for (const row of leadersResult.data ?? []) {
+        const userId = String(row.allowed_user_id ?? '');
+        const unit = String(row.unit ?? '').trim();
+        if (!userId || !unit) continue;
+        next[userId] = [...(next[userId] ?? []), unit];
+      }
+      Object.values(next).forEach((items) => items.sort());
+      setLeaderUnitsByUser(next);
     }
     setLoading(false);
   }, [toast]);
@@ -303,6 +336,10 @@ export default function AdminAccess() {
   const loadOrgFromRow = (row: AllowedUserRow) => {
     setOrgDisplayName(row.display_name ?? '');
     setOrgAffiliations(orgAffiliationsFromRow(row));
+    setOrgAvatarUrl(row.avatar_url ?? null);
+    setOrgAvatarFile(null);
+    setOrgAvatarPreviewUrl(null);
+    setLeaderUnits(leaderUnitsByUser[row.id] ?? []);
     setOrgPairFilter('');
   };
 
@@ -539,6 +576,78 @@ export default function AdminAccess() {
   }, {});
   const unitKeysForTeams = Object.keys(teamsByUnit).sort();
 
+  const handleAvatarSelect = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Нужен файл изображения',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Файл слишком большой',
+        description: 'Максимальный размер фотографии — 5 МБ.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setOrgAvatarFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setOrgAvatarPreviewUrl(
+        typeof reader.result === 'string' ? reader.result : null
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const uploadAvatarIfNeeded = async (allowedUserId: string) => {
+    if (!orgAvatarFile) return orgAvatarUrl;
+    const extension =
+      orgAvatarFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+      'jpg';
+    const path = `${allowedUserId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage
+      .from('user-avatars')
+      .upload(path, orgAvatarFile, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: orgAvatarFile.type,
+      });
+    if (error) throw error;
+    return supabase.storage.from('user-avatars').getPublicUrl(path).data
+      .publicUrl;
+  };
+
+  const saveLeaderAssignments = async (allowedUserId: string) => {
+    const leadersTable = supabase.from('allocation_unit_leaders');
+    const { error: deleteError } = await leadersTable
+      .delete()
+      .eq('allowed_user_id', allowedUserId);
+    if (deleteError) throw deleteError;
+    if (leaderUnits.length === 0) return;
+    const { error: insertError } = await supabase
+      .from('allocation_unit_leaders')
+      .insert(
+        leaderUnits.map((unit) => ({
+          allowed_user_id: allowedUserId,
+          unit,
+          created_by: user?.id ?? null,
+        }))
+      );
+    if (insertError) throw insertError;
+  };
+
+  const toggleLeaderUnit = (unit: string) => {
+    setLeaderUnits((previous) =>
+      previous.includes(unit)
+        ? previous.filter((item) => item !== unit)
+        : [...previous, unit].sort()
+    );
+  };
+
   const buildProfilePayload = (): {
     display_name: string | null;
     member_unit: string | null;
@@ -564,16 +673,48 @@ export default function AdminAccess() {
     if (!scopeDialogUserId || !editingRow) return;
     setScopeSaving(true);
     const profile = buildProfilePayload();
+    let avatarUrl: string | null;
+    try {
+      avatarUrl = await uploadAvatarIfNeeded(scopeDialogUserId);
+    } catch (error) {
+      setScopeSaving(false);
+      toast({
+        title: 'Не удалось загрузить фотографию',
+        description:
+          error instanceof Error ? error.message : 'Попробуйте ещё раз.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (isPrivilegedRole(editingRow.role)) {
       const { error } = await supabase
         .from('allowed_users')
-        .update({ ...profile, early_access: scopeEarlyAccess })
+        .update({
+          ...profile,
+          avatar_url: avatarUrl,
+          early_access: scopeEarlyAccess,
+        })
         .eq('id', scopeDialogUserId);
-      setScopeSaving(false);
       if (error) {
+        setScopeSaving(false);
         toast({ title: 'Ошибка сохранения', description: error.message, variant: 'destructive' });
         return;
       }
+      try {
+        await saveLeaderAssignments(scopeDialogUserId);
+      } catch (leaderError) {
+        setScopeSaving(false);
+        toast({
+          title: 'Профиль сохранён, но лидерство — нет',
+          description:
+            leaderError instanceof Error
+              ? leaderError.message
+              : 'Попробуйте ещё раз.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setScopeSaving(false);
       toast({ title: 'Сохранено' });
       refreshAccessIfSelf(editingRow.email);
       closeScopeDialog();
@@ -586,17 +727,33 @@ export default function AdminAccess() {
       .from('allowed_users')
       .update({
         ...profile,
+        avatar_url: avatarUrl,
         allowed_units,
         allowed_team_pairs,
         can_view_money: scopeCanViewMoney,
         early_access: scopeEarlyAccess,
       })
       .eq('id', scopeDialogUserId);
-    setScopeSaving(false);
     if (error) {
+      setScopeSaving(false);
       toast({ title: 'Ошибка сохранения', description: error.message, variant: 'destructive' });
       return;
     }
+    try {
+      await saveLeaderAssignments(scopeDialogUserId);
+    } catch (leaderError) {
+      setScopeSaving(false);
+      toast({
+        title: 'Профиль сохранён, но лидерство — нет',
+        description:
+          leaderError instanceof Error
+            ? leaderError.message
+            : 'Попробуйте ещё раз.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setScopeSaving(false);
     toast({ title: 'Сохранено' });
     refreshAccessIfSelf(editingRow.email);
     closeScopeDialog();
@@ -617,6 +774,65 @@ export default function AdminAccess() {
       <p className="text-xs text-muted-foreground">
         Одно окно: отметьте пары из каталога. Доступ к строкам портфеля — только в блоке «Доступ к данным дашборда» ниже.
       </p>
+      <div className="space-y-2">
+        <Label>Фотография</Label>
+        <div className="flex flex-wrap items-center gap-3">
+          <Avatar className="h-14 w-14 border border-border">
+            {orgAvatarPreviewUrl || orgAvatarUrl ? (
+              <AvatarImage
+                src={orgAvatarPreviewUrl ?? orgAvatarUrl ?? undefined}
+                alt=""
+                className="object-cover"
+              />
+            ) : null}
+            <AvatarFallback className="text-sm font-semibold">
+              {(orgDisplayName || editingRow?.email || '?')
+                .trim()
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((part) => part[0]?.toUpperCase())
+                .join('')}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-wrap gap-2">
+            <label
+              htmlFor="org-avatar-file"
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent"
+            >
+              <ImageUp className="h-3.5 w-3.5" />
+              Выбрать фото
+            </label>
+            <input
+              id="org-avatar-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="sr-only"
+              onChange={(event) => {
+                handleAvatarSelect(event.target.files?.[0] ?? null);
+                event.target.value = '';
+              }}
+            />
+            {orgAvatarPreviewUrl || orgAvatarUrl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs text-muted-foreground"
+                onClick={() => {
+                  setOrgAvatarFile(null);
+                  setOrgAvatarPreviewUrl(null);
+                  setOrgAvatarUrl(null);
+                }}
+              >
+                Убрать
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Фото будет видно рядом с комментариями и уведомлениями.
+        </p>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="org-name">Имя (для поиска)</Label>
         <Input
@@ -758,6 +974,64 @@ export default function AdminAccess() {
             </div>
           </div>
         ) : null}
+      </div>
+      <div className="space-y-2 border-t border-border/70 pt-4">
+        <Label htmlFor="leader-units-trigger">Лидер юнита</Label>
+        <Popover open={leaderPopoverOpen} onOpenChange={setLeaderPopoverOpen}>
+          <PopoverTrigger asChild>
+            <button
+              id="leader-units-trigger"
+              type="button"
+              className={cn(
+                'flex h-9 w-full max-w-xl items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-sm',
+                'ring-offset-background hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-2 truncate text-left">
+                <Crown className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                {leaderUnits.length === 0
+                  ? 'Не назначен'
+                  : leaderUnits.length <= 2
+                    ? leaderUnits.join(', ')
+                    : `${leaderUnits.length} юнита`}
+              </span>
+              <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="z-[95] w-[min(100vw-1.5rem,22rem)] p-1"
+            align="start"
+            collisionPadding={8}
+          >
+            <ScrollArea className="max-h-[280px]">
+              {units.length === 0 ? (
+                <p className="p-3 text-sm text-muted-foreground">
+                  В данных пока нет юнитов.
+                </p>
+              ) : (
+                <div className="space-y-0.5 p-1">
+                  {units.map((unit) => (
+                    <label
+                      key={unit}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
+                    >
+                      <Checkbox
+                        checked={leaderUnits.includes(unit)}
+                        onCheckedChange={() => toggleLeaderUnit(unit)}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{unit}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Лидер получает уведомления обо всех новых комментариях и ответах в
+          выбранном юните. Для ограниченного пользователя юнит автоматически
+          добавится в область доступа.
+        </p>
       </div>
     </div>
   );
@@ -955,8 +1229,8 @@ export default function AdminAccess() {
                             }
                           }}
                         >
-                          <span
-                            className="shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background"
+                          <Avatar
+                            className="h-8 w-8 border border-border"
                             title={
                               row.role === 'super_admin'
                                 ? 'Супер-администратор'
@@ -965,18 +1239,36 @@ export default function AdminAccess() {
                                   : 'Пользователь'
                             }
                           >
-                            {row.role === 'super_admin' ? (
-                              <ShieldAlert className="h-4 w-4 text-amber-600" aria-hidden />
-                            ) : row.role === 'admin' ? (
-                              <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
-                            ) : (
-                              <User className="h-4 w-4 text-muted-foreground" aria-hidden />
-                            )}
-                          </span>
+                            {row.avatar_url ? (
+                              <AvatarImage
+                                src={row.avatar_url}
+                                alt=""
+                                className="object-cover"
+                              />
+                            ) : null}
+                            <AvatarFallback>
+                              {row.role === 'super_admin' ? (
+                                <ShieldAlert className="h-4 w-4 text-amber-600" aria-hidden />
+                              ) : row.role === 'admin' ? (
+                                <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
+                              ) : (
+                                <User className="h-4 w-4 text-muted-foreground" aria-hidden />
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
                           <span className="min-w-0 flex-1 font-medium text-sm truncate">
                             {row.email}
                             {isSelf(row) ? <span className="text-muted-foreground font-normal"> · вы</span> : null}
                           </span>
+                          {(leaderUnitsByUser[row.id]?.length ?? 0) > 0 ? (
+                            <span
+                              className="flex h-6 shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                              title={`Лидер: ${leaderUnitsByUser[row.id].join(', ')}`}
+                            >
+                              <Crown className="h-3 w-3" />
+                              {leaderUnitsByUser[row.id].length}
+                            </span>
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="icon"

@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
-import type { RawDataRow } from '@/lib/dataManager';
-import { useSensitiveDashboardMask } from '@/hooks/useSensitiveDashboardMask';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { LocationRegionKpiCards } from '@/components/admin/location-allocation/LocationRegionKpiCards';
 import { LocationAllocationTimeline } from '@/components/admin/location-allocation/LocationAllocationTimeline';
@@ -14,29 +11,35 @@ import {
   buildUnitOverviewDetailRows,
   buildUnitRegionDetailRows,
   countryBelongsToTopRegion,
+  filterLocationTimelineInitiatives,
+  TOP_REGION_DISPLAY_LABELS,
   type LocationTeamFilter,
+  type RegionComparisonRow,
   type TeamRegionDetailRow,
   type TopRegionLabel,
 } from '@/lib/locationRegionModel';
 import { LocationAllocationMarketSection } from '@/components/admin/location-allocation/LocationAllocationMarketSection';
 import { LocationAllocationTreemap } from '@/components/admin/location-allocation/LocationAllocationTreemap';
-import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { InitiativeTag } from '@/lib/initiativeTags';
+import type { Person, PersonAssignment } from '@/lib/peopleDataManager';
+import type { LocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
+import { LocationAllocationFilterBar } from '@/components/admin/location-allocation/LocationAllocationFilterBar';
+import type { LocationAllocationPeriodOption } from '@/lib/locationAllocationPeriod';
+import { LocationAllocationTeamView } from '@/components/admin/location-allocation/LocationAllocationTeamView';
+import type { LocationAllocationGeoEditScope } from '@/lib/locationAllocationGeoEdit';
+import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
 
-type InitiativeDetailView = 'treemap' | 'timeline';
+type InitiativeDetailView = 'treemap' | 'timeline' | 'teams';
 
-const EMPTY_SENSITIVE = new Set<string>();
-
-function initiativesForSensitiveMask(initiatives: AdminDataRow[]): RawDataRow[] {
-  return initiatives.map((row) => ({
-    unit: row.unit,
-    team: row.team,
-    initiative: row.initiative,
-    description: row.description ?? '',
-    stakeholders: row.stakeholders ?? '',
-    quarterlyData: {},
-  }));
+function currentRegionTotal(
+  rows: RegionComparisonRow[],
+  region: TopRegionLabel | null
+): number {
+  if (region) {
+    return rows.find((row) => row.region === region)?.actualRub ?? 0;
+  }
+  return rows.reduce((sum, row) => sum + row.actualRub, 0);
 }
 
 type Props = {
@@ -44,6 +47,13 @@ type Props = {
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
   year: number;
+  period: string;
+  defaultPeriod: string;
+  periodLabel: string;
+  periodOptions: LocationAllocationPeriodOption[];
+  selectedQuarters: string[];
+  onPeriodChange: (period: string) => void;
+  onResetFilters: () => void;
   regionFilter: TopRegionLabel | null;
   onRegionFilterChange: (region: TopRegionLabel | null) => void;
   unitFilter: string | null;
@@ -54,6 +64,15 @@ type Props = {
   onMarketFilterChange: (country: MarketCountryRow | null) => void;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
+  people: Person[];
+  assignments: PersonAssignment[];
+  headcount: LocationHeadcountIndex;
+  teamMetrics?: LocationAllocationTeamMetric[];
+  readOnly?: boolean;
+  focusedComment?: {
+    id: string;
+    scope: LocationAllocationGeoEditScope;
+  } | null;
 };
 
 export function LocationAllocationDrillDown({
@@ -61,6 +80,13 @@ export function LocationAllocationDrillDown({
   countries,
   countryIdToClusterKey,
   year,
+  period,
+  defaultPeriod,
+  periodLabel,
+  periodOptions,
+  selectedQuarters,
+  onPeriodChange,
+  onResetFilters,
   regionFilter,
   onRegionFilterChange,
   unitFilter,
@@ -71,43 +97,38 @@ export function LocationAllocationDrillDown({
   onMarketFilterChange,
   onGeoCostSplitSave,
   onInitiativeTagsSave,
+  people,
+  assignments,
+  headcount,
+  teamMetrics = [],
+  readOnly = false,
+  focusedComment = null,
 }: Props) {
   const [initiativeDetailView, setInitiativeDetailView] =
     useState<InitiativeDetailView>('treemap');
+  const [treemapShowTeams, setTreemapShowTeams] = useState(false);
+  const [treemapShowInitiatives, setTreemapShowInitiatives] = useState(false);
 
-  const maskInput = useMemo(() => initiativesForSensitiveMask(initiatives), [initiatives]);
-  const {
-    data: sensitiveKeySet,
-    isPending: sensitiveMaskPending,
-    isError: sensitiveMaskError,
-  } = useSensitiveDashboardMask(maskInput, true);
-  const sensitiveKeys = sensitiveKeySet ?? EMPTY_SENSITIVE;
+  const visibleInitiatives = initiatives;
 
-  const visibleInitiatives = useMemo(() => {
-    if (sensitiveMaskPending || sensitiveMaskError) return [];
-    return initiatives.filter(
-      (row) => !sensitiveKeys.has(dashboardSensitiveRowKey(row.unit, row.team))
-    );
-  }, [initiatives, sensitiveKeys, sensitiveMaskPending, sensitiveMaskError]);
-
-  const regionRows = useMemo(
+  const periodInitiatives = useMemo(
     () =>
-      buildRegionComparisonRows(
-        visibleInitiatives,
-        year,
-        countries,
-        countryIdToClusterKey
-      ),
-    [visibleInitiatives, year, countries, countryIdToClusterKey]
+      visibleInitiatives.map((row) => ({
+        ...row,
+        quarterlyData: Object.fromEntries(
+          selectedQuarters
+            .filter((quarter) => row.quarterlyData[quarter])
+            .map((quarter) => [quarter, row.quarterlyData[quarter]])
+        ),
+      })),
+    [visibleInitiatives, selectedQuarters]
   );
 
-  const actualTotalRub = regionRows.reduce((s, r) => s + r.actualRub, 0);
-
-  const unitDetailRows = useMemo(
+  const availableUnitDetailRows = useMemo(
     () =>
       regionFilter
         ? buildUnitRegionDetailRows(
-            visibleInitiatives,
+            periodInitiatives,
             year,
             regionFilter,
             countries,
@@ -115,25 +136,27 @@ export function LocationAllocationDrillDown({
             marketCountry
           )
         : buildUnitOverviewDetailRows(
-            visibleInitiatives,
+            periodInitiatives,
             year,
             countries,
             countryIdToClusterKey,
             marketCountry
           ),
-    [visibleInitiatives, year, regionFilter, countries, countryIdToClusterKey, marketCountry]
+    [periodInitiatives, year, regionFilter, countries, countryIdToClusterKey, marketCountry]
   );
 
   const effectiveUnitFilter = useMemo(() => {
     if (!unitFilter) return null;
-    return unitDetailRows.some((r) => r.name === unitFilter) ? unitFilter : null;
-  }, [unitFilter, unitDetailRows]);
+    return availableUnitDetailRows.some((r) => r.name === unitFilter)
+      ? unitFilter
+      : null;
+  }, [unitFilter, availableUnitDetailRows]);
 
-  const teamDetailRows = useMemo(
+  const availableTeamDetailRows = useMemo(
     () =>
       regionFilter
         ? buildTeamRegionDetailRows(
-            visibleInitiatives,
+            periodInitiatives,
             year,
             regionFilter,
             effectiveUnitFilter,
@@ -142,7 +165,7 @@ export function LocationAllocationDrillDown({
             marketCountry
           )
         : buildTeamOverviewDetailRows(
-            visibleInitiatives,
+            periodInitiatives,
             year,
             effectiveUnitFilter,
             countries,
@@ -150,7 +173,7 @@ export function LocationAllocationDrillDown({
             marketCountry
           ),
     [
-      visibleInitiatives,
+      periodInitiatives,
       year,
       regionFilter,
       effectiveUnitFilter,
@@ -162,11 +185,177 @@ export function LocationAllocationDrillDown({
 
   const effectiveTeamFilter = useMemo((): LocationTeamFilter | null => {
     if (!teamFilter || !unitFilter) return null;
-    const match = teamDetailRows.find((r) => r.unit === unitFilter && r.team === teamFilter);
+    const match = availableTeamDetailRows.find(
+      (r) => r.unit === unitFilter && r.team === teamFilter
+    );
     return match ? { unit: match.unit, team: match.team } : null;
-  }, [teamFilter, unitFilter, teamDetailRows]);
+  }, [teamFilter, unitFilter, availableTeamDetailRows]);
+
+  const organizationalInitiatives = useMemo(
+    () =>
+      periodInitiatives.filter((row) => {
+        const rowUnit = row.unit.trim() || 'Без юнита';
+        const rowTeam = row.team.trim() || 'Без команды';
+        if (effectiveUnitFilter && rowUnit !== effectiveUnitFilter) return false;
+        if (
+          effectiveTeamFilter &&
+          (rowUnit !== effectiveTeamFilter.unit ||
+            rowTeam !== effectiveTeamFilter.team)
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [periodInitiatives, effectiveUnitFilter, effectiveTeamFilter]
+  );
+
+  const regionRows = useMemo(
+    () =>
+      buildRegionComparisonRows(
+        organizationalInitiatives,
+        year,
+        countries,
+        countryIdToClusterKey,
+        marketCountry
+      ),
+    [
+      organizationalInitiatives,
+      year,
+      countries,
+      countryIdToClusterKey,
+      marketCountry,
+    ]
+  );
+  const actualTotalRub = currentRegionTotal(regionRows, regionFilter);
+
+  const parentInitiatives = useMemo(() => {
+    if (effectiveTeamFilter) {
+      return periodInitiatives.filter(
+        (row) =>
+          (row.unit.trim() || 'Без юнита') === effectiveTeamFilter.unit
+      );
+    }
+    return effectiveUnitFilter ? periodInitiatives : null;
+  }, [periodInitiatives, effectiveUnitFilter, effectiveTeamFilter]);
+
+  const parentRegionRows = useMemo(
+    () =>
+      parentInitiatives
+        ? buildRegionComparisonRows(
+            parentInitiatives,
+            year,
+            countries,
+            countryIdToClusterKey,
+            marketCountry
+          )
+        : null,
+    [
+      parentInitiatives,
+      year,
+      countries,
+      countryIdToClusterKey,
+      marketCountry,
+    ]
+  );
+  const parentScope = parentRegionRows
+    ? {
+        label: effectiveTeamFilter
+          ? effectiveTeamFilter.unit
+          : 'Dodo Engineering',
+        totalRub: currentRegionTotal(parentRegionRows, regionFilter),
+      }
+    : null;
+  const budgetScopeLabel =
+    effectiveTeamFilter?.team ?? effectiveUnitFilter ?? 'Dodo Engineering';
+  const budgetFilterContext = [
+    regionFilter ? TOP_REGION_DISPLAY_LABELS[regionFilter] : null,
+    marketCountry?.label_ru,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' · ');
+
+  const unitDetailRows = useMemo(
+    () =>
+      regionFilter
+        ? buildUnitRegionDetailRows(
+            organizationalInitiatives,
+            year,
+            regionFilter,
+            countries,
+            countryIdToClusterKey,
+            marketCountry
+          )
+        : buildUnitOverviewDetailRows(
+            organizationalInitiatives,
+            year,
+            countries,
+            countryIdToClusterKey,
+            marketCountry
+          ),
+    [
+      organizationalInitiatives,
+      year,
+      regionFilter,
+      countries,
+      countryIdToClusterKey,
+      marketCountry,
+    ]
+  );
+
+  const teamDetailRows = useMemo(
+    () =>
+      regionFilter
+        ? buildTeamRegionDetailRows(
+            organizationalInitiatives,
+            year,
+            regionFilter,
+            effectiveUnitFilter,
+            countries,
+            countryIdToClusterKey,
+            marketCountry
+          )
+        : buildTeamOverviewDetailRows(
+            organizationalInitiatives,
+            year,
+            effectiveUnitFilter,
+            countries,
+            countryIdToClusterKey,
+            marketCountry
+          ),
+    [
+      organizationalInitiatives,
+      year,
+      regionFilter,
+      effectiveUnitFilter,
+      countries,
+      countryIdToClusterKey,
+      marketCountry,
+    ]
+  );
 
   const isOverviewMode = regionFilter == null;
+  const teamViewInitiatives = useMemo(
+    () =>
+      filterLocationTimelineInitiatives(periodInitiatives, {
+        year,
+        region: regionFilter,
+        unit: effectiveUnitFilter,
+        team: effectiveTeamFilter,
+        marketCountry,
+        countries,
+        countryIdToClusterKey,
+      }),
+    [
+      periodInitiatives,
+      year,
+      regionFilter,
+      effectiveUnitFilter,
+      effectiveTeamFilter,
+      marketCountry,
+      countries,
+      countryIdToClusterKey,
+    ]
+  );
 
   useEffect(() => {
     if (unitFilter && !effectiveUnitFilter) {
@@ -203,22 +392,13 @@ export function LocationAllocationDrillDown({
     [effectiveTeamFilter, onTeamFilterChange]
   );
 
-  if (sensitiveMaskPending) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        Загрузка…
-      </div>
-    );
-  }
-
-  if (sensitiveMaskError) {
-    return (
-      <p className="text-sm text-destructive py-8 text-center">
-        Не удалось загрузить маску sensitive. Обновите страницу.
-      </p>
-    );
-  }
+  const handleTreemapNavigateToRoot = useCallback(() => {
+    setTreemapShowTeams(false);
+    setTreemapShowInitiatives(false);
+    if (effectiveUnitFilter || effectiveTeamFilter) {
+      onUnitFilterChange(null);
+    }
+  }, [effectiveTeamFilter, effectiveUnitFilter, onUnitFilterChange]);
 
   if (visibleInitiatives.length === 0) {
     return (
@@ -230,73 +410,37 @@ export function LocationAllocationDrillDown({
 
   return (
     <section className="space-y-4">
-      <LocationRegionKpiCards
-        year={year}
-        totalRub={actualTotalRub}
-        rows={regionRows}
-        selectedRegion={regionFilter}
-        onSelectRegion={onRegionFilterChange}
-      />
-
-      <LocationAllocationMarketSection
-        initiatives={visibleInitiatives}
-        year={year}
-        regionFilter={regionFilter}
-        marketCountry={marketCountry}
-        countries={countries}
-        countryIdToClusterKey={countryIdToClusterKey}
-        onMarketSelect={onMarketFilterChange}
-      />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-        <div className="rounded-xl border border-border bg-card p-4 flex flex-col">
-          <LocationRegionEntityRankedList
-            titleLabel="Детализация по юнитам"
-            overviewMode={isOverviewMode}
-            entityColumnLabel="Юнит"
-            countSuffix="юн."
-            emptyMessage="Нет сумм по юнитам."
-            rows={unitDetailRows}
-            selectedName={effectiveUnitFilter}
-            onSelect={(name) =>
-              onUnitFilterChange(effectiveUnitFilter === name ? null : name)
-            }
-          />
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4 flex flex-col">
-          <LocationRegionEntityRankedList
-            titleLabel="Детализация по командам"
-            contextLabel={effectiveUnitFilter}
-            overviewMode={isOverviewMode}
-            entityColumnLabel="Команда"
-            countSuffix="ком."
-            emptyMessage={
-              effectiveUnitFilter
-                ? 'Нет сумм по командам выбранного юнита.'
-                : 'Нет сумм по командам.'
-            }
-            rows={teamDetailRows}
-            scrollable
-            isRowSelected={(row) => {
-              const t = row as TeamRegionDetailRow;
-              return (
-                effectiveTeamFilter?.unit === t.unit && effectiveTeamFilter?.team === t.team
-              );
-            }}
-            onSelectRow={(row) => handleTeamSelect(row as TeamRegionDetailRow)}
-          />
-        </div>
-      </div>
-
       <div id="location-initiatives" className="scroll-mt-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-semibold tracking-tight">Детализация по инициативам</p>
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+          <div className="min-w-0 flex-1">
+            <LocationAllocationFilterBar
+              initiatives={visibleInitiatives}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
+              periodOptions={periodOptions}
+              period={period}
+              defaultPeriod={defaultPeriod}
+              onPeriodChange={onPeriodChange}
+              onResetFilters={onResetFilters}
+              region={regionFilter}
+              onRegionChange={onRegionFilterChange}
+              unit={effectiveUnitFilter}
+              onUnitChange={onUnitFilterChange}
+              team={effectiveTeamFilter}
+              onTeamChange={onTeamFilterChange}
+              market={marketCountry}
+              onMarketChange={onMarketFilterChange}
+              showTeams={treemapShowTeams}
+              onShowTeamsChange={setTreemapShowTeams}
+              showInitiatives={treemapShowInitiatives}
+              onShowInitiativesChange={setTreemapShowInitiatives}
+            />
+          </div>
           <ToggleGroup
             type="single"
             value={initiativeDetailView}
             onValueChange={(value) => {
-              if (value === 'treemap' || value === 'timeline') {
+              if (value === 'treemap' || value === 'timeline' || value === 'teams') {
                 setInitiativeDetailView(value);
               }
             }}
@@ -308,13 +452,16 @@ export function LocationAllocationDrillDown({
             <ToggleGroupItem value="timeline" className="h-7 px-3 text-xs">
               Таймлайн
             </ToggleGroupItem>
+            <ToggleGroupItem value="teams" className="h-7 px-3 text-xs">
+              Таблица
+            </ToggleGroupItem>
           </ToggleGroup>
         </div>
 
         {initiativeDetailView === 'treemap' ? (
           <div className="-mx-4 sm:-mx-6">
             <LocationAllocationTreemap
-              initiatives={visibleInitiatives}
+              initiatives={periodInitiatives}
               year={year}
               regionFilter={regionFilter}
               unitFilter={effectiveUnitFilter}
@@ -322,26 +469,119 @@ export function LocationAllocationDrillDown({
               marketCountry={marketCountry}
               countries={countries}
               countryIdToClusterKey={countryIdToClusterKey}
+              headcount={headcount}
               onGeoCostSplitSave={onGeoCostSplitSave}
               onInitiativeTagsSave={onInitiativeTagsSave}
+              showTeams={treemapShowTeams}
+              onShowTeamsChange={setTreemapShowTeams}
+              showInitiatives={treemapShowInitiatives}
+              onShowInitiativesChange={setTreemapShowInitiatives}
+              onNavigateToRoot={handleTreemapNavigateToRoot}
+              focusedComment={focusedComment}
+              readOnly={readOnly}
+            />
+          </div>
+        ) : initiativeDetailView === 'timeline' ? (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <LocationAllocationTimeline
+              initiatives={periodInitiatives}
+              year={year}
+              regionFilter={regionFilter}
+              unitFilter={effectiveUnitFilter}
+              teamFilter={effectiveTeamFilter}
+              marketCountry={marketCountry}
+              countries={countries}
+              countryIdToClusterKey={countryIdToClusterKey}
+              headcount={headcount}
+              onGeoCostSplitSave={onGeoCostSplitSave}
+              onInitiativeTagsSave={onInitiativeTagsSave}
+              readOnly={readOnly}
             />
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <LocationAllocationTimeline
-              initiatives={visibleInitiatives}
-              year={year}
-              regionFilter={regionFilter}
-              unitFilter={effectiveUnitFilter}
-              teamFilter={effectiveTeamFilter}
-              marketCountry={marketCountry}
-              countries={countries}
-              countryIdToClusterKey={countryIdToClusterKey}
-              onGeoCostSplitSave={onGeoCostSplitSave}
-              onInitiativeTagsSave={onInitiativeTagsSave}
-            />
-          </div>
+          <LocationAllocationTeamView
+            initiatives={visibleInitiatives}
+            scopedInitiatives={teamViewInitiatives}
+            selectedQuarters={selectedQuarters}
+            people={people}
+            assignments={assignments}
+            headcount={headcount}
+            countries={countries}
+            countryIdToClusterKey={countryIdToClusterKey}
+            teamMetrics={teamMetrics}
+            readOnly={readOnly}
+          />
         )}
+      </div>
+
+      <div className="border-t border-border/70 pt-4">
+        <div className="space-y-4">
+          <LocationRegionKpiCards
+            year={year}
+            periodLabel={periodLabel}
+            scopeLabel={budgetScopeLabel}
+            filterContextLabel={budgetFilterContext || undefined}
+            parentScope={parentScope}
+            totalRub={actualTotalRub}
+            rows={regionRows}
+            selectedRegion={regionFilter}
+            onSelectRegion={onRegionFilterChange}
+          />
+
+          <LocationAllocationMarketSection
+            initiatives={organizationalInitiatives}
+            year={year}
+            regionFilter={regionFilter}
+            unitFilter={effectiveUnitFilter}
+            teamFilter={effectiveTeamFilter}
+            marketCountry={marketCountry}
+            countries={countries}
+            countryIdToClusterKey={countryIdToClusterKey}
+            onMarketSelect={onMarketFilterChange}
+          />
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+            <div className="rounded-xl border border-border bg-card p-4 flex flex-col">
+              <LocationRegionEntityRankedList
+                titleLabel="Детализация по юнитам"
+                overviewMode={isOverviewMode}
+                entityColumnLabel="Юнит"
+                countSuffix="юн."
+                emptyMessage="Нет сумм по юнитам."
+                rows={unitDetailRows}
+                selectedName={effectiveUnitFilter}
+                onSelect={(name) =>
+                  onUnitFilterChange(effectiveUnitFilter === name ? null : name)
+                }
+              />
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-4 flex flex-col">
+              <LocationRegionEntityRankedList
+                titleLabel="Детализация по командам"
+                contextLabel={effectiveUnitFilter}
+                overviewMode={isOverviewMode}
+                entityColumnLabel="Команда"
+                countSuffix="ком."
+                emptyMessage={
+                  effectiveUnitFilter
+                    ? 'Нет сумм по командам выбранного юнита.'
+                    : 'Нет сумм по командам.'
+                }
+                rows={teamDetailRows}
+                scrollable
+                isRowSelected={(row) => {
+                  const t = row as TeamRegionDetailRow;
+                  return (
+                    effectiveTeamFilter?.unit === t.unit &&
+                    effectiveTeamFilter?.team === t.team
+                  );
+                }}
+                onSelectRow={(row) => handleTeamSelect(row as TeamRegionDetailRow)}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );

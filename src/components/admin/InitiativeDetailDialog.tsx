@@ -46,6 +46,7 @@ import {
 } from '@/components/admin/AdminQuarterValueHistory';
 import { Button } from '@/components/ui/button';
 import { InitiativeTagSelector } from '@/components/InitiativeTagSelector';
+import { InitiativeAllocationComments } from '@/components/admin/location-allocation/InitiativeAllocationComments';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -802,6 +803,8 @@ interface InitiativeDetailDialogProps {
   onInitiativeGeoCostSplitChange?: (id: string, split: GeoCostSplit | undefined) => void;
   /** Если false — только поля карточки (без блока кварталов), для quick flow поверх таймлайна */
   showQuarterSection?: boolean;
+  /** Позволяет скрыть теги в отдельных представлениях, не отключая их хранение. */
+  showInitiativeTags?: boolean;
 }
 
 const InitiativeDetailDialog = ({
@@ -814,6 +817,7 @@ const InitiativeDetailDialog = ({
   onQuarterDataChange,
   onInitiativeGeoCostSplitChange,
   showQuarterSection = true,
+  showInitiativeTags = true,
 }: InitiativeDetailDialogProps) => {
   const { data: marketCountriesGeo = [] } = useMarketCountries({ includeInactive: false });
   const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
@@ -944,7 +948,7 @@ const InitiativeDetailDialog = ({
           </div>
 
           {/* Initiative tags */}
-          {!initiative.isTimelineStub ? (
+          {showInitiativeTags && !initiative.isTimelineStub ? (
             <div className="space-y-2">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <Label className="text-sm font-medium">Теги</Label>
@@ -990,6 +994,16 @@ const InitiativeDetailDialog = ({
                 value={initiative.initiativeGeoCostSplit}
                 countries={marketCountriesGeo}
                 onChange={(next) => onInitiativeGeoCostSplitChange(initiative.id, next)}
+                showQuarterNote={false}
+              />
+            </div>
+          ) : null}
+
+          {onInitiativeGeoCostSplitChange && !initiative.isTimelineStub ? (
+            <div className="border-t border-border/60 pt-4">
+              <InitiativeAllocationComments
+                scope={{ type: 'initiative', initiativeId: initiative.id }}
+                legacyNote={initiative.initiativeGeoCostSplit?.note}
               />
             </div>
           ) : null}
