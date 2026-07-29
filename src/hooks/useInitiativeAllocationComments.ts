@@ -10,6 +10,7 @@ export type InitiativeAllocationCommentReply = {
   authorUserId: string | null;
   authorName: string;
   authorEmail: string;
+  authorAvatarUrl: string | null;
   createdAt: string;
   updatedAt: string;
   isUnread: boolean;
@@ -25,6 +26,7 @@ export type InitiativeAllocationComment = {
   authorUserId: string | null;
   authorName: string;
   authorEmail: string;
+  authorAvatarUrl: string | null;
   createdAt: string;
   updatedAt: string;
   status: 'open' | 'resolved';
@@ -122,6 +124,18 @@ function scopeInsert(scope: LocationAllocationCommentScope) {
 
 function isMissingTableError(error: { code?: string } | null | undefined) {
   return error?.code === '42P01' || error?.code === 'PGRST205';
+}
+
+function isMissingRpcError(error: { code?: string } | null | undefined) {
+  return error?.code === '42883' || error?.code === 'PGRST202';
+}
+
+function normalizeEmail(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function normalizeAvatarUrl(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function isUnread(updatedAt: string, readAt?: string): boolean {
@@ -222,6 +236,26 @@ export function useInitiativeAllocationComments(
       }
 
       const replyRows = (replyResult.data ?? []) as Record<string, unknown>[];
+      const authorProfileResult = await sb.rpc(
+        'get_allocation_comment_author_profiles'
+      );
+      if (
+        authorProfileResult.error &&
+        !isMissingRpcError(authorProfileResult.error)
+      ) {
+        throw authorProfileResult.error;
+      }
+      const avatarUrlByEmail = new Map<string, string>();
+      for (
+        const profile of (authorProfileResult.data ?? []) as Record<
+          string,
+          unknown
+        >[]
+      ) {
+        const email = normalizeEmail(profile.email);
+        const avatarUrl = normalizeAvatarUrl(profile.avatar_url);
+        if (email && avatarUrl) avatarUrlByEmail.set(email, avatarUrl);
+      }
       const replyIds = replyRows.map((row) => String(row.id));
       const replyReadResult =
         userId && replyIds.length > 0
@@ -289,6 +323,8 @@ export function useInitiativeAllocationComments(
             : null,
           authorName: String(row.author_name ?? row.author_email ?? ''),
           authorEmail: String(row.author_email ?? ''),
+          authorAvatarUrl:
+            avatarUrlByEmail.get(normalizeEmail(row.author_email)) ?? null,
           createdAt: String(row.created_at ?? ''),
           updatedAt,
           isUnread: isUnread(updatedAt, readAtByReply.get(id)),
@@ -315,6 +351,8 @@ export function useInitiativeAllocationComments(
             : null,
           authorName: String(row.author_name ?? row.author_email ?? ''),
           authorEmail: String(row.author_email ?? ''),
+          authorAvatarUrl:
+            avatarUrlByEmail.get(normalizeEmail(row.author_email)) ?? null,
           createdAt: String(row.created_at ?? ''),
           updatedAt,
           status: row.status === 'resolved' ? 'resolved' : 'open',
