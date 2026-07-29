@@ -42,7 +42,7 @@ import {
   type LocationAllocationScenarioSourceTeam,
   type LocationAllocationScenarioTeam,
 } from '@/hooks/useLocationAllocationScenario';
-import { useAccess } from '@/hooks/useAccess';
+import { useAuth } from '@/hooks/useAuth';
 import { InitiativeAllocationComments } from './InitiativeAllocationComments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -91,6 +91,7 @@ import {
   normalizeAllocationScenarioUnit,
 } from '@/lib/allocationScenarioUnits';
 import { reorderAllocationScenarioTeamIds } from '@/lib/allocationScenarioOrder';
+import { canManageAllocationScenarioTeams } from '@/lib/allocationScenarioPermissions';
 import { DrinkitBrandMark } from './DrinkitBrandMark';
 
 type Props = {
@@ -469,7 +470,7 @@ function AllocationBlock({
 function TeamCard({
   team,
   isExpanded,
-  canEditUnit,
+  canManageTeamActions,
   editMode,
   isSaving,
   isDragging,
@@ -485,7 +486,7 @@ function TeamCard({
 }: {
   team: LocationAllocationScenarioTeam;
   isExpanded: boolean;
-  canEditUnit: boolean;
+  canManageTeamActions: boolean;
   editMode: boolean;
   isSaving: boolean;
   isDragging: boolean;
@@ -555,7 +556,7 @@ function TeamCard({
               </button>
             ) : null}
             <h3 className="truncate text-lg font-semibold">{team.name}</h3>
-            {editMode ? (
+            {editMode && canManageTeamActions ? (
               <div onClick={(event) => event.stopPropagation()}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -793,7 +794,7 @@ export function LocationAllocationTeamView({
   selectedUnit = null,
   onSelectedUnitChange,
 }: Props) {
-  const { allocationEditorUnits } = useAccess();
+  const { user } = useAuth();
   const liveMetrics = useLocationAllocationTeamMetrics({ enabled: !readOnly });
   const metricByTeam = useMemo(() => {
     const map = new Map(
@@ -906,12 +907,9 @@ export function LocationAllocationTeamView({
 
   const activeGroup =
     groups.find((group) => group.unit === activeUnit) ?? groups[0];
-  const canEditActiveUnit =
-    !readOnly &&
-    Boolean(activeGroup) &&
-    allocationEditorUnits.some(
-      (unit) => normalizeAllocationScenarioUnit(unit) === activeGroup.unit
-    );
+  const canEditActiveUnit = !readOnly && Boolean(activeGroup);
+  const canManageActiveUnit =
+    !readOnly && canManageAllocationScenarioTeams(user?.email);
   const activeFot2025 =
     activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ?? 0;
   const activeFot2026 =
@@ -1108,7 +1106,7 @@ export function LocationAllocationTeamView({
                   )}
                 </Button>
               ) : null}
-              {editMode ? (
+              {editMode && canManageActiveUnit ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -1134,7 +1132,7 @@ export function LocationAllocationTeamView({
                 key={team.id}
                 team={team}
                 isExpanded={expandedTeamIds.has(team.id)}
-                canEditUnit={canEditActiveUnit}
+                canManageTeamActions={canManageActiveUnit}
                 editMode={editMode}
                 isSaving={scenario.isSaving}
                 isDragging={draggedTeamId === team.id}
