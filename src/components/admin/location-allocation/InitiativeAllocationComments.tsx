@@ -30,6 +30,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/components/ui/avatar';
 
 type Props = {
   scope: LocationAllocationCommentScope;
@@ -167,8 +172,19 @@ function ReplyCard({
 
   return (
     <div className="flex items-start gap-2 py-1.5">
-      <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-semibold text-muted-foreground">
-        {initials(reply.authorName || reply.authorEmail)}
+      <span className="relative shrink-0">
+        <Avatar className="h-5 w-5 border border-border/70">
+          {reply.authorAvatarUrl ? (
+            <AvatarImage
+              src={reply.authorAvatarUrl}
+              alt=""
+              className="object-cover"
+            />
+          ) : null}
+          <AvatarFallback className="text-[8px] font-semibold text-muted-foreground">
+            {initials(reply.authorName || reply.authorEmail)}
+          </AvatarFallback>
+        </Avatar>
         {reply.isUnread ? (
           <span
             className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-500 ring-2 ring-background"
@@ -303,8 +319,19 @@ function CommentCard({
       }`}
     >
       <div className="flex items-start gap-2">
-        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary">
-          {initials(comment.authorName || comment.authorEmail)}
+        <span className="relative shrink-0">
+          <Avatar className="h-6 w-6 border border-primary/15">
+            {comment.authorAvatarUrl ? (
+              <AvatarImage
+                src={comment.authorAvatarUrl}
+                alt=""
+                className="object-cover"
+              />
+            ) : null}
+            <AvatarFallback className="bg-primary/10 text-[9px] font-semibold text-primary">
+              {initials(comment.authorName || comment.authorEmail)}
+            </AvatarFallback>
+          </Avatar>
           {comment.isUnread ? (
             <span
               className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-500 ring-2 ring-background"
