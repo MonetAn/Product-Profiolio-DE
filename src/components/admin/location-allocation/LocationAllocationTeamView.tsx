@@ -173,7 +173,7 @@ function AllocationBrandMark({
     return (
       <span className={className} style={{ backgroundColor: appearance.accent }}>
         <img
-          src="/brands/dodo-pizza-sign.png"
+          src={`${import.meta.env.BASE_URL}brands/dodo-pizza-sign.png`}
           alt=""
           aria-hidden="true"
           className="h-full w-full rounded-[inherit] object-cover"
@@ -506,13 +506,6 @@ function TeamCard({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState(team.name);
-  const totalPercent =
-    team.runPercent +
-    TOP_REGION_ORDER.reduce(
-      (sum, region) => sum + (getRegion(team, region)?.percent ?? 0),
-      0
-    );
-  const incomplete = Math.abs(totalPercent - 100) >= 0.05;
 
   useEffect(() => setRenameDraft(team.name), [team.name]);
 
@@ -527,10 +520,7 @@ function TeamCard({
       ) : null}
       <section
         className={cn(
-          'overflow-hidden rounded-xl border bg-card shadow-sm transition-all',
-          canEditUnit && incomplete
-            ? 'border-rose-300/80 ring-1 ring-rose-500/10'
-            : 'border-border',
+          'overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all',
           isDragging && 'scale-[0.995] opacity-45'
         )}
       >
@@ -563,12 +553,6 @@ function TeamCard({
               >
                 <GripVertical className="h-4 w-4" />
               </button>
-            ) : null}
-            {canEditUnit && incomplete ? (
-              <span
-                className="h-2 w-2 shrink-0 rounded-full bg-rose-500"
-                title="Сумма распределения не равна 100%"
-              />
             ) : null}
             <h3 className="truncate text-lg font-semibold">{team.name}</h3>
             {editMode ? (
