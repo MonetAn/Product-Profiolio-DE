@@ -104,6 +104,7 @@ describe('LocationAllocationTreemapNode comments', () => {
         node={teamNode}
         meta={meta}
         focusedPath={['Core', 'Platform']}
+        isFocusedTeamView
         renderDepth={3}
         onEditClick={onEditClick}
         commentSummary={commentSummary}
@@ -124,6 +125,7 @@ describe('LocationAllocationTreemapNode comments', () => {
         node={teamNode}
         meta={meta}
         focusedPath={['Core']}
+        isFocusedTeamView={false}
         renderDepth={3}
         onEditClick={onEditClick}
         commentSummary={commentSummary}

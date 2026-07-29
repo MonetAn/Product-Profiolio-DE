@@ -203,6 +203,8 @@ type CellCenterStackProps = {
   isTiny: boolean;
   isSmall: boolean;
   showMoney: boolean;
+  discussionCount: LocationAllocationCommentCount;
+  onDiscussionClick?: () => void;
 };
 
 const CellCenterStack = memo(function CellCenterStack({
@@ -215,6 +217,8 @@ const CellCenterStack = memo(function CellCenterStack({
   isTiny,
   isSmall,
   showMoney,
+  discussionCount,
+  onDiscussionClick,
 }: CellCenterStackProps) {
   const initiativeIds = useMemo(
     () => collectLocationTreemapInitiativeIds(node, meta),
@@ -288,10 +292,42 @@ const CellCenterStack = memo(function CellCenterStack({
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-1 pointer-events-none z-10">
-      <div
-        className={`font-semibold leading-tight max-w-full truncate px-0.5 ${labelClass} ${nameSize}`}
-      >
-        {node.name}
+      <div className="flex max-w-full items-center justify-center gap-1 px-0.5">
+        <div
+          className={`min-w-0 truncate font-semibold leading-tight ${labelClass} ${nameSize}`}
+        >
+          {node.name}
+        </div>
+        {onDiscussionClick ? (
+          <button
+            type="button"
+            className="relative inline-flex h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-md bg-black/35 px-1.5 text-white/95 hover:bg-black/50 hover:text-white pointer-events-auto"
+            title={initiativeDiscussionButtonLabel(node.name, discussionCount)}
+            aria-label={initiativeDiscussionButtonLabel(
+              node.name,
+              discussionCount
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDiscussionClick();
+            }}
+          >
+            {discussionCount.unreadCount > 0 ? (
+              <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
+            ) : null}
+            <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.1} />
+            {!isSmall ? (
+              <span className="text-[8px] font-semibold uppercase tracking-tight">
+                Обс.
+              </span>
+            ) : null}
+            {discussionCount.openCount > 0 ? (
+              <span className="text-[9px] font-semibold tabular-nums">
+                {discussionCount.openCount}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
       </div>
 
       {headcount != null && !isTiny ? (
@@ -365,6 +401,7 @@ export type LocationAllocationTreemapNodeProps = {
   showMoney?: boolean;
   onEditClick?: (node: TreemapLayoutNode) => void;
   commentSummary?: LocationAllocationCommentSummary;
+  isFocusedTeamView?: boolean;
 };
 
 export const LocationAllocationTreemapNode = memo(function LocationAllocationTreemapNode({
@@ -386,6 +423,7 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
   showMoney = true,
   onEditClick,
   commentSummary,
+  isFocusedTeamView = false,
 }: LocationAllocationTreemapNodeProps) {
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
@@ -427,7 +465,6 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
     (initiativeId
       ? commentSummary?.byInitiative.get(initiativeId)
       : null) ?? EMPTY_LOCATION_COMMENT_COUNT;
-  const isFocusedTeamView = focusedPath.length >= 2;
   const showInitiativeDiscussion =
     Boolean(onEditClick) &&
     node.isInitiative &&
@@ -480,39 +517,6 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
 
   return (
     <div className={classNames} style={boxStyle} {...eventHandlers}>
-      {showInitiativeDiscussion ? (
-        <button
-          type="button"
-          className="absolute right-1 top-1 z-30 inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-md bg-black/35 px-1.5 text-white/95 hover:bg-black/50 hover:text-white pointer-events-auto"
-          title={initiativeDiscussionButtonLabel(
-            node.name,
-            directInitiativeCommentCount
-          )}
-          aria-label={initiativeDiscussionButtonLabel(
-            node.name,
-            directInitiativeCommentCount
-          )}
-          onClick={(event) => {
-            event.stopPropagation();
-            onEditClick?.(node);
-          }}
-        >
-          {directInitiativeCommentCount.unreadCount > 0 ? (
-            <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
-          ) : null}
-          <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.1} />
-          {node.width >= 92 ? (
-            <span className="text-[8px] font-semibold uppercase tracking-tight">
-              Обс.
-            </span>
-          ) : null}
-          {directInitiativeCommentCount.openCount > 0 ? (
-            <span className="text-[9px] font-semibold tabular-nums">
-              {directInitiativeCommentCount.openCount}
-            </span>
-          ) : null}
-        </button>
-      ) : null}
       {onEditClick &&
       node.isTeam &&
       !showsParentHeader &&
@@ -521,7 +525,11 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
         <span className="absolute left-1 top-1 z-30">
           <TeamCommentIndicators
             teamCount={teamCommentCount}
-            initiativeCount={initiativeCommentCount}
+            initiativeCount={
+              isFocusedTeamView
+                ? EMPTY_LOCATION_COMMENT_COUNT
+                : initiativeCommentCount
+            }
             compact={isTiny || isSmall}
             onTeamCommentClick={() => onEditClick(node)}
           />
@@ -557,6 +565,12 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
           isTiny={isTiny}
           isSmall={isSmall}
           showMoney={showMoney}
+          discussionCount={directInitiativeCommentCount}
+          onDiscussionClick={
+            showInitiativeDiscussion
+              ? () => onEditClick?.(node)
+              : undefined
+          }
         />
       )}
       {shouldRenderChildren && showChildren
@@ -581,6 +595,7 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
               showMoney={showMoney}
               onEditClick={onEditClick}
               commentSummary={commentSummary}
+              isFocusedTeamView={isFocusedTeamView}
             />
           ))
         : null}

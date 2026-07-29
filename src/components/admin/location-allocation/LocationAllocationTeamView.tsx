@@ -1,32 +1,52 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, MessageSquareText } from 'lucide-react';
-import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
-import { getInitiativeDisplayName } from '@/lib/adminDataManager';
-import type { Person, PersonAssignment } from '@/lib/peopleDataManager';
-import type { MarketCountryRow } from '@/hooks/useMarketCountries';
-import type {
-  InitiativeRegionPayment,
-  LocationHeadcountIndex,
-} from '@/lib/locationAllocationPlanning';
 import {
-  buildInitiativeRegionPayments,
-  buildInitiativesRegionPayments,
-  calculateTeamRun,
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+} from 'react';
+import {
+  Building2,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Globe2,
+  GripVertical,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import type { AdminDataRow } from '@/lib/adminDataManager';
+import type { LocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
+import {
   locationTeamKey,
-  resolveTeamRunDisplay,
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
-import { initiativeYearCostRub } from '@/lib/locationAllocationModel';
 import {
+  TOP_REGION_ORDER,
   TOP_REGION_SHORT_LABELS,
+  type TopRegionLabel,
 } from '@/lib/locationRegionModel';
-import { formatLocationCompactM } from '@/lib/locationDisplayFormat';
+import { formatLocationExactRub } from '@/lib/locationDisplayFormat';
 import {
   useLocationAllocationTeamMetrics,
   type LocationAllocationTeamMetric,
 } from '@/hooks/useLocationAllocationTeamMetrics';
+import {
+  useLocationAllocationScenario,
+  type LocationAllocationScenarioRegion,
+  type LocationAllocationScenarioSourceTeam,
+  type LocationAllocationScenarioTeam,
+} from '@/hooks/useLocationAllocationScenario';
+import { useAccess } from '@/hooks/useAccess';
+import { InitiativeAllocationComments } from './InitiativeAllocationComments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -35,124 +55,175 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { InitiativeAllocationComments } from '@/components/admin/location-allocation/InitiativeAllocationComments';
-import { useLocationAllocationCommentSummary } from '@/hooks/useLocationAllocationCommentSummary';
 import {
-  EMPTY_LOCATION_COMMENT_COUNT,
-  type LocationAllocationCommentCount,
-} from '@/lib/locationAllocationCommentSummary';
-import { LocationAllocationTreemapEditDialog } from '@/components/admin/location-allocation/LocationAllocationTreemapEditDialog';
-import { resolveGeoEditTargetFromScope } from '@/lib/locationAllocationGeoEdit';
-import type { InitiativeTag } from '@/lib/initiativeTags';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import {
+  ALLOCATION_SCENARIO_UNITS,
+  normalizeAllocationScenarioUnit,
+} from '@/lib/allocationScenarioUnits';
+import { reorderAllocationScenarioTeamIds } from '@/lib/allocationScenarioOrder';
+import { DrinkitBrandMark } from './DrinkitBrandMark';
 
 type Props = {
   initiatives: AdminDataRow[];
-  scopedInitiatives: AdminDataRow[];
-  selectedQuarters: string[];
-  people: Person[];
-  assignments: PersonAssignment[];
   headcount: LocationHeadcountIndex;
-  countries: MarketCountryRow[];
-  countryIdToClusterKey: Map<string, string>;
   teamMetrics?: LocationAllocationTeamMetric[];
   readOnly?: boolean;
   selectedUnit?: string | null;
-  onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
-  onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
-type MetricKind =
-  | 'fot2025Rub'
-  | 'fot2026Rub'
-  | 'peopleCountOverride'
-  | 'runPercentOverride';
+type TeamPatch = Partial<
+  Pick<
+    LocationAllocationScenarioTeam,
+    | 'name'
+    | 'description'
+    | 'runPercent'
+    | 'runDescription'
+    | 'sortOrder'
+    | 'isArchived'
+  >
+>;
 
-type MetricEditorState = {
-  unit: string;
-  team: string;
-  kind: MetricKind;
-  calculatedValue: number;
-  value: number | null;
+type RegionPatch = Partial<
+  Pick<LocationAllocationScenarioRegion, 'percent' | 'description' | 'sortOrder'>
+>;
+
+type AllocationKind = TopRegionLabel | 'RUN';
+
+const ALLOCATION_APPEARANCE: Record<
+  AllocationKind,
+  {
+    accent: string;
+    tint: string;
+    text: string;
+  }
+> = {
+  'Domestic Region': {
+    accent: '#FF4E00',
+    tint: 'rgba(255, 78, 0, 0.045)',
+    text: '#B73700',
+  },
+  'International Region': {
+    accent: '#FF915F',
+    tint: 'rgba(255, 145, 95, 0.07)',
+    text: '#9B3F1D',
+  },
+  'Drink It': {
+    accent: '#182DA8',
+    tint: 'rgba(24, 45, 168, 0.045)',
+    text: '#182DA8',
+  },
+  RUN: {
+    accent: '#64748B',
+    tint: 'rgba(100, 116, 139, 0.055)',
+    text: '#475569',
+  },
 };
 
-type TeamLabelEditorState = {
-  unit: string;
-  team: string;
-  value: string;
-};
-
-type UnitLabelEditorState = {
-  unit: string;
-  teams: string[];
-  value: string;
-};
-
-const FULL_2026 = ['2026-Q1', '2026-Q2', '2026-Q3', '2026-Q4'];
-
-function MetricButton({
-  value,
-  secondary,
-  onClick,
-  disabled = false,
-  title,
-}: {
-  value: string;
-  secondary?: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className="group flex min-w-0 items-center rounded-lg px-2 py-2 text-left transition-colors enabled:hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-      onClick={onClick}
-      title={title}
-    >
-      <span className="min-w-0 truncate text-sm tabular-nums text-foreground">
-        <strong className="font-semibold">{value}</strong>
-        {secondary ? (
-          <span className="ml-1 font-normal text-muted-foreground">{secondary}</span>
-        ) : null}
-      </span>
-    </button>
-  );
+function allocationLabel(kind: AllocationKind): string {
+  return kind === 'RUN' ? 'RUN' : TOP_REGION_SHORT_LABELS[kind];
 }
 
-function CommentBadge({
-  count,
+function AllocationBrandMark({
+  kind,
+  size = 'md',
 }: {
-  count: LocationAllocationCommentCount;
+  kind: AllocationKind;
+  size?: 'sm' | 'md';
 }) {
-  const openLabel = `${count.openCount} нерешённых комментариев команды`;
-  const title =
-    count.openCount > 0 && count.unreadCount > 0
-      ? `${openLabel} · ${count.unreadCount} новых сообщений`
-      : count.openCount > 0
-        ? openLabel
-        : count.unreadCount > 0
-          ? `${count.unreadCount} новых сообщений`
-          : 'Открыть комментарии';
+  const appearance = ALLOCATION_APPEARANCE[kind];
+  const className = cn(
+    'relative inline-flex shrink-0 items-center justify-center rounded-md',
+    size === 'sm' ? 'h-5 w-5' : 'h-8 w-8'
+  );
+  const iconClassName = size === 'sm' ? 'h-3 w-3' : 'h-4 w-4';
+
+  if (kind === 'Domestic Region' || kind === 'International Region') {
+    const isInternational = kind === 'International Region';
+    return (
+      <span className={className} style={{ backgroundColor: appearance.accent }}>
+        <img
+          src="/brands/dodo-pizza-sign.png"
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full rounded-[inherit] object-cover"
+          style={
+            isInternational
+              ? { border: `2px solid ${appearance.accent}` }
+              : undefined
+          }
+        />
+        {isInternational ? (
+          <span
+            className={cn(
+              'absolute -bottom-1 -right-1 flex items-center justify-center rounded-full border-2 border-background shadow-sm',
+              size === 'sm' ? 'h-3 w-3' : 'h-4 w-4'
+            )}
+            style={{ backgroundColor: appearance.accent, color: '#5E210E' }}
+            aria-hidden="true"
+          >
+            <Globe2 className={size === 'sm' ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  if (kind === 'Drink It') {
+    return (
+      <span
+        className={className}
+        style={{ backgroundColor: appearance.accent, color: '#FFFFFF' }}
+      >
+        <DrinkitBrandMark className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-5 w-5'} />
+      </span>
+    );
+  }
+
+  const Icon = RefreshCw;
+
   return (
     <span
-      className="relative ml-auto inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-muted-foreground transition-colors group-hover:bg-muted group-hover:text-foreground"
-      title={title}
+      className={className}
+      style={{
+        backgroundColor: appearance.accent,
+        color: '#FFFFFF',
+      }}
     >
-      {count.unreadCount > 0 ? (
-        <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-500 ring-2 ring-background" />
-      ) : null}
-      <MessageSquareText className="h-4 w-4" strokeWidth={2.1} />
-      {count.openCount > 0 ? (
-        <span className="text-[10px] font-semibold tabular-nums">
-          {count.openCount}
-        </span>
-      ) : null}
+      <Icon className={iconClassName} aria-hidden="true" />
     </span>
   );
 }
 
-function teamCountLabel(count: number): string {
+function pluralTeams(count: number): string {
   const mod100 = count % 100;
   const mod10 = count % 10;
   if (mod100 >= 11 && mod100 <= 14) return `${count} команд`;
@@ -161,41 +232,148 @@ function teamCountLabel(count: number): string {
   return `${count} команд`;
 }
 
-function formatRunPercent(value: number): string {
+function formatPercent(value: number): string {
   return new Intl.NumberFormat('ru-RU', {
     maximumFractionDigits: 1,
   }).format(value);
 }
 
-function RegionPaymentSummary({
-  payments,
-  prominent = false,
+function NumberEditor({
+  value,
+  onCommit,
+  ariaLabel,
 }: {
-  payments: InitiativeRegionPayment[];
-  prominent?: boolean;
+  value: number;
+  onCommit: (value: number) => Promise<unknown>;
+  ariaLabel: string;
 }) {
-  if (payments.length === 0) {
-    return (
-      <span className="text-[10px] text-muted-foreground">
-        Нет распределения
-      </span>
-    );
-  }
+  const [draft, setDraft] = useState(String(Number(value.toFixed(2))));
+
+  useEffect(() => {
+    setDraft(String(Number(value.toFixed(2))));
+  }, [value]);
+
+  const commit = async () => {
+    const next = Math.max(0, Math.min(100, Number(draft) || 0));
+    setDraft(String(Number(next.toFixed(2))));
+    if (Math.abs(next - value) > 0.001) await onCommit(next);
+  };
 
   return (
-    <div
-      className={`flex flex-wrap gap-x-2 gap-y-0.5 ${
-        prominent ? 'text-xs' : 'text-[10px]'
-      }`}
-    >
-      {payments.map((payment) => (
-        <span key={payment.region} className="whitespace-nowrap tabular-nums">
-          <span className="font-medium text-foreground/80">
-            {TOP_REGION_SHORT_LABELS[payment.region]}{' '}
-            {formatLocationCompactM(payment.rub)}
-          </span>{' '}
-          <span className="text-muted-foreground">
-            ({Math.round(payment.percent)}%)
+    <div className="relative w-[88px]">
+      <Input
+        type="number"
+        min={0}
+        max={100}
+        step={0.1}
+        value={draft}
+        aria-label={ariaLabel}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
+        className="h-9 pr-7 text-right font-semibold tabular-nums"
+      />
+      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+        %
+      </span>
+    </div>
+  );
+}
+
+function TextEditor({
+  value,
+  onCommit,
+  placeholder,
+  ariaLabel,
+  className,
+}: {
+  value: string;
+  onCommit: (value: string) => Promise<unknown>;
+  placeholder: string;
+  ariaLabel: string;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <Textarea
+      value={draft}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft !== value) void onCommit(draft);
+      }}
+      className={className}
+    />
+  );
+}
+
+function getRegion(
+  team: LocationAllocationScenarioTeam,
+  region: TopRegionLabel
+): LocationAllocationScenarioRegion | null {
+  return team.regions.find((item) => item.region === region) ?? null;
+}
+
+function allocationAmount(
+  team: LocationAllocationScenarioTeam,
+  percent: number
+): number {
+  return team.fot2026Rub * (percent / 100);
+}
+
+function resolveTeamDropPosition(
+  event: DragEvent<HTMLDivElement>
+): 'before' | 'after' {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const boundary = rect.top + Math.min(rect.height / 2, 48);
+  return event.clientY < boundary ? 'before' : 'after';
+}
+
+function AllocationSummary({
+  team,
+  className,
+}: {
+  team: LocationAllocationScenarioTeam;
+  className?: string;
+}) {
+  const items = [
+    ...TOP_REGION_ORDER.map((region) => ({
+      key: region,
+      kind: region as AllocationKind,
+      percent: getRegion(team, region)?.percent ?? 0,
+    })),
+    { key: 'run', kind: 'RUN' as AllocationKind, percent: team.runPercent },
+  ];
+
+  return (
+    <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-1.5', className)}>
+      {items.map((item) => (
+        <span
+          key={item.key}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px]"
+        >
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: ALLOCATION_APPEARANCE[item.kind].accent }}
+            aria-hidden="true"
+          />
+          <span
+            className="font-medium"
+            style={{ color: ALLOCATION_APPEARANCE[item.kind].text }}
+          >
+            {allocationLabel(item.kind)}
+          </span>
+          <span className="font-semibold tabular-nums text-foreground">
+            {formatLocationExactRub(allocationAmount(team, item.percent))}
+          </span>
+          <span className="tabular-nums text-muted-foreground">
+            ({formatPercent(item.percent)}%)
           </span>
         </span>
       ))}
@@ -203,139 +381,615 @@ function RegionPaymentSummary({
   );
 }
 
+function AllocationBlock({
+  kind,
+  percent,
+  description,
+  team,
+  editMode,
+  onPercentCommit,
+  onDescriptionCommit,
+}: {
+  kind: AllocationKind;
+  percent: number;
+  description: string;
+  team: LocationAllocationScenarioTeam;
+  editMode: boolean;
+  onPercentCommit: (value: number) => Promise<unknown>;
+  onDescriptionCommit: (value: string) => Promise<unknown>;
+}) {
+  const label = allocationLabel(kind);
+  const appearance = ALLOCATION_APPEARANCE[kind];
+
+  return (
+    <div
+      className="rounded-xl border border-border/80 border-t-[3px] p-4"
+      style={{
+        borderTopColor: appearance.accent,
+        background: `linear-gradient(135deg, ${appearance.tint}, transparent 45%), hsl(var(--background))`,
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <AllocationBrandMark kind={kind} />
+          <div className="min-w-0">
+            <p
+              className="text-xs font-semibold uppercase tracking-wide"
+              style={{ color: appearance.text }}
+            >
+              {label}
+            </p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+              <span className="text-xl font-semibold tabular-nums">
+                {formatLocationExactRub(allocationAmount(team, percent))}
+              </span>
+              {!editMode ? (
+                <span className="text-sm tabular-nums text-muted-foreground">
+                  ({formatPercent(percent)}%)
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        {editMode ? (
+          <NumberEditor
+            value={percent}
+            ariaLabel={`Процент ${label} команды ${team.name}`}
+            onCommit={onPercentCommit}
+          />
+        ) : null}
+      </div>
+
+      <div className="mt-3 border-t border-border/60 pt-3">
+        {editMode ? (
+          <TextEditor
+            value={description}
+            ariaLabel={`Описание ${label} команды ${team.name}`}
+            placeholder={`Что команда делает для ${label}`}
+            onCommit={onDescriptionCommit}
+            className="min-h-[86px] resize-y bg-muted/20"
+          />
+        ) : (
+          <p
+            className={cn(
+              'min-h-[40px] whitespace-pre-wrap text-sm leading-relaxed',
+              description.trim() ? 'text-foreground' : 'text-muted-foreground'
+            )}
+          >
+            {description.trim() || '—'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TeamCard({
+  team,
+  isExpanded,
+  canEditUnit,
+  editMode,
+  isSaving,
+  isDragging,
+  dropPosition,
+  onToggle,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  updateTeam,
+  archiveTeam,
+  saveRegion,
+}: {
+  team: LocationAllocationScenarioTeam;
+  isExpanded: boolean;
+  canEditUnit: boolean;
+  editMode: boolean;
+  isSaving: boolean;
+  isDragging: boolean;
+  dropPosition: 'before' | 'after' | null;
+  onToggle: () => void;
+  onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
+  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+  onDrop: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
+  updateTeam: (id: string, patch: TeamPatch) => Promise<unknown>;
+  archiveTeam: (id: string) => Promise<unknown>;
+  saveRegion: (
+    teamId: string,
+    region: TopRegionLabel,
+    patch: RegionPatch
+  ) => Promise<unknown>;
+}) {
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(team.name);
+  const totalPercent =
+    team.runPercent +
+    TOP_REGION_ORDER.reduce(
+      (sum, region) => sum + (getRegion(team, region)?.percent ?? 0),
+      0
+    );
+  const incomplete = Math.abs(totalPercent - 100) >= 0.05;
+
+  useEffect(() => setRenameDraft(team.name), [team.name]);
+
+  return (
+    <div
+      className="relative"
+      onDragOver={editMode ? onDragOver : undefined}
+      onDrop={editMode ? onDrop : undefined}
+    >
+      {dropPosition === 'before' ? (
+        <span className="pointer-events-none absolute -top-1.5 left-2 right-2 z-10 h-1 rounded-full bg-primary shadow-sm" />
+      ) : null}
+      <section
+        className={cn(
+          'overflow-hidden rounded-xl border bg-card shadow-sm transition-all',
+          canEditUnit && incomplete
+            ? 'border-rose-300/80 ring-1 ring-rose-500/10'
+            : 'border-border',
+          isDragging && 'scale-[0.995] opacity-45'
+        )}
+      >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        className="grid cursor-pointer gap-4 px-4 py-4 outline-none transition-colors hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto]"
+        onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onToggle();
+          }
+        }}
+      >
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            {editMode ? (
+              <button
+                type="button"
+                draggable={!isSaving}
+                className="flex h-8 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={isSaving}
+                aria-label={`Перетащить команду ${team.name}`}
+                title="Перетащить команду"
+                onClick={(event) => event.stopPropagation()}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+            ) : null}
+            {canEditUnit && incomplete ? (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-rose-500"
+                title="Сумма распределения не равна 100%"
+              />
+            ) : null}
+            <h3 className="truncate text-lg font-semibold">{team.name}</h3>
+            {editMode ? (
+              <div onClick={(event) => event.stopPropagation()}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      aria-label={`Действия с командой ${team.name}`}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
+                      <Pencil className="mr-2 h-3.5 w-3.5" />
+                      Переименовать
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                      Удалить
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : null}
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+          </div>
+          <AllocationSummary team={team} className="mt-2" />
+        </div>
+
+        <div className="flex items-center justify-between gap-4 sm:justify-end">
+          <div className="flex items-end gap-5">
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                ФОТ 2025
+              </p>
+              <p className="mt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
+                {team.fot2025Rub > 0
+                  ? formatLocationExactRub(team.fot2025Rub)
+                  : '—'}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                ФОТ 2026
+              </p>
+              <p className="mt-0.5 text-lg font-semibold tabular-nums">
+                {formatLocationExactRub(team.fot2026Rub)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Люди
+              </p>
+              <p className="mt-0.5 flex items-center justify-end gap-1 text-lg font-semibold tabular-nums">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                {team.peopleCount}
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {isExpanded ? (
+        <div className="border-t border-border bg-muted/[0.12] px-4 py-5 sm:px-5">
+          <div className="space-y-6">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Описание команды
+              </p>
+              {editMode ? (
+                <TextEditor
+                  value={team.description}
+                  ariaLabel={`Описание команды ${team.name}`}
+                  placeholder="Коротко опишите роль и фокус команды"
+                  onCommit={(description) =>
+                    updateTeam(team.id, { description })
+                  }
+                  className="min-h-[112px] resize-y bg-background"
+                />
+              ) : (
+                <p
+                  className={cn(
+                    'max-w-5xl whitespace-pre-wrap text-[15px] leading-7',
+                    team.description.trim()
+                      ? 'text-foreground'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  {team.description.trim() || '—'}
+                </p>
+              )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {TOP_REGION_ORDER.map((region, sortOrder) => {
+                const item = getRegion(team, region);
+                return (
+                  <AllocationBlock
+                    key={region}
+                    kind={region}
+                    percent={item?.percent ?? 0}
+                    description={item?.description ?? ''}
+                    team={team}
+                    editMode={editMode}
+                    onPercentCommit={(percent) =>
+                      saveRegion(team.id, region, { percent, sortOrder })
+                    }
+                    onDescriptionCommit={(description) =>
+                      saveRegion(team.id, region, { description, sortOrder })
+                    }
+                  />
+                );
+              })}
+              <AllocationBlock
+                kind="RUN"
+                percent={team.runPercent}
+                description={team.runDescription}
+                team={team}
+                editMode={editMode}
+                onPercentCommit={(runPercent) =>
+                  updateTeam(team.id, { runPercent })
+                }
+                onDescriptionCommit={(runDescription) =>
+                  updateTeam(team.id, { runDescription })
+                }
+              />
+            </div>
+
+            <div className="border-t border-border pt-5">
+              <InitiativeAllocationComments
+                scope={{
+                  type: 'team',
+                  unit: team.sourceUnit ?? team.unit,
+                  team: team.sourceTeam ?? team.name,
+                }}
+                compact
+                hideEmptyState
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Переименовать команду</DialogTitle>
+            <DialogDescription>
+              Новое название изменится только в сценарии аллокаций.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={renameDraft}
+            onChange={(event) => setRenameDraft(event.target.value)}
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && renameDraft.trim()) {
+                void updateTeam(team.id, { name: renameDraft.trim() }).then(() =>
+                  setRenameOpen(false)
+                );
+              }
+            }}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenameOpen(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              disabled={!renameDraft.trim() || isSaving}
+              onClick={() =>
+                void updateTeam(team.id, { name: renameDraft.trim() }).then(() =>
+                  setRenameOpen(false)
+                )
+              }
+            >
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить «{team.name}» из сценария?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Исходная команда и данные портфеля не изменятся. Удалится только
+              её версия в этом представлении.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void archiveTeam(team.id)}
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </section>
+      {dropPosition === 'after' ? (
+        <span className="pointer-events-none absolute -bottom-1.5 left-2 right-2 z-10 h-1 rounded-full bg-primary shadow-sm" />
+      ) : null}
+    </div>
+  );
+}
+
 export function LocationAllocationTeamView({
   initiatives,
-  scopedInitiatives,
-  selectedQuarters,
-  people,
-  assignments,
   headcount,
-  countries,
-  countryIdToClusterKey,
   teamMetrics = [],
   readOnly = false,
   selectedUnit = null,
-  onGeoCostSplitSave,
-  onInitiativeTagsSave,
 }: Props) {
-  const {
-    byTeam: liveMetricByTeam,
-    saveMetric,
-    saveUnitDisplayName,
-    isSaving,
-  } = useLocationAllocationTeamMetrics({ enabled: !readOnly });
-  const metricByTeam = useMemo(
-    () =>
-      readOnly
-        ? new Map(
-            teamMetrics.map((metric) => [
-              locationTeamKey(metric.unit, metric.team),
-              metric,
-            ])
-          )
-        : liveMetricByTeam,
-    [liveMetricByTeam, readOnly, teamMetrics]
-  );
-  const commentSummaryQuery =
-    useLocationAllocationCommentSummary(initiatives, {
-      enabled: !readOnly,
-    });
-  const commentSummary = readOnly ? undefined : commentSummaryQuery.data;
-  const [metricEditor, setMetricEditor] = useState<MetricEditorState | null>(null);
-  const [metricDraft, setMetricDraft] = useState('');
-  const [teamLabelEditor, setTeamLabelEditor] = useState<TeamLabelEditorState | null>(null);
-  const [teamLabelDraft, setTeamLabelDraft] = useState('');
-  const [unitLabelEditor, setUnitLabelEditor] = useState<UnitLabelEditorState | null>(null);
-  const [unitLabelDraft, setUnitLabelDraft] = useState('');
-  const [selectedInitiativeId, setSelectedInitiativeId] = useState<string | null>(null);
-  const [expandedUnits, setExpandedUnits] = useState<Set<string>>(
-    () => new Set(selectedUnit ? [selectedUnit] : [])
-  );
-
-  const allRowsByTeam = useMemo(() => {
-    const map = new Map<string, AdminDataRow[]>();
-    for (const row of initiatives) {
-      const key = locationTeamKey(row.unit, row.team);
-      const bucket = map.get(key) ?? [];
-      bucket.push(row);
-      map.set(key, bucket);
+  const { allocationEditorUnits } = useAccess();
+  const liveMetrics = useLocationAllocationTeamMetrics({ enabled: !readOnly });
+  const metricByTeam = useMemo(() => {
+    const map = new Map(
+      teamMetrics.map((metric) => [
+        locationTeamKey(metric.unit, metric.team),
+        metric,
+      ])
+    );
+    if (!readOnly) {
+      for (const metric of liveMetrics.data ?? []) {
+        map.set(locationTeamKey(metric.unit, metric.team), metric);
+      }
     }
     return map;
-  }, [initiatives]);
+  }, [liveMetrics.data, readOnly, teamMetrics]);
 
-  const groups = useMemo(() => {
-    const unitMap = new Map<
-      string,
-      Map<string, { team: string; visibleRows: AdminDataRow[] }>
-    >();
-    for (const row of scopedInitiatives) {
+  const sourceTeams = useMemo<LocationAllocationScenarioSourceTeam[]>(() => {
+    const rowsByTeam = new Map<string, AdminDataRow[]>();
+    for (const row of initiatives) {
       const unit = row.unit.trim() || 'Без юнита';
       const team = row.team.trim() || 'Без команды';
-      const teams = unitMap.get(unit) ?? new Map();
-      const current = teams.get(team) ?? { team, visibleRows: [] };
-      current.visibleRows.push(row);
-      teams.set(team, current);
-      unitMap.set(unit, teams);
+      const key = locationTeamKey(unit, team);
+      const bucket = rowsByTeam.get(key) ?? [];
+      bucket.push(row);
+      rowsByTeam.set(key, bucket);
     }
-    return [...unitMap.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0], 'ru'))
-      .map(([unit, teams]) => ({
-        unit,
-        teams: [...teams.values()].sort((a, b) => a.team.localeCompare(b.team, 'ru')),
-      }));
-  }, [scopedInitiatives]);
+    return [...rowsByTeam.entries()]
+      .map(([key, rows]) => {
+        const first = rows[0];
+        const sourceUnit = first.unit.trim() || 'Без юнита';
+        const sourceTeam = first.team.trim() || 'Без команды';
+        const scenarioUnit = normalizeAllocationScenarioUnit(sourceUnit);
+        if (!scenarioUnit) return null;
+        const metric = metricByTeam.get(key);
+        return {
+          unit: scenarioUnit,
+          sourceUnit,
+          sourceTeam,
+          name: metric?.teamDisplayName ?? sourceTeam,
+          fot2025Rub: metric?.fot2025Rub ?? sumTeamCostForYear(rows, 2025),
+          fot2026Rub: metric?.fot2026Rub ?? sumTeamCostForYear(rows, 2026),
+          peopleCount:
+            metric?.peopleCountOverride ?? headcount.byTeam.get(key) ?? 0,
+          runPercent: 0,
+        };
+      })
+      .filter(
+        (team): team is LocationAllocationScenarioSourceTeam => Boolean(team)
+      )
+      .sort(
+        (a, b) =>
+          ALLOCATION_SCENARIO_UNITS.indexOf(
+            a.unit as (typeof ALLOCATION_SCENARIO_UNITS)[number]
+          ) -
+            ALLOCATION_SCENARIO_UNITS.indexOf(
+              b.unit as (typeof ALLOCATION_SCENARIO_UNITS)[number]
+            ) || a.name.localeCompare(b.name, 'ru')
+      );
+  }, [headcount.byTeam, initiatives, metricByTeam]);
 
-  const selectedInitiative =
-    initiatives.find((row) => row.id === selectedInitiativeId) ?? null;
-  const selectedInitiativeTarget = useMemo(
-    () =>
-      selectedInitiative
-        ? resolveGeoEditTargetFromScope(
-            {
-              type: 'initiative',
-              initiativeId: selectedInitiative.id,
-            },
-            initiatives,
-            selectedQuarters,
-            countries,
-            countryIdToClusterKey
-          )
-        : null,
-    [
-      countries,
-      countryIdToClusterKey,
-      initiatives,
-      selectedInitiative,
-      selectedQuarters,
-    ]
+  const scenario = useLocationAllocationScenario({
+    sourceTeams,
+    enabled: readOnly || !liveMetrics.isLoading,
+  });
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
+  const [newTeamUnit, setNewTeamUnit] = useState<string | null>(null);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [activeUnit, setActiveUnit] = useState(
+    normalizeAllocationScenarioUnit(selectedUnit) ?? 'Data Office + AI Hub'
   );
+  const [unitPickerOpen, setUnitPickerOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [draggedTeamId, setDraggedTeamId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    teamId: string;
+    position: 'before' | 'after';
+  } | null>(null);
+
+  const groups = useMemo(() => {
+    const byUnit = new Map<string, LocationAllocationScenarioTeam[]>();
+    for (const team of scenario.teams) {
+      const scenarioUnit = normalizeAllocationScenarioUnit(team.unit);
+      if (!scenarioUnit) continue;
+      const bucket = byUnit.get(scenarioUnit) ?? [];
+      bucket.push(team);
+      byUnit.set(scenarioUnit, bucket);
+    }
+    return ALLOCATION_SCENARIO_UNITS.map((unit) => ({
+      unit,
+      teams: (byUnit.get(unit) ?? []).sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru')
+      ),
+    }));
+  }, [scenario.teams]);
 
   useEffect(() => {
-    if (!selectedUnit) return;
-    setExpandedUnits((current) => {
-      if (current.has(selectedUnit)) return current;
-      const next = new Set(current);
-      next.add(selectedUnit);
-      return next;
-    });
-  }, [selectedUnit]);
+    if (groups.length === 0) return;
+    const requestedUnit = normalizeAllocationScenarioUnit(selectedUnit);
+    const nextUnit =
+      groups.find((group) => group.unit === activeUnit)?.unit ??
+      requestedUnit ??
+      groups.find((group) => group.unit === 'Data Office + AI Hub')?.unit ??
+      groups[0].unit;
+    if (nextUnit !== activeUnit) {
+      setActiveUnit(nextUnit);
+      setExpandedTeamId(null);
+      setEditMode(false);
+    }
+  }, [activeUnit, groups, selectedUnit]);
 
-  const openMetricEditor = (
-    unit: string,
-    team: string,
-    kind: MetricKind,
-    calculatedValue: number,
-    value: number | null
-  ) => {
-    if (readOnly) return;
-    setMetricEditor({ unit, team, kind, calculatedValue, value });
-    setMetricDraft(String(value ?? calculatedValue));
+  const activeGroup =
+    groups.find((group) => group.unit === activeUnit) ?? groups[0];
+  const canEditActiveUnit =
+    !readOnly &&
+    Boolean(activeGroup) &&
+    allocationEditorUnits.some(
+      (unit) => normalizeAllocationScenarioUnit(unit) === activeGroup.unit
+    );
+  const activeFot2025 =
+    activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ?? 0;
+  const activeFot2026 =
+    activeGroup?.teams.reduce((sum, team) => sum + team.fot2026Rub, 0) ?? 0;
+  const activePeople =
+    activeGroup?.teams.reduce((sum, team) => sum + team.peopleCount, 0) ?? 0;
+
+  useEffect(() => {
+    if (!canEditActiveUnit && editMode) setEditMode(false);
+  }, [canEditActiveUnit, editMode]);
+
+  useEffect(() => {
+    if (!editMode) {
+      setDraggedTeamId(null);
+      setDropTarget(null);
+    }
+  }, [editMode]);
+
+  const resetDrag = () => {
+    setDraggedTeamId(null);
+    setDropTarget(null);
   };
 
-  if (groups.length === 0) {
+  const dropTeam = (
+    event: DragEvent<HTMLDivElement>,
+    targetTeamId: string
+  ) => {
+    event.preventDefault();
+    if (
+      !activeGroup ||
+      !draggedTeamId ||
+      draggedTeamId === targetTeamId
+    ) {
+      resetDrag();
+      return;
+    }
+
+    const position =
+      dropTarget?.teamId === targetTeamId
+        ? dropTarget.position
+        : resolveTeamDropPosition(event);
+    const currentTeamIds = activeGroup.teams.map((team) => team.id);
+    const nextTeamIds = reorderAllocationScenarioTeamIds({
+      teamIds: currentTeamIds,
+      draggedTeamId,
+      targetTeamId,
+      position,
+    });
+    resetDrag();
+    if (nextTeamIds.every((id, index) => id === currentTeamIds[index])) return;
+    void scenario.reorderTeams({ teamIds: nextTeamIds });
+  };
+
+  if (scenario.isLoading || (!readOnly && liveMetrics.isLoading)) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-        Нет команд для выбранных фильтров.
+      <div className="rounded-xl border border-border bg-card px-4 py-14 text-center text-sm text-muted-foreground">
+        Загружаем команды…
+      </div>
+    );
+  }
+
+  if (scenario.error) {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-10 text-center">
+        <p className="font-semibold text-destructive">
+          Не удалось открыть команды
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {scenario.error.message}
+        </p>
       </div>
     );
   }
@@ -343,575 +997,248 @@ export function LocationAllocationTeamView({
   return (
     <>
       <div className="space-y-4">
-        {groups.map((group) => (
-          (() => {
-            const unitTeamNames = [
-              ...new Set(
-                initiatives
-                  .filter((row) => (row.unit.trim() || 'Без юнита') === group.unit)
-                  .map((row) => row.team.trim() || 'Без команды')
-              ),
-            ];
-            const unitDisplayName =
-              unitTeamNames
-                .map((team) => metricByTeam.get(locationTeamKey(group.unit, team))?.unitDisplayName)
-                .find((value): value is string => Boolean(value)) ?? group.unit;
-            const unitCostForYear = (costYear: number) =>
-              unitTeamNames.reduce((sum, team) => {
-                const key = locationTeamKey(group.unit, team);
-                const rows =
-                  allRowsByTeam.get(key) ??
-                  initiatives.filter(
-                    (row) =>
-                      (row.unit.trim() || 'Без юнита') === group.unit &&
-                      (row.team.trim() || 'Без команды') === team
-                  );
-                const metric = metricByTeam.get(key);
-                const override =
-                  costYear === 2025 ? metric?.fot2025Rub : metric?.fot2026Rub;
-                return sum + (override ?? sumTeamCostForYear(rows, costYear));
-              }, 0);
-            const unitFot2025 = unitCostForYear(2025);
-            const unitFot2026 = unitCostForYear(2026);
-            const unitRegionPayments = buildInitiativesRegionPayments(
-              group.teams.flatMap(({ visibleRows }) => visibleRows),
-              selectedQuarters,
-              countries,
-              countryIdToClusterKey
-            );
-            const isCollapsed = !expandedUnits.has(group.unit);
-            return (
-          <section
-            key={group.unit}
-            className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/25 px-3 py-3">
-              <div className="flex min-w-[260px] flex-1 items-start gap-1.5">
-                <button
+        <div className="rounded-xl border border-border bg-card px-4 py-4 shadow-sm sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <Popover open={unitPickerOpen} onOpenChange={setUnitPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
                   type="button"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-expanded={!isCollapsed}
-                  aria-label={
-                    isCollapsed
-                      ? `Развернуть юнит ${unitDisplayName}`
-                      : `Свернуть юнит ${unitDisplayName}`
-                  }
-                  title={isCollapsed ? 'Развернуть юнит' : 'Свернуть юнит'}
-                  onClick={() =>
-                    setExpandedUnits((current) => {
-                      const next = new Set(current);
-                      if (next.has(group.unit)) next.delete(group.unit);
-                      else next.add(group.unit);
-                      return next;
-                    })
-                  }
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={unitPickerOpen}
+                  className="h-auto min-w-[280px] justify-between gap-4 rounded-xl px-4 py-3 text-left shadow-sm sm:min-w-[340px]"
                 >
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      isCollapsed ? '-rotate-90' : ''
-                    }`}
-                    aria-hidden
-                  />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Юнит · {teamCountLabel(group.teams.length)}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={readOnly}
-                    className="group mt-0.5 inline-flex max-w-full items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                    onClick={() => {
-                      if (readOnly) return;
-                      setUnitLabelEditor({
-                        unit: group.unit,
-                        teams: unitTeamNames,
-                        value: unitDisplayName,
-                      });
-                      setUnitLabelDraft(unitDisplayName);
-                    }}
-                  >
-                    <h3 className="truncate text-lg font-semibold tracking-tight">
-                      {unitDisplayName}
-                    </h3>
-                  </button>
-                  <div className="mt-1">
-                    <RegionPaymentSummary
-                      payments={unitRegionPayments}
-                      prominent
-                    />
-                  </div>
-                </div>
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Building2 className="h-4.5 w-4.5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Юнит
+                      </span>
+                      <span className="block truncate text-lg font-semibold text-foreground">
+                        {activeGroup?.unit ?? 'Выберите юнит'}
+                      </span>
+                    </span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[min(92vw,340px)] p-0"
+                align="start"
+              >
+                <Command>
+                  <CommandInput placeholder="Найти юнит…" />
+                  <CommandList>
+                    <CommandEmpty>Юнит не найден.</CommandEmpty>
+                    <CommandGroup>
+                      {groups.map((group) => (
+                        <CommandItem
+                          key={group.unit}
+                          value={group.unit}
+                          onSelect={() => {
+                            setActiveUnit(group.unit);
+                            setExpandedTeamId(null);
+                            setEditMode(false);
+                            setUnitPickerOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              'mr-2 h-4 w-4',
+                              activeGroup?.unit === group.unit
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {group.unit}
+                          </span>
+                          <span className="ml-3 text-xs text-muted-foreground">
+                            {group.teams.length}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-3">
+              <div className="text-right">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  ФОТ 2025
+                </p>
+                <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                  {activeFot2025 > 0
+                    ? formatLocationExactRub(activeFot2025)
+                    : '—'}
+                </p>
               </div>
-              <div className="flex max-w-full shrink-0 flex-wrap items-end justify-end gap-x-5 gap-y-2 text-right">
-                <div>
-                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    ФОТ 2025
-                  </p>
-                  <p className="text-sm font-semibold tabular-nums">
-                    {unitFot2025 > 0 ? formatLocationCompactM(unitFot2025) : '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    ФОТ 2026
-                  </p>
-                  <p className="text-sm font-semibold tabular-nums">
-                    {unitFot2026 > 0 ? formatLocationCompactM(unitFot2026) : '—'}
-                  </p>
-                </div>
+              <div className="text-right">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  ФОТ 2026
+                </p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {formatLocationExactRub(activeFot2026)}
+                </p>
               </div>
+              <div className="text-right">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Люди
+                </p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {activePeople}
+                </p>
+              </div>
+              <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+                {pluralTeams(activeGroup?.teams.length ?? 0)}
+              </span>
+              {canEditActiveUnit ? (
+                <Button
+                  type="button"
+                  variant={editMode ? 'default' : 'outline'}
+                  onClick={() => setEditMode((current) => !current)}
+                >
+                  {editMode ? (
+                    <>
+                      <Eye className="mr-1.5 h-4 w-4" />
+                      Готово
+                    </>
+                  ) : (
+                    <>
+                      <Settings2 className="mr-1.5 h-4 w-4" />
+                      Редактировать
+                    </>
+                  )}
+                </Button>
+              ) : null}
+              {editMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!activeGroup}
+                  onClick={() => {
+                    if (!activeGroup) return;
+                    setNewTeamUnit(activeGroup.unit);
+                    setNewTeamName('');
+                  }}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Добавить команду
+                </Button>
+              ) : null}
             </div>
+          </div>
+        </div>
 
-            {!isCollapsed ? (
-              <>
-                <div className="hidden grid-cols-[minmax(240px,1fr)_120px_120px_110px_130px_minmax(340px,1.8fr)] gap-2 border-b border-border/70 bg-muted/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
-                  <span>Команда · распределение по регионам</span>
-                  <span>ФОТ 2025</span>
-                  <span>ФОТ 2026</span>
-                  <span>Люди</span>
-                  <span>RUN</span>
-                  <span>Инициативы · стоимость · регионы</span>
-                </div>
-
-                <div className="divide-y divide-border/70">
-              {group.teams.map(({ team, visibleRows }) => {
-                const key = locationTeamKey(group.unit, team);
-                const allTeamRows =
-                  allRowsByTeam.get(key) ??
-                  initiatives.filter(
-                    (row) =>
-                      (row.unit.trim() || 'Без юнита') === group.unit &&
-                      (row.team.trim() || 'Без команды') === team
-                  );
-                const metric = metricByTeam.get(key);
-                const calculatedFot2025 = sumTeamCostForYear(allTeamRows, 2025);
-                const calculatedFot2026 = sumTeamCostForYear(allTeamRows, 2026);
-                const fot2025 = metric?.fot2025Rub ?? calculatedFot2025;
-                const fot2026 = metric?.fot2026Rub ?? calculatedFot2026;
-                const calculatedPeople = headcount.byTeam.get(key) ?? 0;
-                const peopleCount =
-                  metric?.peopleCountOverride ?? calculatedPeople;
-                const teamPeople = people.filter(
-                  (person) =>
-                    !person.terminated_at &&
-                    person.unit?.trim() === group.unit &&
-                    person.team?.trim() === team
-                );
-                const teamPersonIds = new Set(teamPeople.map((person) => person.id));
-                const teamAssignments = assignments.filter((assignment) =>
-                  teamPersonIds.has(assignment.person_id)
-                );
-                const calculatedRun = calculateTeamRun(
-                  allTeamRows,
-                  teamPeople,
-                  teamAssignments,
-                  FULL_2026,
-                  fot2026,
-                  peopleCount
-                );
-                const run = resolveTeamRunDisplay(
-                  calculatedRun,
-                  fot2026,
-                  metric?.runPercentOverride ?? null
-                );
-                const initiativeRows = visibleRows.filter((row) => !row.isTimelineStub);
-                const teamCommentCount =
-                  commentSummary?.byTeamDirect.get(key) ??
-                  EMPTY_LOCATION_COMMENT_COUNT;
-                const teamRegionPayments = buildInitiativesRegionPayments(
-                  visibleRows,
-                  selectedQuarters,
-                  countries,
-                  countryIdToClusterKey
-                );
-
-                return (
-                  <div
-                    key={key}
-                    className="grid grid-cols-1 gap-2 px-3 py-3 xl:grid-cols-[minmax(240px,1fr)_120px_120px_110px_130px_minmax(340px,1.8fr)] xl:items-start"
-                  >
-                    <div className="min-w-0 px-2 py-1">
-                      <button
-                        type="button"
-                        disabled={readOnly}
-                        className="group flex w-full min-w-0 items-center rounded-lg py-1 text-left transition-colors enabled:hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                        onClick={() => {
-                          if (readOnly) return;
-                          const value = metric?.teamDisplayName ?? team;
-                          setTeamLabelEditor({ unit: group.unit, team, value });
-                          setTeamLabelDraft(value);
-                        }}
-                      >
-                        <span className="truncate text-sm font-semibold">
-                          {metric?.teamDisplayName ?? team}
-                        </span>
-                        {!readOnly ? (
-                          <CommentBadge count={teamCommentCount} />
-                        ) : null}
-                      </button>
-                      <RegionPaymentSummary payments={teamRegionPayments} />
-                    </div>
-
-                    <MetricButton
-                      value={fot2025 > 0 ? formatLocationCompactM(fot2025) : '—'}
-                      onClick={() =>
-                        openMetricEditor(
-                          group.unit,
-                          team,
-                          'fot2025Rub',
-                          calculatedFot2025,
-                          metric?.fot2025Rub ?? null
-                        )
-                      }
-                      disabled={readOnly}
-                    />
-
-                    <MetricButton
-                      value={fot2026 > 0 ? formatLocationCompactM(fot2026) : '—'}
-                      onClick={() =>
-                        openMetricEditor(
-                          group.unit,
-                          team,
-                          'fot2026Rub',
-                          calculatedFot2026,
-                          metric?.fot2026Rub ?? null
-                        )
-                      }
-                      disabled={readOnly}
-                    />
-
-                    <MetricButton
-                      value={peopleCount > 0 ? String(peopleCount) : '—'}
-                      onClick={() =>
-                        openMetricEditor(
-                          group.unit,
-                          team,
-                          'peopleCountOverride',
-                          calculatedPeople,
-                          metric?.peopleCountOverride ?? null
-                        )
-                      }
-                      disabled={readOnly}
-                    />
-
-                    <MetricButton
-                      value={`${formatRunPercent(run.percent)}%`}
-                      secondary={`(${formatLocationCompactM(run.runRub)})`}
-                      title={
-                        readOnly
-                          ? run.isManual
-                            ? 'RUN задан вручную'
-                            : 'RUN рассчитан автоматически'
-                          : run.isManual
-                            ? 'RUN задан вручную. Нажмите, чтобы изменить или вернуть авторасчёт'
-                            : 'RUN рассчитан автоматически. Нажмите, чтобы задать вручную'
-                      }
-                      onClick={() =>
-                        openMetricEditor(
-                          group.unit,
-                          team,
-                          'runPercentOverride',
-                          calculatedRun.supportShare * 100,
-                          metric?.runPercentOverride ?? null
-                        )
-                      }
-                      disabled={readOnly}
-                    />
-
-                    <div className="min-w-0 space-y-1.5 px-1 py-1">
-                      {initiativeRows.length > 0 ? (
-                        initiativeRows.map((row) => {
-                          const periodCost = initiativeYearCostRub(row, selectedQuarters);
-                          const payments = buildInitiativeRegionPayments(
-                            row,
-                            selectedQuarters,
-                            countries,
-                            countryIdToClusterKey
-                          );
-                          return (
-                            <button
-                              key={row.id}
-                              type="button"
-                              disabled={readOnly}
-                              className="group w-full rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors enabled:hover:border-primary/35 enabled:hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                              onClick={() => setSelectedInitiativeId(row.id)}
-                            >
-                              <div className="flex min-w-0 items-center justify-between gap-2">
-                                <span className="truncate text-xs font-semibold">
-                                  {getInitiativeDisplayName(row)}
-                                </span>
-                                <span className="shrink-0 text-[11px] font-semibold tabular-nums">
-                                  {periodCost > 0
-                                    ? formatLocationCompactM(periodCost)
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
-                                {payments.length > 0 ? (
-                                  payments.map((payment) => (
-                                    <span key={payment.region} className="tabular-nums">
-                                      {TOP_REGION_SHORT_LABELS[payment.region]}{' '}
-                                      {formatLocationCompactM(payment.rub)} (
-                                      {Math.round(payment.percent)}%)
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span>Нет регионального распределения</span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <p className="px-2 py-2 text-xs text-muted-foreground">
-                          Нет инициатив в выбранном срезе.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-                </div>
-              </>
-            ) : null}
+        {activeGroup ? (
+          <section className="space-y-2.5">
+            {activeGroup.teams.map((team) => (
+              <TeamCard
+                key={team.id}
+                team={team}
+                isExpanded={expandedTeamId === team.id}
+                canEditUnit={canEditActiveUnit}
+                editMode={editMode}
+                isSaving={scenario.isSaving}
+                isDragging={draggedTeamId === team.id}
+                dropPosition={
+                  dropTarget?.teamId === team.id
+                    ? dropTarget.position
+                    : null
+                }
+                onToggle={() =>
+                  setExpandedTeamId((current) =>
+                    current === team.id ? null : team.id
+                  )
+                }
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', team.id);
+                  setDraggedTeamId(team.id);
+                  setDropTarget(null);
+                }}
+                onDragOver={(event) => {
+                  if (!draggedTeamId || draggedTeamId === team.id) {
+                    if (dropTarget) setDropTarget(null);
+                    return;
+                  }
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  const position = resolveTeamDropPosition(event);
+                  if (
+                    dropTarget?.teamId !== team.id ||
+                    dropTarget.position !== position
+                  ) {
+                    setDropTarget({ teamId: team.id, position });
+                  }
+                }}
+                onDrop={(event) => dropTeam(event, team.id)}
+                onDragEnd={resetDrag}
+                updateTeam={(id, patch) => scenario.updateTeam({ id, patch })}
+                archiveTeam={scenario.archiveTeam}
+                saveRegion={(teamId, region, patch) =>
+                  scenario.saveRegion({ teamId, region, patch })
+                }
+              />
+            ))}
           </section>
-            );
-          })()
-        ))}
+        ) : null}
       </div>
 
       <Dialog
-        open={metricEditor != null}
+        open={Boolean(newTeamUnit)}
         onOpenChange={(open) => {
-          if (!open) setMetricEditor(null);
+          if (!open) setNewTeamUnit(null);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {metricEditor?.kind === 'fot2025Rub'
-                ? 'ФОТ за 2025'
-                : metricEditor?.kind === 'fot2026Rub'
-                  ? 'ФОТ за 2026'
-                  : metricEditor?.kind === 'peopleCountOverride'
-                    ? 'Количество людей'
-                    : 'RUN, %'}
-            </DialogTitle>
+            <DialogTitle>Новая команда</DialogTitle>
             <DialogDescription>
-              {metricEditor?.unit} › {metricEditor?.team}. Можно задать ручное
-              значение или вернуться к автоматическому расчёту.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            <Input
-              type="number"
-              min={0}
-              max={metricEditor?.kind === 'runPercentOverride' ? 100 : undefined}
-              step={
-                metricEditor?.kind === 'peopleCountOverride'
-                  ? 1
-                  : metricEditor?.kind === 'runPercentOverride'
-                    ? 0.1
-                    : 100000
-              }
-              value={metricDraft}
-              onChange={(event) => setMetricDraft(event.target.value)}
-              className="[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground">
-              Автоматический расчёт:{' '}
-              <span className="font-medium text-foreground">
-                {metricEditor?.kind === 'peopleCountOverride'
-                  ? `${metricEditor?.calculatedValue ?? 0} чел.`
-                  : metricEditor?.kind === 'runPercentOverride'
-                    ? `${formatRunPercent(
-                        metricEditor?.calculatedValue ?? 0
-                      )}%`
-                  : formatLocationCompactM(metricEditor?.calculatedValue ?? 0)}
-              </span>
-            </p>
-          </div>
-
-          <DialogFooter className="gap-2 sm:justify-between sm:space-x-0">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!metricEditor || isSaving}
-              onClick={async () => {
-                if (!metricEditor) return;
-                await saveMetric({
-                  unit: metricEditor.unit,
-                  team: metricEditor.team,
-                  [metricEditor.kind]: null,
-                });
-                setMetricEditor(null);
-              }}
-            >
-              Использовать расчёт
-            </Button>
-            <Button
-              type="button"
-              disabled={!metricEditor || metricDraft === '' || isSaving}
-              onClick={async () => {
-                if (!metricEditor) return;
-                const raw = Math.max(0, Number(metricDraft) || 0);
-                const value =
-                  metricEditor.kind === 'runPercentOverride'
-                    ? Math.round(Math.min(100, raw) * 10) / 10
-                    : Math.round(raw);
-                await saveMetric({
-                  unit: metricEditor.unit,
-                  team: metricEditor.team,
-                  [metricEditor.kind]: value,
-                });
-                setMetricEditor(null);
-              }}
-            >
-              Сохранить
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={teamLabelEditor != null}
-        onOpenChange={(open) => {
-          if (!open) setTeamLabelEditor(null);
-        }}
-      >
-        <DialogContent className="max-h-[85dvh] max-w-md overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Название команды в представлении</DialogTitle>
-            <DialogDescription>
-              Это подпись только для командного вида. Исходное название команды в данных
-              останется «{teamLabelEditor?.team}».
+              Команда появится только в сценарии аллокаций внутри юнита{' '}
+              {newTeamUnit}.
             </DialogDescription>
           </DialogHeader>
           <Input
-            value={teamLabelDraft}
-            onChange={(event) => setTeamLabelDraft(event.target.value)}
+            value={newTeamName}
+            onChange={(event) => setNewTeamName(event.target.value)}
             placeholder="Название команды"
             autoFocus
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && newTeamUnit && newTeamName.trim()) {
+                void scenario
+                  .createTeam({ unit: newTeamUnit, name: newTeamName.trim() })
+                  .then(() => setNewTeamUnit(null));
+              }
+            }}
           />
-          {teamLabelEditor ? (
-            <div className="border-t border-border/60 pt-4">
-              <InitiativeAllocationComments
-                scope={{
-                  type: 'team',
-                  unit: teamLabelEditor.unit,
-                  team: teamLabelEditor.team,
-                }}
-                compact
-              />
-            </div>
-          ) : null}
-          <DialogFooter className="gap-2 sm:justify-between sm:space-x-0">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              disabled={!teamLabelEditor || isSaving}
-              onClick={async () => {
-                if (!teamLabelEditor) return;
-                await saveMetric({
-                  unit: teamLabelEditor.unit,
-                  team: teamLabelEditor.team,
-                  teamDisplayName: null,
-                });
-                setTeamLabelEditor(null);
-              }}
+              onClick={() => setNewTeamUnit(null)}
             >
-              Исходное название
+              Отмена
             </Button>
             <Button
               type="button"
-              disabled={!teamLabelEditor || !teamLabelDraft.trim() || isSaving}
-              onClick={async () => {
-                if (!teamLabelEditor) return;
-                await saveMetric({
-                  unit: teamLabelEditor.unit,
-                  team: teamLabelEditor.team,
-                  teamDisplayName: teamLabelDraft.trim(),
-                });
-                setTeamLabelEditor(null);
+              disabled={!newTeamUnit || !newTeamName.trim() || scenario.isSaving}
+              onClick={() => {
+                if (!newTeamUnit || !newTeamName.trim()) return;
+                void scenario
+                  .createTeam({ unit: newTeamUnit, name: newTeamName.trim() })
+                  .then(() => setNewTeamUnit(null));
               }}
             >
-              Сохранить
+              Добавить
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog
-        open={unitLabelEditor != null}
-        onOpenChange={(open) => {
-          if (!open) setUnitLabelEditor(null);
-        }}
-      >
-        <DialogContent className="max-h-[85dvh] max-w-md overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Название юнита в представлении</DialogTitle>
-            <DialogDescription>
-              Это подпись только для командного вида. Исходное название в данных
-              останется «{unitLabelEditor?.unit}».
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            value={unitLabelDraft}
-            onChange={(event) => setUnitLabelDraft(event.target.value)}
-            placeholder="Название юнита"
-            autoFocus
-          />
-          <DialogFooter className="gap-2 sm:justify-between sm:space-x-0">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!unitLabelEditor || isSaving}
-              onClick={async () => {
-                if (!unitLabelEditor) return;
-                await saveUnitDisplayName({
-                  unit: unitLabelEditor.unit,
-                  teams: unitLabelEditor.teams,
-                  displayName: null,
-                });
-                setUnitLabelEditor(null);
-              }}
-            >
-              Исходное название
-            </Button>
-            <Button
-              type="button"
-              disabled={!unitLabelEditor || !unitLabelDraft.trim() || isSaving}
-              onClick={async () => {
-                if (!unitLabelEditor) return;
-                await saveUnitDisplayName({
-                  unit: unitLabelEditor.unit,
-                  teams: unitLabelEditor.teams,
-                  displayName: unitLabelDraft.trim(),
-                });
-                setUnitLabelEditor(null);
-              }}
-            >
-              Сохранить
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <LocationAllocationTreemapEditDialog
-        open={selectedInitiativeTarget != null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedInitiativeId(null);
-        }}
-        target={selectedInitiativeTarget}
-        countries={countries}
-        countryIdToClusterKey={countryIdToClusterKey}
-        onGeoCostSplitSave={onGeoCostSplitSave}
-        onInitiativeTagsSave={onInitiativeTagsSave}
-        readOnly={readOnly}
-      />
     </>
   );
 }

@@ -25,3 +25,8 @@ export function formatLocationDeltaM(rub: number): string {
 export function formatLocationFullAmount(rub: number): string {
   return Math.round(rub).toLocaleString('ru-RU');
 }
+
+/** Точная сумма до рубля для презентационного сценария аллокаций: 113 456 789 ₽. */
+export function formatLocationExactRub(rub: number): string {
+  return `${formatLocationFullAmount(rub)} ₽`;
+}

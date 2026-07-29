@@ -30,7 +30,7 @@ import {
 } from '@/lib/locationAllocationPeriod';
 
 const CURRENT_YEAR = new Date().getFullYear();
-const DEFAULT_ALLOCATION_UNIT = 'Data Office';
+const DEFAULT_ALLOCATION_UNIT = 'Data Office + AI Hub';
 
 export default function AdminLocationAllocations() {
   const navigate = useNavigate();
