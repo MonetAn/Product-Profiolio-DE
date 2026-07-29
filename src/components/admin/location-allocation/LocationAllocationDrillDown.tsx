@@ -408,13 +408,28 @@ export function LocationAllocationDrillDown({
     onResetFilters();
   }, [onResetFilters]);
 
-  const handleTreemapNavigateToRoot = useCallback(() => {
-    setTreemapShowTeams(false);
-    setTreemapShowInitiatives(false);
-    if (effectiveUnitFilter || effectiveTeamFilter) {
-      onUnitFilterChange(null);
-    }
-  }, [effectiveTeamFilter, effectiveUnitFilter, onUnitFilterChange]);
+  const handleTreemapNavigateUp = useCallback(
+    (nextPath: string[]) => {
+      if (nextPath.length === 0) {
+        setTreemapShowTeams(false);
+        setTreemapShowInitiatives(false);
+        if (effectiveUnitFilter || effectiveTeamFilter) {
+          onUnitFilterChange(null);
+        }
+        return;
+      }
+
+      if (nextPath.length === 1 && effectiveTeamFilter) {
+        onTeamFilterChange(null);
+      }
+    },
+    [
+      effectiveTeamFilter,
+      effectiveUnitFilter,
+      onTeamFilterChange,
+      onUnitFilterChange,
+    ]
+  );
 
   if (visibleInitiatives.length === 0) {
     return (
@@ -502,7 +517,7 @@ export function LocationAllocationDrillDown({
               onShowTeamsChange={setTreemapShowTeams}
               showInitiatives={treemapShowInitiatives}
               onShowInitiativesChange={setTreemapShowInitiatives}
-              onNavigateToRoot={handleTreemapNavigateToRoot}
+              onNavigateUp={handleTreemapNavigateUp}
               focusedComment={focusedComment}
               readOnly={readOnly}
             />

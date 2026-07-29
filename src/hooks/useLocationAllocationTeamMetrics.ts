@@ -12,6 +12,7 @@ export type LocationAllocationTeamMetric = {
   unitDisplayName: string | null;
   teamDisplayName: string | null;
   peopleCountOverride: number | null;
+  runPercentOverride: number | null;
   updatedByName: string;
   updatedAt: string | null;
 };
@@ -23,6 +24,7 @@ type MetricPatch = {
   fot2026Rub?: number | null;
   teamDisplayName?: string | null;
   peopleCountOverride?: number | null;
+  runPercentOverride?: number | null;
 };
 
 const QUERY_KEY = ['location-allocation-team-metrics'] as const;
@@ -44,9 +46,7 @@ export function useLocationAllocationTeamMetrics({
     queryFn: async (): Promise<LocationAllocationTeamMetric[]> => {
       const { data, error } = await sb
         .from('location_allocation_team_metrics')
-        .select(
-          'unit, team, fot_2025_rub, fot_2026_rub, unit_display_name, team_display_name, people_count_override, updated_by_name, updated_at'
-        );
+        .select('*');
       if (error) {
         // До применения миграции командный вид остаётся доступен в расчётном режиме.
         if (error.code === '42P01' || error.code === 'PGRST205') return [];
@@ -71,6 +71,13 @@ export function useLocationAllocationTeamMetrics({
           row.people_count_override == null
             ? null
             : Math.max(0, Math.round(Number(row.people_count_override) || 0)),
+        runPercentOverride:
+          row.run_percent_override == null
+            ? null
+            : Math.max(
+                0,
+                Math.min(100, Number(row.run_percent_override) || 0)
+              ),
         updatedByName: String(row.updated_by_name ?? ''),
         updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
       }));
@@ -95,6 +102,9 @@ export function useLocationAllocationTeamMetrics({
       }
       if ('peopleCountOverride' in patch) {
         row.people_count_override = patch.peopleCountOverride;
+      }
+      if ('runPercentOverride' in patch) {
+        row.run_percent_override = patch.runPercentOverride;
       }
       const { error } = await sb
         .from('location_allocation_team_metrics')

@@ -6,6 +6,7 @@ import {
   buildLocationHeadcountIndex,
   calculateTeamRun,
   locationTeamKey,
+  resolveTeamRunDisplay,
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
 
@@ -140,6 +141,44 @@ describe('location allocation planning', () => {
     expect(result.supportFte).toBe(1);
     expect(result.supportShare).toBe(0.5);
     expect(result.runRub).toBe(500);
+  });
+
+  it('uses a manual RUN percent instead of the automatic support calculation', () => {
+    const display = resolveTeamRunDisplay(
+      {
+        supportFte: 1,
+        supportShare: 0.5,
+        runRub: 500,
+        source: 'assignments',
+      },
+      1_000,
+      27.5
+    );
+
+    expect(display).toEqual({
+      percent: 27.5,
+      runRub: 275,
+      isManual: true,
+    });
+  });
+
+  it('returns to the automatic RUN percent when the override is cleared', () => {
+    const display = resolveTeamRunDisplay(
+      {
+        supportFte: 1,
+        supportShare: 0.375,
+        runRub: 375,
+        source: 'assignments',
+      },
+      1_000,
+      null
+    );
+
+    expect(display).toEqual({
+      percent: 37.5,
+      runRub: 375,
+      isManual: false,
+    });
   });
 
   it('aggregates regional payments across initiatives', () => {

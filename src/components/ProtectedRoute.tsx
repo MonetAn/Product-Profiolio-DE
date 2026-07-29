@@ -14,7 +14,7 @@ function LoadingWithHeader({ showSpinner = true }: { showSpinner?: boolean }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header
-        currentView="budget"
+        currentView="allocations"
         onViewChange={() => {}}
         onSearchClick={() => {}}
         isAdmin={false}

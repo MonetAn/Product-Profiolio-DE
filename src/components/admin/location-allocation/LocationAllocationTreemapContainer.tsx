@@ -18,6 +18,7 @@ import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import { normalizeTreemapFocusPath, splitTreemapEncodedPath } from '@/lib/treemapPathCodec';
 import '@/styles/treemap.css';
 import type { LocationAllocationCommentSummary } from '@/lib/locationAllocationCommentSummary';
+import { locationAllocationParentFocusPath } from '@/lib/locationAllocationFilterNavigation';
 
 const TOOLTIP_HIDE_DELAY_MS = 45;
 
@@ -37,9 +38,7 @@ type Props = {
   getColor?: ColorGetter;
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
-  onAutoDisableTeams?: () => void;
-  onAutoDisableInitiatives?: () => void;
-  onNavigateToRoot?: () => void;
+  onNavigateUp?: (nextPath: string[]) => void;
   onEditNode?: (node: TreemapLayoutNode) => void;
   commentSummary?: LocationAllocationCommentSummary;
 };
@@ -59,9 +58,7 @@ export function LocationAllocationTreemapContainer({
   getColor = getUnitColor,
   onAutoEnableTeams,
   onAutoEnableInitiatives,
-  onAutoDisableTeams,
-  onAutoDisableInitiatives,
-  onNavigateToRoot,
+  onNavigateUp,
   onEditNode,
   commentSummary,
 }: Props) {
@@ -135,22 +132,12 @@ export function LocationAllocationTreemapContainer({
     [data, focusedPath, layoutNodes]
   );
 
-  const applyZoomOutAutoDisable = useCallback(
-    (oldLength: number, newLength: number) => {
-      if (oldLength >= 2 && newLength < 2) onAutoDisableInitiatives?.();
-      if (oldLength >= 1 && newLength < 1) onAutoDisableTeams?.();
-    },
-    [onAutoDisableInitiatives, onAutoDisableTeams]
-  );
-
-  const handleNavigateToRoot = useCallback(() => {
+  const handleNavigateUp = useCallback(() => {
     if (focusedPath.length === 0) return;
-    const oldLength = focusedPath.length;
-    const newPath: string[] = [];
-    applyZoomOutAutoDisable(oldLength, newPath.length);
+    const newPath = locationAllocationParentFocusPath(focusedPath);
     setFocusedPath(newPath);
-    onNavigateToRoot?.();
-  }, [focusedPath, applyZoomOutAutoDisable, onNavigateToRoot]);
+    onNavigateUp?.(newPath);
+  }, [focusedPath, onNavigateUp]);
 
   const handleNodeClick = useCallback(
     (node: TreemapLayoutNode) => {
@@ -235,8 +222,9 @@ export function LocationAllocationTreemapContainer({
       <button
         type="button"
         className={`navigate-back-button ${canZoomOut ? 'visible' : ''}`}
-        onClick={handleNavigateToRoot}
-        title="Вернуться на верхний уровень"
+        onClick={handleNavigateUp}
+        title="На один уровень выше"
+        aria-label="На один уровень выше"
       >
         <ArrowUp size={28} strokeWidth={2.5} />
       </button>

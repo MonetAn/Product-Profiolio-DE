@@ -85,7 +85,7 @@ const AdminHeader = ({
 
   const dashboardUrl = useMemo(() => {
     const queryString = searchParams.toString();
-    return queryString ? `/?${queryString}` : '/';
+    return queryString ? `/allocations?${queryString}` : '/allocations';
   }, [searchParams]);
 
   const marketsUrl = '/admin/markets';

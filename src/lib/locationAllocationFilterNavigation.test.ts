@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { locationAllocationFilterFocusPath } from '@/lib/locationAllocationFilterNavigation';
+import {
+  locationAllocationFilterFocusPath,
+  locationAllocationParentFocusPath,
+} from '@/lib/locationAllocationFilterNavigation';
 
 describe('location allocation filter navigation', () => {
   it('builds a focused path for the selected organization level', () => {
@@ -19,5 +22,13 @@ describe('location allocation filter navigation', () => {
         team: '',
       })
     ).toEqual(['Unit A', 'Без команды']);
+  });
+
+  it('moves up exactly one organization level', () => {
+    expect(
+      locationAllocationParentFocusPath(['Unit A', 'Team B'])
+    ).toEqual(['Unit A']);
+    expect(locationAllocationParentFocusPath(['Unit A'])).toEqual([]);
+    expect(locationAllocationParentFocusPath([])).toEqual([]);
   });
 });

@@ -73,6 +73,28 @@ export type TeamRunCalculation = {
   source: 'assignments' | 'initiative-effort' | 'none';
 };
 
+export type TeamRunDisplay = {
+  percent: number;
+  runRub: number;
+  isManual: boolean;
+};
+
+export function resolveTeamRunDisplay(
+  calculated: TeamRunCalculation,
+  fotRub: number,
+  percentOverride: number | null
+): TeamRunDisplay {
+  const isManual = percentOverride != null;
+  const percent = isManual
+    ? Math.max(0, Math.min(100, Number(percentOverride) || 0))
+    : Math.max(0, Math.min(100, calculated.supportShare * 100));
+  return {
+    percent,
+    runRub: Math.round(Math.max(0, fotRub) * (percent / 100)),
+    isManual,
+  };
+}
+
 /**
  * RUN = ФОТ × доля людей, занятых поддержкой.
  * При наличии персональных назначений доля считается по ним; иначе — по effort

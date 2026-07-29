@@ -44,7 +44,7 @@ type Props = {
   onShowTeamsChange: (show: boolean) => void;
   showInitiatives: boolean;
   onShowInitiativesChange: (show: boolean) => void;
-  onNavigateToRoot?: () => void;
+  onNavigateUp?: (nextPath: string[]) => void;
   focusedComment?: {
     id: string;
     scope: LocationAllocationGeoEditScope;
@@ -68,7 +68,7 @@ export function LocationAllocationTreemap({
   onShowTeamsChange,
   showInitiatives,
   onShowInitiativesChange,
-  onNavigateToRoot,
+  onNavigateUp,
   focusedComment = null,
   readOnly = false,
 }: Props) {
@@ -81,7 +81,6 @@ export function LocationAllocationTreemap({
   const [editTarget, setEditTarget] = useState<LocationAllocationGeoEditTarget | null>(null);
   const handledFocusedCommentRef = useRef<string | null>(null);
 
-  const autoEnabledRef = useRef({ teams: false, initiatives: false });
   const hasTeamSelection = teamFilter != null;
   const effectiveShowTeams = showTeams || hasTeamSelection;
   const effectiveShowInitiatives = showInitiatives || hasTeamSelection;
@@ -197,30 +196,14 @@ export function LocationAllocationTreemap({
   const handleAutoEnableTeams = useCallback(() => {
     if (!showTeams) {
       onShowTeamsChange(true);
-      autoEnabledRef.current.teams = true;
     }
   }, [showTeams, onShowTeamsChange]);
 
   const handleAutoEnableInitiatives = useCallback(() => {
     if (!showInitiatives) {
       onShowInitiativesChange(true);
-      autoEnabledRef.current.initiatives = true;
     }
   }, [showInitiatives, onShowInitiativesChange]);
-
-  const handleAutoDisableTeams = useCallback(() => {
-    if (autoEnabledRef.current.teams) {
-      onShowTeamsChange(false);
-      autoEnabledRef.current.teams = false;
-    }
-  }, [onShowTeamsChange]);
-
-  const handleAutoDisableInitiatives = useCallback(() => {
-    if (autoEnabledRef.current.initiatives) {
-      onShowInitiativesChange(false);
-      autoEnabledRef.current.initiatives = false;
-    }
-  }, [onShowInitiativesChange]);
 
   const handleEditNode = useCallback(
     (node: TreemapLayoutNode) => {
@@ -290,9 +273,7 @@ export function LocationAllocationTreemap({
             getColor={getUnitColor}
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
-            onAutoDisableTeams={handleAutoDisableTeams}
-            onAutoDisableInitiatives={handleAutoDisableInitiatives}
-            onNavigateToRoot={onNavigateToRoot}
+            onNavigateUp={onNavigateUp}
             onEditNode={handleEditNode}
             commentSummary={readOnly ? undefined : commentSummaryQuery.data}
           />

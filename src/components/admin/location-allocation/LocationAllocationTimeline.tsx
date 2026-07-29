@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { UsersRound } from 'lucide-react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import GanttView from '@/components/GanttView';
@@ -18,9 +18,19 @@ import { LocationAllocationInitiativePanelBody } from '@/components/admin/locati
 import type { LocationAllocationPanelCloseGuard } from '@/components/admin/location-allocation/LocationAllocationInitiativePanelBody';
 import type { InitiativeTag } from '@/lib/initiativeTags';
 import {
+  buildInitiativesRegionPayments,
   locationTeamKey,
   type LocationHeadcountIndex,
 } from '@/lib/locationAllocationPlanning';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { InitiativeAllocationComments } from '@/components/admin/location-allocation/InitiativeAllocationComments';
+import { useLocationAllocationCommentSummary } from '@/hooks/useLocationAllocationCommentSummary';
 
 type Props = {
   initiatives: AdminDataRow[];
@@ -56,6 +66,13 @@ export function LocationAllocationTimeline({
   readOnly = false,
 }: Props) {
   const detailPanelCloseGuardRef = useRef<LocationAllocationPanelCloseGuard | null>(null);
+  const [commentTeam, setCommentTeam] = useState<{
+    unit: string;
+    team: string;
+  } | null>(null);
+  const commentSummaryQuery = useLocationAllocationCommentSummary(initiatives, {
+    enabled: !readOnly,
+  });
   const filteredInitiatives = useMemo(
     () =>
       filterLocationTimelineInitiatives(initiatives, {
@@ -199,16 +216,91 @@ export function LocationAllocationTimeline({
     );
     return total > 0 ? total : null;
   }, [headcount, teamFilter, unitFilter]);
+  const allocationSummaries = useMemo(() => {
+    const rowsByTeam = new Map<string, AdminDataRow[]>();
+    const rowsByUnit = new Map<string, AdminDataRow[]>();
+    for (const row of filteredInitiatives) {
+      const unit = row.unit.trim() || 'Без юнита';
+      const team = row.team.trim() || 'Без команды';
+      const key = locationTeamKey(unit, team);
+      const teamBucket = rowsByTeam.get(key) ?? [];
+      teamBucket.push(row);
+      rowsByTeam.set(key, teamBucket);
+      const unitBucket = rowsByUnit.get(unit) ?? [];
+      unitBucket.push(row);
+      rowsByUnit.set(unit, unitBucket);
+    }
+
+    const summarize = (rows: AdminDataRow[]) =>
+      buildInitiativesRegionPayments(
+        rows,
+        yearQuarters,
+        countries,
+        countryIdToClusterKey
+      ).map((payment) => ({
+        label: TOP_REGION_SHORT_LABELS[payment.region],
+        value: formatLocationCompactM(payment.rub),
+        percent: payment.percent,
+      }));
+
+    return {
+      byTeam: new Map(
+        [...rowsByTeam.entries()].map(([key, rows]) => [
+          key,
+          summarize(rows),
+        ] as const)
+      ),
+      byUnit: new Map(
+        [...rowsByUnit.entries()].map(([unit, rows]) => [
+          unit,
+          summarize(rows),
+        ] as const)
+      ),
+    };
+  }, [
+    countries,
+    countryIdToClusterKey,
+    filteredInitiatives,
+    yearQuarters,
+  ]);
+  const teamScopeByKey = useMemo(() => {
+    const map = new Map<string, { unit: string; team: string }>();
+    for (const row of filteredInitiatives) {
+      const unit = row.unit.trim() || 'Без юнита';
+      const team = row.team.trim() || 'Без команды';
+      map.set(locationTeamKey(unit, team), { unit, team });
+    }
+    return map;
+  }, [filteredInitiatives]);
+  const openTeamComments = useCallback(
+    (teamKey: string) => {
+      const scope = teamScopeByKey.get(teamKey);
+      if (scope) setCommentTeam(scope);
+    },
+    [teamScopeByKey]
+  );
   const hierarchyGrouping = useMemo(
-    () =>
-      teamFilter
-        ? undefined
-        : {
-            mode: unitFilter ? ('team' as const) : ('unit-team' as const),
-            headcountByUnit: headcount.byUnit,
-            headcountByTeam: headcount.byTeam,
-          },
-    [headcount, teamFilter, unitFilter]
+    () => ({
+      mode:
+        unitFilter || teamFilter
+          ? ('team' as const)
+          : ('unit-team' as const),
+      headcountByUnit: headcount.byUnit,
+      headcountByTeam: headcount.byTeam,
+      unitSummaries: allocationSummaries.byUnit,
+      teamSummaries: allocationSummaries.byTeam,
+      teamCommentCounts: commentSummaryQuery.data?.byTeamDirect,
+      onTeamCommentClick: readOnly ? undefined : openTeamComments,
+    }),
+    [
+      commentSummaryQuery.data,
+      headcount,
+      openTeamComments,
+      readOnly,
+      allocationSummaries,
+      teamFilter,
+      unitFilter,
+    ]
   );
 
   if (filteredInitiatives.length === 0) {
@@ -296,6 +388,34 @@ export function LocationAllocationTimeline({
           hierarchyGrouping={hierarchyGrouping}
         />
       </div>
+
+      <Dialog
+        open={commentTeam != null}
+        onOpenChange={(open) => {
+          if (!open) setCommentTeam(null);
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Комментарии команды</DialogTitle>
+            <DialogDescription>
+              {commentTeam
+                ? `${commentTeam.unit} · ${commentTeam.team}`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {commentTeam ? (
+            <InitiativeAllocationComments
+              scope={{
+                type: 'team',
+                unit: commentTeam.unit,
+                team: commentTeam.team,
+              }}
+              compact
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

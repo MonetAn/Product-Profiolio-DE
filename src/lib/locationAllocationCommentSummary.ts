@@ -8,6 +8,11 @@ export type LocationAllocationCommentCount = {
 
 export type LocationAllocationCommentSummary = {
   byInitiative: Map<string, LocationAllocationCommentCount>;
+  /** Собственные комментарии команды, без комментариев её инициатив. */
+  byTeamDirect: Map<string, LocationAllocationCommentCount>;
+  /** Комментарии инициатив команды, без собственных комментариев команды. */
+  byTeamInitiatives: Map<string, LocationAllocationCommentCount>;
+  /** Агрегат собственных комментариев команды и комментариев её инициатив. */
   byTeam: Map<string, LocationAllocationCommentCount>;
   byUnit: Map<string, LocationAllocationCommentCount>;
 };
@@ -47,6 +52,8 @@ export function buildLocationAllocationCommentSummary(
   initiatives: AdminDataRow[]
 ): LocationAllocationCommentSummary {
   const byInitiative = new Map<string, LocationAllocationCommentCount>();
+  const byTeamDirect = new Map<string, LocationAllocationCommentCount>();
+  const byTeamInitiatives = new Map<string, LocationAllocationCommentCount>();
   const byTeam = new Map<string, LocationAllocationCommentCount>();
   const byUnit = new Map<string, LocationAllocationCommentCount>();
   const initiativesById = new Map(initiatives.map((row) => [row.id, row]));
@@ -63,9 +70,16 @@ export function buildLocationAllocationCommentSummary(
       const initiative = initiativesById.get(comment.initiativeId);
       if (!initiative) continue;
       const team = initiative.team.trim() || 'Без команды';
+      const teamKey = locationTeamKey(initiative.unit, team);
+      increment(
+        byTeamInitiatives,
+        teamKey,
+        openCount,
+        comment.unreadCount
+      );
       increment(
         byTeam,
-        locationTeamKey(initiative.unit, team),
+        teamKey,
         openCount,
         comment.unreadCount
       );
@@ -74,12 +88,19 @@ export function buildLocationAllocationCommentSummary(
     }
 
     if (comment.scopeType === 'team' && comment.scopeUnit) {
+      const teamKey = locationTeamKey(
+        comment.scopeUnit,
+        comment.scopeTeam?.trim() || 'Без команды'
+      );
+      increment(
+        byTeamDirect,
+        teamKey,
+        openCount,
+        comment.unreadCount
+      );
       increment(
         byTeam,
-        locationTeamKey(
-          comment.scopeUnit,
-          comment.scopeTeam?.trim() || 'Без команды'
-        ),
+        teamKey,
         openCount,
         comment.unreadCount
       );
@@ -97,5 +118,11 @@ export function buildLocationAllocationCommentSummary(
     }
   }
 
-  return { byInitiative, byTeam, byUnit };
+  return {
+    byInitiative,
+    byTeamDirect,
+    byTeamInitiatives,
+    byTeam,
+    byUnit,
+  };
 }

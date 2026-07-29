@@ -152,6 +152,13 @@ function parsePayload(value: unknown): LocationAllocationWorkspace {
               0,
               Math.round(Number(row.people_count_override) || 0)
             ),
+      runPercentOverride:
+        row.run_percent_override == null
+          ? null
+          : Math.max(
+              0,
+              Math.min(100, Number(row.run_percent_override) || 0)
+            ),
       updatedByName: String(row.updated_by_name ?? ''),
       updatedAt: nullableString(row.updated_at),
     })),

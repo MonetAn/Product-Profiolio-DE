@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useRef, useState, useCallback, type ReactNode, type MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, Pencil, X } from 'lucide-react';
+import { Upload, FileText, Search, ChevronDown, ChevronUp, ExternalLink, MessageSquareText, Pencil, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   RawDataRow,
@@ -53,6 +53,30 @@ type GanttHierarchyGrouping = {
   mode: 'unit-team' | 'team';
   headcountByUnit: Map<string, number>;
   headcountByTeam: Map<string, number>;
+  unitSummaries?: Map<
+    string,
+    readonly {
+      label: string;
+      value: string;
+      percent: number;
+    }[]
+  >;
+  teamSummaries?: Map<
+    string,
+    readonly {
+      label: string;
+      value: string;
+      percent: number;
+    }[]
+  >;
+  teamCommentCounts?: Map<
+    string,
+    {
+      openCount: number;
+      unreadCount: number;
+    }
+  >;
+  onTeamCommentClick?: (teamKey: string) => void;
 };
 
 type GanttDisplayItem =
@@ -61,6 +85,16 @@ type GanttDisplayItem =
       key: string;
       label: string;
       headcount: number | null;
+      summary?: readonly {
+        label: string;
+        value: string;
+        percent: number;
+      }[];
+      teamKey?: string;
+      commentCount?: {
+        openCount: number;
+        unreadCount: number;
+      };
     }
   | {
       type: 'row';
@@ -382,6 +416,7 @@ const GanttView = ({
           label: unitGroup.unit,
           headcount:
             headcount != null && headcount > 0 ? headcount : null,
+          summary: hierarchyGrouping.unitSummaries?.get(unitGroup.unit),
         });
       }
 
@@ -397,8 +432,11 @@ const GanttView = ({
           type: 'team',
           key: `team:${teamKey}`,
           label: teamGroup.team,
+          teamKey,
           headcount:
             headcount != null && headcount > 0 ? headcount : null,
+          summary: hierarchyGrouping.teamSummaries?.get(teamKey),
+          commentCount: hierarchyGrouping.teamCommentCounts?.get(teamKey),
         });
         for (const groupedRow of teamGroup.rows) {
           items.push({
@@ -1205,13 +1243,58 @@ const GanttView = ({
                       {item.headcount} чел.
                     </span>
                   ) : null}
+                  {item.type === 'team' &&
+                  item.teamKey &&
+                  hierarchyGrouping?.onTeamCommentClick ? (
+                    <button
+                      type="button"
+                      className="gantt-hierarchy-comment-button"
+                      title={
+                        item.commentCount?.openCount
+                          ? `${item.commentCount.openCount} нерешённых комментариев команды`
+                          : 'Открыть комментарии команды'
+                      }
+                      aria-label={
+                        item.commentCount?.openCount
+                          ? `${item.commentCount.openCount} нерешённых комментариев команды ${item.label}`
+                          : `Открыть комментарии команды ${item.label}`
+                      }
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        hierarchyGrouping.onTeamCommentClick?.(item.teamKey!);
+                      }}
+                    >
+                      {item.commentCount?.unreadCount ? (
+                        <span className="gantt-hierarchy-comment-unread" />
+                      ) : null}
+                      <MessageSquareText aria-hidden />
+                      {item.commentCount?.openCount ? (
+                        <span>{item.commentCount.openCount}</span>
+                      ) : null}
+                    </button>
+                  ) : null}
                 </div>
-                <div
-                  className="gantt-hierarchy-track"
-                  style={{
-                    width: selectedQuarters.length * quarterWidth,
-                  }}
-                />
+                <div className="gantt-hierarchy-track">
+                  {item.summary?.length ? (
+                    <div
+                      className="gantt-hierarchy-summary"
+                      aria-label={`Распределение аллокаций ${
+                        item.type === 'unit' ? 'юнита' : 'команды'
+                      } ${item.label}`}
+                    >
+                      {item.summary.map((entry) => (
+                        <span
+                          key={entry.label}
+                          className="gantt-hierarchy-summary-item"
+                        >
+                          <strong>{entry.label}</strong>{' '}
+                          <strong>{entry.value}</strong>{' '}
+                          <span>({Math.round(entry.percent)}%)</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           }
