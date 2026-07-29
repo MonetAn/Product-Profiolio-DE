@@ -9,6 +9,9 @@ export const ALLOCATION_SCENARIO_UNITS = [
 export type AllocationScenarioUnit =
   (typeof ALLOCATION_SCENARIO_UNITS)[number];
 
+export const DEFAULT_ALLOCATION_SCENARIO_UNIT: AllocationScenarioUnit =
+  'Data Office + AI Hub';
+
 const ALLOCATION_SCENARIO_UNIT_SET = new Set<string>(
   ALLOCATION_SCENARIO_UNITS
 );
@@ -21,6 +24,15 @@ export function normalizeAllocationScenarioUnit(
   return ALLOCATION_SCENARIO_UNIT_SET.has(unit)
     ? (unit as AllocationScenarioUnit)
     : null;
+}
+
+export function resolveAllocationScenarioUnit(
+  value: string | null | undefined
+): AllocationScenarioUnit {
+  return (
+    normalizeAllocationScenarioUnit(value) ??
+    DEFAULT_ALLOCATION_SCENARIO_UNIT
+  );
 }
 
 export function normalizeAllocationScenarioUnits(

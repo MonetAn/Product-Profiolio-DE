@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header, { type ViewType } from '@/components/Header';
@@ -28,14 +28,16 @@ import {
   resolveLocationAllocationDatasetQuarters,
   type LocationAllocationPeriodOption,
 } from '@/lib/locationAllocationPeriod';
+import {
+  DEFAULT_ALLOCATION_SCENARIO_UNIT,
+  normalizeAllocationScenarioUnit,
+} from '@/lib/allocationScenarioUnits';
 
 const CURRENT_YEAR = new Date().getFullYear();
-const DEFAULT_ALLOCATION_UNIT = 'Data Office + AI Hub';
 
 export default function AdminLocationAllocations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const defaultUnitAppliedRef = useRef(false);
   const { isAdmin, hasEarlyAccess } = useAccess();
   const regionFilter = topRegionFromUrlSlug(searchParams.get('region') || '');
   const unitFilter = unitFromUrlParam(searchParams.get('unit') || '');
@@ -110,19 +112,25 @@ export default function AdminLocationAllocations() {
   const geoSplitMutation = useLocationAllocationGeoSplitMutation();
 
   useEffect(() => {
-    if (defaultUnitAppliedRef.current) return;
-    defaultUnitAppliedRef.current = true;
-    if (searchParams.has('unit') || searchParams.has('comment')) return;
+    if (
+      normalizeAllocationScenarioUnit(unitFilter) ||
+      searchParams.has('comment')
+    ) {
+      return;
+    }
 
     setSearchParams(
       (previous) => {
         const next = new URLSearchParams(previous);
-        next.set('unit', unitToUrlParam(DEFAULT_ALLOCATION_UNIT));
+        next.set(
+          'unit',
+          unitToUrlParam(DEFAULT_ALLOCATION_SCENARIO_UNIT)
+        );
         return next;
       },
       { replace: true }
     );
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, unitFilter]);
 
   const periodOptions = useMemo<LocationAllocationPeriodOption[]>(() => {
     const availableQuarters = [
