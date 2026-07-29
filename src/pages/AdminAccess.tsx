@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Crown,
   ImageUp,
+  Presentation,
 } from 'lucide-react';
 import { LogoLoader } from '@/components/LogoLoader';
 import { useAuth } from '@/hooks/useAuth';
@@ -52,6 +53,10 @@ import {
   AvatarFallback,
   AvatarImage,
 } from '@/components/ui/avatar';
+import {
+  ALLOCATION_SCENARIO_UNITS,
+  normalizeAllocationScenarioUnits,
+} from '@/lib/allocationScenarioUnits';
 
 type AllowedUserRow = Database['public']['Tables']['allowed_users']['Row'];
 
@@ -99,6 +104,7 @@ const ALLOWED_USERS_SELECT_COLUMNS = [
   'allowed_units',
   'allowed_team_pairs',
   'can_view_money',
+  'allocation_editor_units',
   'member_affiliations',
   'early_access',
   'avatar_url',
@@ -189,10 +195,13 @@ export default function AdminAccess() {
   const [orgAvatarFile, setOrgAvatarFile] = useState<File | null>(null);
   const [orgAvatarPreviewUrl, setOrgAvatarPreviewUrl] = useState<string | null>(null);
   const [leaderUnits, setLeaderUnits] = useState<string[]>([]);
+  const [allocationEditorUnits, setAllocationEditorUnits] = useState<string[]>([]);
   const [leaderUnitsByUser, setLeaderUnitsByUser] = useState<
     Record<string, string[]>
   >({});
   const [leaderPopoverOpen, setLeaderPopoverOpen] = useState(false);
+  const [allocationEditorPopoverOpen, setAllocationEditorPopoverOpen] =
+    useState(false);
   const [orgAffPopoverOpen, setOrgAffPopoverOpen] = useState(false);
   const [orgPairFilter, setOrgPairFilter] = useState('');
 
@@ -340,6 +349,9 @@ export default function AdminAccess() {
     setOrgAvatarFile(null);
     setOrgAvatarPreviewUrl(null);
     setLeaderUnits(leaderUnitsByUser[row.id] ?? []);
+    setAllocationEditorUnits(
+      normalizeAllocationScenarioUnits(parseUnits(row.allocation_editor_units))
+    );
     setOrgPairFilter('');
   };
 
@@ -648,6 +660,16 @@ export default function AdminAccess() {
     );
   };
 
+  const toggleAllocationEditorUnit = (unit: string) => {
+    setAllocationEditorUnits((previous) =>
+      normalizeAllocationScenarioUnits(
+        previous.includes(unit)
+          ? previous.filter((item) => item !== unit)
+          : [...previous, unit]
+      )
+    );
+  };
+
   const buildProfilePayload = (): {
     display_name: string | null;
     member_unit: string | null;
@@ -693,6 +715,7 @@ export default function AdminAccess() {
           ...profile,
           avatar_url: avatarUrl,
           early_access: scopeEarlyAccess,
+          allocation_editor_units: allocationEditorUnits,
         })
         .eq('id', scopeDialogUserId);
       if (error) {
@@ -732,6 +755,7 @@ export default function AdminAccess() {
         allowed_team_pairs,
         can_view_money: scopeCanViewMoney,
         early_access: scopeEarlyAccess,
+        allocation_editor_units: allocationEditorUnits,
       })
       .eq('id', scopeDialogUserId);
     if (error) {
@@ -974,6 +998,60 @@ export default function AdminAccess() {
             </div>
           </div>
         ) : null}
+      </div>
+      <div className="space-y-2 border-t border-border/70 pt-4">
+        <Label htmlFor="allocation-editor-units-trigger">
+          Редактор сценария аллокаций
+        </Label>
+        <Popover
+          open={allocationEditorPopoverOpen}
+          onOpenChange={setAllocationEditorPopoverOpen}
+        >
+          <PopoverTrigger asChild>
+            <button
+              id="allocation-editor-units-trigger"
+              type="button"
+              className={cn(
+                'flex h-9 w-full max-w-xl items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-sm',
+                'ring-offset-background hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-2 truncate text-left">
+                <Presentation className="h-3.5 w-3.5 shrink-0 text-primary" />
+                {allocationEditorUnits.length === 0
+                  ? 'Только просмотр'
+                  : allocationEditorUnits.length <= 2
+                    ? allocationEditorUnits.join(', ')
+                    : `${allocationEditorUnits.length} юнита`}
+              </span>
+              <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="z-[95] max-h-[min(70vh,24rem)] w-[min(100vw-1.5rem,22rem)] overflow-hidden p-1"
+            align="start"
+            collisionPadding={8}
+          >
+            <div className="max-h-[min(65vh,22rem)] overflow-y-auto overscroll-contain p-1">
+              {ALLOCATION_SCENARIO_UNITS.map((unit) => (
+                <label
+                  key={unit}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={allocationEditorUnits.includes(unit)}
+                    onCheckedChange={() => toggleAllocationEditorUnit(unit)}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{unit}</span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Может редактировать сценарий и видит незаполненные команды только в
+          выбранных юнитах. Для остальных юнитов доступен презентационный режим.
+        </p>
       </div>
       <div className="space-y-2 border-t border-border/70 pt-4">
         <Label htmlFor="leader-units-trigger">Лидер юнита</Label>
@@ -1267,6 +1345,23 @@ export default function AdminAccess() {
                             >
                               <Crown className="h-3 w-3" />
                               {leaderUnitsByUser[row.id].length}
+                            </span>
+                          ) : null}
+                          {normalizeAllocationScenarioUnits(
+                            row.allocation_editor_units
+                          ).length > 0 ? (
+                            <span
+                              className="flex h-6 shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 text-[10px] font-medium text-primary"
+                              title={`Редактор сценария: ${normalizeAllocationScenarioUnits(
+                                row.allocation_editor_units
+                              ).join(', ')}`}
+                            >
+                              <Presentation className="h-3 w-3" />
+                              {
+                                normalizeAllocationScenarioUnits(
+                                  row.allocation_editor_units
+                                ).length
+                              }
                             </span>
                           ) : null}
                           <Button

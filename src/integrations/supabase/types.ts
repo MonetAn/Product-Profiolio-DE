@@ -620,6 +620,7 @@ export type Database = {
           allowed_units: string[] | null
           allowed_team_pairs: Json | null
           can_view_money: boolean | null
+          allocation_editor_units: string[]
           display_name: string | null
           member_unit: string | null
           member_team: string | null
@@ -635,6 +636,7 @@ export type Database = {
           allowed_units?: string[] | null
           allowed_team_pairs?: Json | null
           can_view_money?: boolean | null
+          allocation_editor_units?: string[]
           display_name?: string | null
           member_unit?: string | null
           member_team?: string | null
@@ -650,6 +652,7 @@ export type Database = {
           allowed_units?: string[] | null
           allowed_team_pairs?: Json | null
           can_view_money?: boolean | null
+          allocation_editor_units?: string[]
           display_name?: string | null
           member_unit?: string | null
           member_team?: string | null

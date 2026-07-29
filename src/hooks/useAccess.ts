@@ -21,6 +21,8 @@ export interface AccessState {
   hasEarlyAccess: boolean;
   /** If false, user must not see money anywhere and has no money toggle */
   canViewMoney: boolean;
+  /** Юниты, презентационный сценарий которых пользователь может редактировать. */
+  allocationEditorUnits: string[];
   scope: AccessScope;
   /** Профиль из allowed_users (для будущей логики); null если нет доступа */
   displayName: string | null;
@@ -54,6 +56,7 @@ function getCachedAccess(userId: string): {
   isSuperAdmin: boolean;
   hasEarlyAccess: boolean;
   canViewMoney: boolean;
+  allocationEditorUnits: string[];
   scope: AccessScope;
   displayName: string | null;
   memberUnit: string | null;
@@ -71,6 +74,7 @@ function getCachedAccess(userId: string): {
       isSuperAdmin?: boolean;
       hasEarlyAccess?: boolean;
       canViewMoney?: boolean;
+      allocationEditorUnits?: string[];
       scope: AccessScope;
       displayName?: string | null;
       memberUnit?: string | null;
@@ -90,6 +94,9 @@ function getCachedAccess(userId: string): {
       isSuperAdmin: Boolean(parsed.isSuperAdmin),
       hasEarlyAccess: Boolean(parsed.hasEarlyAccess),
       canViewMoney: parsed.canViewMoney !== false,
+      allocationEditorUnits: Array.isArray(parsed.allocationEditorUnits)
+        ? parsed.allocationEditorUnits
+        : [],
       scope: {
         seeAll: Boolean(parsed.scope?.seeAll),
         allowedUnits: Array.isArray(parsed.scope?.allowedUnits) ? parsed.scope.allowedUnits : [],
@@ -113,6 +120,7 @@ function setCachedAccess(
     isSuperAdmin: boolean;
     hasEarlyAccess: boolean;
     canViewMoney: boolean;
+    allocationEditorUnits: string[];
     scope: AccessScope;
     displayName: string | null;
     memberUnit: string | null;
@@ -156,6 +164,7 @@ export function parseAccessResponse(data: unknown): {
   isSuperAdmin: boolean;
   hasEarlyAccess: boolean;
   canViewMoney: boolean;
+  allocationEditorUnits: string[];
   scope: AccessScope;
   displayName: string | null;
   memberUnit: string | null;
@@ -171,6 +180,7 @@ export function parseAccessResponse(data: unknown): {
       isSuperAdmin: false,
       hasEarlyAccess: false,
       canViewMoney: true,
+      allocationEditorUnits: [],
       scope: DEFAULT_SCOPE,
       displayName: null,
       memberUnit: null,
@@ -184,6 +194,7 @@ export function parseAccessResponse(data: unknown): {
     is_super_admin?: boolean;
     has_early_access?: boolean;
     can_view_money?: boolean;
+    allocation_editor_units?: unknown;
     display_name?: string | null;
     member_unit?: string | null;
     member_team?: string | null;
@@ -221,6 +232,11 @@ export function parseAccessResponse(data: unknown): {
     isSuperAdmin: Boolean(obj.is_super_admin),
     hasEarlyAccess: Boolean(obj.has_early_access),
     canViewMoney: obj.can_view_money !== false,
+    allocationEditorUnits: Array.isArray(obj.allocation_editor_units)
+      ? obj.allocation_editor_units.filter(
+          (unit): unit is string => typeof unit === 'string'
+        )
+      : [],
     scope,
     displayName: typeof dn === 'string' && dn.trim() ? dn.trim() : null,
     memberUnit: typeof mu === 'string' && mu.trim() ? mu.trim() : null,
@@ -244,6 +260,7 @@ const noAccessState: AccessState = {
   isSuperAdmin: false,
   hasEarlyAccess: false,
   canViewMoney: true,
+  allocationEditorUnits: [],
   scope: DEFAULT_SCOPE,
   displayName: null,
   memberUnit: null,
@@ -262,6 +279,7 @@ export function useAccess(): AccessState {
     isSuperAdmin: boolean;
     hasEarlyAccess: boolean;
     canViewMoney: boolean;
+    allocationEditorUnits: string[];
     scope: AccessScope;
     displayName: string | null;
     memberUnit: string | null;
@@ -306,6 +324,7 @@ export function useAccess(): AccessState {
           isSuperAdmin: false,
           hasEarlyAccess: false,
           canViewMoney: true,
+          allocationEditorUnits: [],
           scope: DEFAULT_SCOPE,
           displayName: null,
           memberUnit: null,
@@ -392,6 +411,7 @@ export function useAccess(): AccessState {
     isSuperAdmin: access.isSuperAdmin,
     hasEarlyAccess: access.hasEarlyAccess,
     canViewMoney: access.canViewMoney,
+    allocationEditorUnits: access.allocationEditorUnits,
     scope: access.scope,
     displayName: access.displayName,
     memberUnit: access.memberUnit,

@@ -212,6 +212,8 @@ export function LocationAllocationTreemapContainer({
   }, []);
 
   const canZoomOut = focusedPath.length > 0;
+  const isFocusedTeamView =
+    layoutNodes.length === 1 && layoutNodes[0]?.isTeam === true;
 
   return (
     <div
@@ -268,6 +270,7 @@ export function LocationAllocationTreemapContainer({
               showMoney={showMoney}
               onEditClick={onEditNode}
               commentSummary={commentSummary}
+              isFocusedTeamView={isFocusedTeamView}
             />
           ))}
         </div>
