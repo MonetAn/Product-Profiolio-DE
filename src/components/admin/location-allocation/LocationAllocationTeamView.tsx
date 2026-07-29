@@ -528,7 +528,7 @@ function TeamCard({
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
-        className="grid cursor-pointer gap-4 px-4 py-4 outline-none transition-colors hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto]"
+        className="grid cursor-pointer gap-5 px-4 py-4 outline-none transition-colors hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 xl:grid-cols-[minmax(320px,0.85fr)_minmax(440px,1.15fr)] xl:items-center"
         onClick={onToggle}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -591,12 +591,25 @@ function TeamCard({
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
           </div>
-          <AllocationSummary team={team} className="mt-2" />
-        </div>
-
-        <div className="flex items-center justify-between gap-4 sm:justify-end">
-          <div className="flex items-end gap-5">
-            <div className="text-right">
+          <div className="mt-2.5 flex flex-wrap items-end gap-x-5 gap-y-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                ФОТ 2026
+              </p>
+              <p className="mt-0.5 text-lg font-semibold tabular-nums">
+                {formatLocationExactRub(team.fot2026Rub)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Люди
+              </p>
+              <p className="mt-0.5 flex items-center gap-1 text-lg font-semibold tabular-nums">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                {team.peopleCount}
+              </p>
+            </div>
+            <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 ФОТ 2025
               </p>
@@ -606,25 +619,17 @@ function TeamCard({
                   : '—'}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                ФОТ 2026
-              </p>
-              <p className="mt-0.5 text-lg font-semibold tabular-nums">
-                {formatLocationExactRub(team.fot2026Rub)}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Люди
-              </p>
-              <p className="mt-0.5 flex items-center justify-end gap-1 text-lg font-semibold tabular-nums">
-                <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                {team.peopleCount}
-              </p>
-            </div>
           </div>
+        </div>
 
+        <div className="min-w-0 xl:text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Распределение ФОТ 2026
+          </p>
+          <AllocationSummary
+            team={team}
+            className="mt-1.5 xl:justify-end"
+          />
         </div>
       </div>
 
@@ -853,7 +858,9 @@ export function LocationAllocationTeamView({
     sourceTeams,
     enabled: readOnly || !liveMetrics.isLoading,
   });
-  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
+  const [expandedTeamIds, setExpandedTeamIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [newTeamUnit, setNewTeamUnit] = useState<string | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
   const [activeUnit, setActiveUnit] = useState(() =>
@@ -892,7 +899,7 @@ export function LocationAllocationTeamView({
       groups[0].unit;
     if (nextUnit !== activeUnit) {
       setActiveUnit(nextUnit);
-      setExpandedTeamId(null);
+      setExpandedTeamIds(new Set());
       setEditMode(false);
     }
   }, [activeUnit, groups, selectedUnit]);
@@ -1025,7 +1032,7 @@ export function LocationAllocationTeamView({
                           onSelect={() => {
                             setActiveUnit(group.unit);
                             onSelectedUnitChange(group.unit);
-                            setExpandedTeamId(null);
+                            setExpandedTeamIds(new Set());
                             setEditMode(false);
                             setUnitPickerOpen(false);
                           }}
@@ -1126,7 +1133,7 @@ export function LocationAllocationTeamView({
               <TeamCard
                 key={team.id}
                 team={team}
-                isExpanded={expandedTeamId === team.id}
+                isExpanded={expandedTeamIds.has(team.id)}
                 canEditUnit={canEditActiveUnit}
                 editMode={editMode}
                 isSaving={scenario.isSaving}
@@ -1137,9 +1144,12 @@ export function LocationAllocationTeamView({
                     : null
                 }
                 onToggle={() =>
-                  setExpandedTeamId((current) =>
-                    current === team.id ? null : team.id
-                  )
+                  setExpandedTeamIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(team.id)) next.delete(team.id);
+                    else next.add(team.id);
+                    return next;
+                  })
                 }
                 onDragStart={(event) => {
                   event.dataTransfer.effectAllowed = 'move';
