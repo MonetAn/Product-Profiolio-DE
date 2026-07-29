@@ -87,6 +87,7 @@ import {
 import { cn } from '@/lib/utils';
 import {
   ALLOCATION_SCENARIO_UNITS,
+  resolveAllocationScenarioUnit,
   normalizeAllocationScenarioUnit,
 } from '@/lib/allocationScenarioUnits';
 import { reorderAllocationScenarioTeamIds } from '@/lib/allocationScenarioOrder';
@@ -98,6 +99,7 @@ type Props = {
   teamMetrics?: LocationAllocationTeamMetric[];
   readOnly?: boolean;
   selectedUnit?: string | null;
+  onSelectedUnitChange: (unit: string) => void;
 };
 
 type TeamPatch = Partial<
@@ -800,6 +802,7 @@ export function LocationAllocationTeamView({
   teamMetrics = [],
   readOnly = false,
   selectedUnit = null,
+  onSelectedUnitChange,
 }: Props) {
   const { allocationEditorUnits } = useAccess();
   const liveMetrics = useLocationAllocationTeamMetrics({ enabled: !readOnly });
@@ -869,8 +872,8 @@ export function LocationAllocationTeamView({
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
   const [newTeamUnit, setNewTeamUnit] = useState<string | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
-  const [activeUnit, setActiveUnit] = useState(
-    normalizeAllocationScenarioUnit(selectedUnit) ?? 'Data Office + AI Hub'
+  const [activeUnit, setActiveUnit] = useState(() =>
+    resolveAllocationScenarioUnit(selectedUnit)
   );
   const [unitPickerOpen, setUnitPickerOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -899,11 +902,9 @@ export function LocationAllocationTeamView({
 
   useEffect(() => {
     if (groups.length === 0) return;
-    const requestedUnit = normalizeAllocationScenarioUnit(selectedUnit);
+    const requestedUnit = resolveAllocationScenarioUnit(selectedUnit);
     const nextUnit =
-      groups.find((group) => group.unit === activeUnit)?.unit ??
-      requestedUnit ??
-      groups.find((group) => group.unit === 'Data Office + AI Hub')?.unit ??
+      groups.find((group) => group.unit === requestedUnit)?.unit ??
       groups[0].unit;
     if (nextUnit !== activeUnit) {
       setActiveUnit(nextUnit);
@@ -1039,6 +1040,7 @@ export function LocationAllocationTeamView({
                           value={group.unit}
                           onSelect={() => {
                             setActiveUnit(group.unit);
+                            onSelectedUnitChange(group.unit);
                             setExpandedTeamId(null);
                             setEditMode(false);
                             setUnitPickerOpen(false);

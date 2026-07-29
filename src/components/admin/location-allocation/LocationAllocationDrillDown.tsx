@@ -53,6 +53,7 @@ export function LocationAllocationDrillDown({
   teamMetrics = [],
   readOnly = false,
   unitFilter,
+  onUnitFilterChange,
 }: Props) {
   return (
     <section id="location-initiatives" className="scroll-mt-4">
@@ -62,6 +63,7 @@ export function LocationAllocationDrillDown({
         teamMetrics={teamMetrics}
         readOnly={readOnly}
         selectedUnit={unitFilter}
+        onSelectedUnitChange={onUnitFilterChange}
       />
     </section>
   );
