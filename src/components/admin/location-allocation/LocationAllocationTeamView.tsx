@@ -9,14 +9,12 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Eye,
   Globe2,
   GripVertical,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
-  Settings2,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -868,7 +866,6 @@ export function LocationAllocationTeamView({
     resolveAllocationScenarioUnit(selectedUnit)
   );
   const [unitPickerOpen, setUnitPickerOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
   const [draggedTeamId, setDraggedTeamId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     teamId: string;
@@ -901,13 +898,12 @@ export function LocationAllocationTeamView({
     if (nextUnit !== activeUnit) {
       setActiveUnit(nextUnit);
       setExpandedTeamIds(new Set());
-      setEditMode(false);
     }
   }, [activeUnit, groups, selectedUnit]);
 
   const activeGroup =
     groups.find((group) => group.unit === activeUnit) ?? groups[0];
-  const canEditActiveUnit = !readOnly && Boolean(activeGroup);
+  const editMode = !readOnly && Boolean(activeGroup);
   const canManageActiveUnit =
     !readOnly && canManageAllocationScenarioTeams(user?.email);
   const activeFot2025 =
@@ -916,10 +912,6 @@ export function LocationAllocationTeamView({
     activeGroup?.teams.reduce((sum, team) => sum + team.fot2026Rub, 0) ?? 0;
   const activePeople =
     activeGroup?.teams.reduce((sum, team) => sum + team.peopleCount, 0) ?? 0;
-
-  useEffect(() => {
-    if (!canEditActiveUnit && editMode) setEditMode(false);
-  }, [canEditActiveUnit, editMode]);
 
   useEffect(() => {
     if (!editMode) {
@@ -1031,7 +1023,6 @@ export function LocationAllocationTeamView({
                             setActiveUnit(group.unit);
                             onSelectedUnitChange(group.unit);
                             setExpandedTeamIds(new Set());
-                            setEditMode(false);
                             setUnitPickerOpen(false);
                           }}
                         >
@@ -1087,25 +1078,6 @@ export function LocationAllocationTeamView({
               <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
                 {pluralTeams(activeGroup?.teams.length ?? 0)}
               </span>
-              {canEditActiveUnit ? (
-                <Button
-                  type="button"
-                  variant={editMode ? 'default' : 'outline'}
-                  onClick={() => setEditMode((current) => !current)}
-                >
-                  {editMode ? (
-                    <>
-                      <Eye className="mr-1.5 h-4 w-4" />
-                      Готово
-                    </>
-                  ) : (
-                    <>
-                      <Settings2 className="mr-1.5 h-4 w-4" />
-                      Редактировать
-                    </>
-                  )}
-                </Button>
-              ) : null}
               {editMode && canManageActiveUnit ? (
                 <Button
                   type="button"
