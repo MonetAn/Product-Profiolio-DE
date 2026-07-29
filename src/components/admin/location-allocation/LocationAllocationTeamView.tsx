@@ -13,6 +13,7 @@ import {
   buildInitiativesRegionPayments,
   calculateTeamRun,
   locationTeamKey,
+  resolveTeamRunDisplay,
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
 import { initiativeYearCostRub } from '@/lib/locationAllocationModel';
@@ -60,7 +61,11 @@ type Props = {
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
 };
 
-type MetricKind = 'fot2025Rub' | 'fot2026Rub' | 'peopleCountOverride';
+type MetricKind =
+  | 'fot2025Rub'
+  | 'fot2026Rub'
+  | 'peopleCountOverride'
+  | 'runPercentOverride';
 
 type MetricEditorState = {
   unit: string;
@@ -89,11 +94,13 @@ function MetricButton({
   secondary,
   onClick,
   disabled = false,
+  title,
 }: {
   value: string;
   secondary?: string;
   onClick?: () => void;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
@@ -101,6 +108,7 @@ function MetricButton({
       disabled={disabled}
       className="group flex min-w-0 items-center rounded-lg px-2 py-2 text-left transition-colors enabled:hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       onClick={onClick}
+      title={title}
     >
       <span className="min-w-0 truncate text-sm tabular-nums text-foreground">
         <strong className="font-semibold">{value}</strong>
@@ -114,15 +122,10 @@ function MetricButton({
 
 function CommentBadge({
   count,
-  level,
 }: {
   count: LocationAllocationCommentCount;
-  level: 'unit' | 'team';
 }) {
-  const openLabel =
-    level === 'unit'
-      ? `${count.openCount} нерешённых внутри юнита, включая команды и инициативы`
-      : `${count.openCount} нерешённых внутри команды, включая инициативы`;
+  const openLabel = `${count.openCount} нерешённых комментариев команды`;
   const title =
     count.openCount > 0 && count.unreadCount > 0
       ? `${openLabel} · ${count.unreadCount} новых сообщений`
@@ -156,6 +159,12 @@ function teamCountLabel(count: number): string {
   if (mod10 === 1) return `${count} команда`;
   if (mod10 >= 2 && mod10 <= 4) return `${count} команды`;
   return `${count} команд`;
+}
+
+function formatRunPercent(value: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 function RegionPaymentSummary({
@@ -370,9 +379,6 @@ export function LocationAllocationTeamView({
               countries,
               countryIdToClusterKey
             );
-            const unitCommentCount =
-              commentSummary?.byUnit.get(group.unit) ??
-              EMPTY_LOCATION_COMMENT_COUNT;
             const isCollapsed = !expandedUnits.has(group.unit);
             return (
           <section
@@ -428,9 +434,6 @@ export function LocationAllocationTeamView({
                     <h3 className="truncate text-lg font-semibold tracking-tight">
                       {unitDisplayName}
                     </h3>
-                    {!readOnly ? (
-                      <CommentBadge count={unitCommentCount} level="unit" />
-                    ) : null}
                   </button>
                   <div className="mt-1">
                     <RegionPaymentSummary
@@ -499,7 +502,7 @@ export function LocationAllocationTeamView({
                 const teamAssignments = assignments.filter((assignment) =>
                   teamPersonIds.has(assignment.person_id)
                 );
-                const run = calculateTeamRun(
+                const calculatedRun = calculateTeamRun(
                   allTeamRows,
                   teamPeople,
                   teamAssignments,
@@ -507,14 +510,14 @@ export function LocationAllocationTeamView({
                   fot2026,
                   peopleCount
                 );
-                const initiativeRows = visibleRows.filter((row) => !row.isTimelineStub);
-                const supportInitiative = allTeamRows.find(
-                  (row) =>
-                    !row.isTimelineStub &&
-                    FULL_2026.some((quarter) => row.quarterlyData[quarter]?.support)
+                const run = resolveTeamRunDisplay(
+                  calculatedRun,
+                  fot2026,
+                  metric?.runPercentOverride ?? null
                 );
+                const initiativeRows = visibleRows.filter((row) => !row.isTimelineStub);
                 const teamCommentCount =
-                  commentSummary?.byTeam.get(key) ??
+                  commentSummary?.byTeamDirect.get(key) ??
                   EMPTY_LOCATION_COMMENT_COUNT;
                 const teamRegionPayments = buildInitiativesRegionPayments(
                   visibleRows,
@@ -544,7 +547,7 @@ export function LocationAllocationTeamView({
                           {metric?.teamDisplayName ?? team}
                         </span>
                         {!readOnly ? (
-                          <CommentBadge count={teamCommentCount} level="team" />
+                          <CommentBadge count={teamCommentCount} />
                         ) : null}
                       </button>
                       <RegionPaymentSummary payments={teamRegionPayments} />
@@ -593,14 +596,27 @@ export function LocationAllocationTeamView({
                     />
 
                     <MetricButton
-                      value={`${Math.round(run.supportShare * 100)}%`}
+                      value={`${formatRunPercent(run.percent)}%`}
                       secondary={`(${formatLocationCompactM(run.runRub)})`}
-                      onClick={
-                        !readOnly && supportInitiative
-                          ? () => setSelectedInitiativeId(supportInitiative.id)
-                          : undefined
+                      title={
+                        readOnly
+                          ? run.isManual
+                            ? 'RUN задан вручную'
+                            : 'RUN рассчитан автоматически'
+                          : run.isManual
+                            ? 'RUN задан вручную. Нажмите, чтобы изменить или вернуть авторасчёт'
+                            : 'RUN рассчитан автоматически. Нажмите, чтобы задать вручную'
                       }
-                      disabled={readOnly || !supportInitiative}
+                      onClick={() =>
+                        openMetricEditor(
+                          group.unit,
+                          team,
+                          'runPercentOverride',
+                          calculatedRun.supportShare * 100,
+                          metric?.runPercentOverride ?? null
+                        )
+                      }
+                      disabled={readOnly}
                     />
 
                     <div className="min-w-0 space-y-1.5 px-1 py-1">
@@ -678,11 +694,13 @@ export function LocationAllocationTeamView({
                 ? 'ФОТ за 2025'
                 : metricEditor?.kind === 'fot2026Rub'
                   ? 'ФОТ за 2026'
-                  : 'Количество людей'}
+                  : metricEditor?.kind === 'peopleCountOverride'
+                    ? 'Количество людей'
+                    : 'RUN, %'}
             </DialogTitle>
             <DialogDescription>
-              {metricEditor?.unit} › {metricEditor?.team}. Можно задать корректировку
-              или вернуться к автоматическому расчёту.
+              {metricEditor?.unit} › {metricEditor?.team}. Можно задать ручное
+              значение или вернуться к автоматическому расчёту.
             </DialogDescription>
           </DialogHeader>
 
@@ -690,7 +708,14 @@ export function LocationAllocationTeamView({
             <Input
               type="number"
               min={0}
-              step={metricEditor?.kind === 'peopleCountOverride' ? 1 : 100000}
+              max={metricEditor?.kind === 'runPercentOverride' ? 100 : undefined}
+              step={
+                metricEditor?.kind === 'peopleCountOverride'
+                  ? 1
+                  : metricEditor?.kind === 'runPercentOverride'
+                    ? 0.1
+                    : 100000
+              }
               value={metricDraft}
               onChange={(event) => setMetricDraft(event.target.value)}
               className="[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -701,6 +726,10 @@ export function LocationAllocationTeamView({
               <span className="font-medium text-foreground">
                 {metricEditor?.kind === 'peopleCountOverride'
                   ? `${metricEditor?.calculatedValue ?? 0} чел.`
+                  : metricEditor?.kind === 'runPercentOverride'
+                    ? `${formatRunPercent(
+                        metricEditor?.calculatedValue ?? 0
+                      )}%`
                   : formatLocationCompactM(metricEditor?.calculatedValue ?? 0)}
               </span>
             </p>
@@ -730,7 +759,9 @@ export function LocationAllocationTeamView({
                 if (!metricEditor) return;
                 const raw = Math.max(0, Number(metricDraft) || 0);
                 const value =
-                  metricEditor.kind === 'peopleCountOverride' ? Math.round(raw) : Math.round(raw);
+                  metricEditor.kind === 'runPercentOverride'
+                    ? Math.round(Math.min(100, raw) * 10) / 10
+                    : Math.round(raw);
                 await saveMetric({
                   unit: metricEditor.unit,
                   team: metricEditor.team,
@@ -833,14 +864,6 @@ export function LocationAllocationTeamView({
             placeholder="Название юнита"
             autoFocus
           />
-          {unitLabelEditor ? (
-            <div className="border-t border-border/60 pt-4">
-              <InitiativeAllocationComments
-                scope={{ type: 'unit', unit: unitLabelEditor.unit }}
-                compact
-              />
-            </div>
-          ) : null}
           <DialogFooter className="gap-2 sm:justify-between sm:space-x-0">
             <Button
               type="button"

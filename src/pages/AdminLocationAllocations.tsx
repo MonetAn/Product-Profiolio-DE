@@ -274,7 +274,7 @@ export default function AdminLocationAllocations() {
   const handleViewChange = useCallback(
     (view: ViewType) => {
       if (view === 'allocations') return;
-      navigate('/', { state: { dashboardView: view } });
+      navigate('/dashboard', { state: { dashboardView: view } });
     },
     [navigate]
   );

@@ -14,6 +14,8 @@ const sb = supabase as any;
 
 const EMPTY_SUMMARY: LocationAllocationCommentSummary = {
   byInitiative: new Map(),
+  byTeamDirect: new Map(),
+  byTeamInitiatives: new Map(),
   byTeam: new Map(),
   byUnit: new Map(),
 };
@@ -46,7 +48,7 @@ export function useLocationAllocationCommentSummary(
   return useQuery({
     queryKey: [
       'location-allocation-comment-summary',
-      'live-v3',
+      'live-v4',
       initiativeIndexKey,
     ],
     enabled,

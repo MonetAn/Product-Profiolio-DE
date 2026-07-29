@@ -10,3 +10,9 @@ export function locationAllocationFilterFocusPath(
   if (team) return [team.unit, team.team.trim() || 'Без команды'];
   return unit ? [unit] : [];
 }
+
+export function locationAllocationParentFocusPath(
+  focusedPath: string[]
+): string[] {
+  return focusedPath.length > 0 ? focusedPath.slice(0, -1) : [];
+}

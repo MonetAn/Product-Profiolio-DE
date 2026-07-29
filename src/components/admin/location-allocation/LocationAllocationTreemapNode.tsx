@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { MessageSquareText } from 'lucide-react';
+import { MessageSquareText, MessagesSquare } from 'lucide-react';
 import type { TreemapLayoutNode } from '@/components/treemap/types';
 import type { LocationAllocationTreemapMeta, LocationAllocationTreemapScope } from '@/lib/locationAllocationTreemap';
 import {
@@ -37,15 +37,10 @@ function getTextColorClass(bgColor: string): string {
   return getLuminance(bgColor) > 0.4 ? 'text-gray-900' : 'text-white';
 }
 
-function commentButtonLabel(
-  node: TreemapLayoutNode,
+function teamCommentButtonLabel(
   count: LocationAllocationCommentCount
 ): string {
-  const openLabel = node.isUnit
-    ? `${count.openCount} нерешённых внутри юнита, включая команды и инициативы`
-    : node.isTeam
-      ? `${count.openCount} нерешённых внутри команды, включая инициативы`
-      : `${count.openCount} нерешённых комментариев`;
+  const openLabel = `${count.openCount} нерешённых комментариев команды`;
   if (count.openCount > 0 && count.unreadCount > 0) {
     return `${openLabel} · ${count.unreadCount} новых сообщений`;
   }
@@ -53,8 +48,101 @@ function commentButtonLabel(
   if (count.unreadCount > 0) {
     return `${count.unreadCount} новых сообщений`;
   }
-  return 'Открыть комментарии';
+  return 'Открыть комментарии команды';
 }
+
+function initiativeCommentIndicatorLabel(
+  count: LocationAllocationCommentCount
+): string {
+  const openLabel = `${count.openCount} нерешённых комментариев в инициативах команды`;
+  if (count.openCount > 0 && count.unreadCount > 0) {
+    return `${openLabel} · ${count.unreadCount} новых сообщений. Откройте инициативу, чтобы прочитать.`;
+  }
+  if (count.openCount > 0) {
+    return `${openLabel}. Откройте инициативу, чтобы прочитать.`;
+  }
+  return `${count.unreadCount} новых сообщений в инициативах команды. Откройте инициативу, чтобы прочитать.`;
+}
+
+function initiativeDiscussionButtonLabel(
+  initiativeName: string,
+  count: LocationAllocationCommentCount
+): string {
+  const discussionLabel = `Обсуждение инициативы «${initiativeName}»`;
+  if (count.openCount > 0 && count.unreadCount > 0) {
+    return `${discussionLabel}: ${count.openCount} нерешённых · ${count.unreadCount} новых сообщений`;
+  }
+  if (count.openCount > 0) {
+    return `${discussionLabel}: ${count.openCount} нерешённых комментариев`;
+  }
+  return `${discussionLabel}: ${count.unreadCount} новых сообщений`;
+}
+
+const TeamCommentIndicators = memo(function TeamCommentIndicators({
+  teamCount,
+  initiativeCount,
+  compact,
+  onTeamCommentClick,
+}: {
+  teamCount: LocationAllocationCommentCount;
+  initiativeCount: LocationAllocationCommentCount;
+  compact: boolean;
+  onTeamCommentClick?: () => void;
+}) {
+  const showInitiatives =
+    initiativeCount.openCount > 0 || initiativeCount.unreadCount > 0;
+  if (!onTeamCommentClick && !showInitiatives) return null;
+
+  return (
+    <span className="inline-flex shrink-0 items-center gap-0.5 pointer-events-auto">
+      {onTeamCommentClick ? (
+        <button
+          type="button"
+          className="relative inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-md bg-black/25 px-1.5 text-white/95 hover:bg-black/40 hover:text-white"
+          title={teamCommentButtonLabel(teamCount)}
+          aria-label={teamCommentButtonLabel(teamCount)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onTeamCommentClick();
+          }}
+        >
+          {teamCount.unreadCount > 0 ? (
+            <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
+          ) : null}
+          <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.1} />
+          <span className="text-[8px] font-semibold uppercase tracking-tight">
+            {compact ? 'К' : 'Ком.'}
+          </span>
+          {teamCount.openCount > 0 ? (
+            <span className="text-[9px] font-semibold tabular-nums">
+              {teamCount.openCount}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
+      {showInitiatives ? (
+        <span
+          className="relative inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-md bg-white/20 px-1.5 text-white/95"
+          title={initiativeCommentIndicatorLabel(initiativeCount)}
+          aria-label={initiativeCommentIndicatorLabel(initiativeCount)}
+        >
+          {initiativeCount.unreadCount > 0 ? (
+            <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
+          ) : null}
+          <MessagesSquare className="h-3.5 w-3.5" strokeWidth={2.1} />
+          <span className="text-[8px] font-semibold uppercase tracking-tight">
+            {compact ? 'И' : 'Иниц.'}
+          </span>
+          {initiativeCount.openCount > 0 ? (
+            <span className="text-[9px] font-semibold tabular-nums">
+              {initiativeCount.openCount}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </span>
+  );
+});
 
 const ParentHeader = memo(function ParentHeader({
   node,
@@ -62,16 +150,18 @@ const ParentHeader = memo(function ParentHeader({
   isTiny,
   isSmall,
   headcount,
-  commentCount,
-  onCommentClick,
+  teamCommentCount,
+  initiativeCommentCount,
+  onTeamCommentClick,
 }: {
   node: TreemapLayoutNode;
   textColorClass: string;
   isTiny: boolean;
   isSmall: boolean;
   headcount: number | null;
-  commentCount: LocationAllocationCommentCount;
-  onCommentClick?: () => void;
+  teamCommentCount: LocationAllocationCommentCount;
+  initiativeCommentCount: LocationAllocationCommentCount;
+  onTeamCommentClick?: () => void;
 }) {
   if (node.height < 30) return null;
 
@@ -91,27 +181,13 @@ const ParentHeader = memo(function ParentHeader({
         {node.name}
         {headcount != null ? ` · ${headcount} чел.` : ''}
       </span>
-      {onCommentClick ? (
-        <button
-          type="button"
-          className="relative inline-flex h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-md bg-black/25 px-1.5 text-white/95 hover:bg-black/40 hover:text-white pointer-events-auto"
-          title={commentButtonLabel(node, commentCount)}
-          aria-label={commentButtonLabel(node, commentCount)}
-          onClick={(event) => {
-            event.stopPropagation();
-            onCommentClick();
-          }}
-        >
-          {commentCount.unreadCount > 0 ? (
-            <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
-          ) : null}
-          <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.1} />
-          {commentCount.openCount > 0 ? (
-            <span className="text-[9px] font-semibold tabular-nums">
-              {commentCount.openCount}
-            </span>
-          ) : null}
-        </button>
+      {node.isTeam ? (
+        <TeamCommentIndicators
+          teamCount={teamCommentCount}
+          initiativeCount={initiativeCommentCount}
+          compact={isTiny || isSmall}
+          onTeamCommentClick={onTeamCommentClick}
+        />
       ) : null}
     </div>
   );
@@ -323,32 +399,43 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
     () => resolveLocationTreemapNodeHeadcount(node, meta),
     [node, meta]
   );
-  const commentCount = useMemo<LocationAllocationCommentCount>(() => {
-    if (!commentSummary) return EMPTY_LOCATION_COMMENT_COUNT;
-    if (node.isInitiative) {
-      const initiativeId = collectLocationTreemapInitiativeIds(node, meta)[0];
-      return (
-        (initiativeId
-          ? commentSummary.byInitiative.get(initiativeId)
-          : null) ?? EMPTY_LOCATION_COMMENT_COUNT
-      );
-    }
-    if (node.isTeam) {
-      const unit = node.data.unit?.trim() ?? '';
-      const team = node.data.team?.trim() || node.name.trim() || 'Без команды';
-      return (
-        commentSummary.byTeam.get(locationTeamKey(unit, team)) ??
-        EMPTY_LOCATION_COMMENT_COUNT
-      );
-    }
-    if (node.isUnit) {
-      const unit = node.data.unit?.trim() || node.name.trim();
-      return (
-        commentSummary.byUnit.get(unit) ?? EMPTY_LOCATION_COMMENT_COUNT
-      );
-    }
-    return EMPTY_LOCATION_COMMENT_COUNT;
-  }, [commentSummary, meta, node]);
+  const teamKey = useMemo(() => {
+    if (!node.isTeam) return null;
+    const unit = node.data.unit?.trim() ?? '';
+    const team = node.data.team?.trim() || node.name.trim() || 'Без команды';
+    return locationTeamKey(unit, team);
+  }, [node]);
+  const teamCommentCount = useMemo<LocationAllocationCommentCount>(() => {
+    if (!commentSummary || !teamKey) return EMPTY_LOCATION_COMMENT_COUNT;
+    return (
+      commentSummary.byTeamDirect.get(teamKey) ??
+      EMPTY_LOCATION_COMMENT_COUNT
+    );
+  }, [commentSummary, teamKey]);
+  const initiativeCommentCount = useMemo<LocationAllocationCommentCount>(() => {
+    if (!commentSummary || !teamKey) return EMPTY_LOCATION_COMMENT_COUNT;
+    return (
+      commentSummary.byTeamInitiatives.get(teamKey) ??
+      EMPTY_LOCATION_COMMENT_COUNT
+    );
+  }, [commentSummary, teamKey]);
+  const initiativeId = useMemo(() => {
+    if (!node.isInitiative) return null;
+    return collectLocationTreemapInitiativeIds(node, meta)[0] ?? null;
+  }, [meta, node]);
+  const directInitiativeCommentCount =
+    (initiativeId
+      ? commentSummary?.byInitiative.get(initiativeId)
+      : null) ?? EMPTY_LOCATION_COMMENT_COUNT;
+  const isFocusedTeamView = focusedPath.length >= 2;
+  const showInitiativeDiscussion =
+    Boolean(onEditClick) &&
+    node.isInitiative &&
+    isFocusedTeamView &&
+    node.width >= 28 &&
+    node.height >= 26 &&
+    (directInitiativeCommentCount.openCount > 0 ||
+      directInitiativeCommentCount.unreadCount > 0);
 
   const classNames = [
     'treemap-node',
@@ -393,31 +480,52 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
 
   return (
     <div className={classNames} style={boxStyle} {...eventHandlers}>
-      {onEditClick &&
-      !node.isInitiative &&
-      !showsParentHeader &&
-      node.height >= 30 &&
-      node.width >= 42 ? (
+      {showInitiativeDiscussion ? (
         <button
           type="button"
-          className="absolute left-1 top-1 z-30 flex h-7 min-w-7 items-center justify-center gap-1 rounded-md bg-black/25 px-1.5 text-white/95 hover:bg-black/40 hover:text-white pointer-events-auto"
-          title={commentButtonLabel(node, commentCount)}
-          aria-label={commentButtonLabel(node, commentCount)}
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditClick(node);
+          className="absolute right-1 top-1 z-30 inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-md bg-black/35 px-1.5 text-white/95 hover:bg-black/50 hover:text-white pointer-events-auto"
+          title={initiativeDiscussionButtonLabel(
+            node.name,
+            directInitiativeCommentCount
+          )}
+          aria-label={initiativeDiscussionButtonLabel(
+            node.name,
+            directInitiativeCommentCount
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditClick?.(node);
           }}
         >
-          {commentCount.unreadCount > 0 ? (
+          {directInitiativeCommentCount.unreadCount > 0 ? (
             <span className="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-sky-400 ring-1 ring-white" />
           ) : null}
-          <MessageSquareText className="h-4 w-4" strokeWidth={2.1} />
-          {commentCount.openCount > 0 ? (
-            <span className="text-[10px] font-semibold tabular-nums">
-              {commentCount.openCount}
+          <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.1} />
+          {node.width >= 92 ? (
+            <span className="text-[8px] font-semibold uppercase tracking-tight">
+              Обс.
+            </span>
+          ) : null}
+          {directInitiativeCommentCount.openCount > 0 ? (
+            <span className="text-[9px] font-semibold tabular-nums">
+              {directInitiativeCommentCount.openCount}
             </span>
           ) : null}
         </button>
+      ) : null}
+      {onEditClick &&
+      node.isTeam &&
+      !showsParentHeader &&
+      node.height >= 30 &&
+      node.width >= 42 ? (
+        <span className="absolute left-1 top-1 z-30">
+          <TeamCommentIndicators
+            teamCount={teamCommentCount}
+            initiativeCount={initiativeCommentCount}
+            compact={isTiny || isSmall}
+            onTeamCommentClick={() => onEditClick(node)}
+          />
+        </span>
       ) : null}
       {hasChildren && shouldRenderChildren ? (
         <ParentHeader
@@ -426,9 +534,14 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
           isTiny={isTiny}
           isSmall={isSmall}
           headcount={headcount}
-          commentCount={commentCount}
-          onCommentClick={
-            onEditClick && !node.isInitiative
+          teamCommentCount={teamCommentCount}
+          initiativeCommentCount={
+            isFocusedTeamView
+              ? EMPTY_LOCATION_COMMENT_COUNT
+              : initiativeCommentCount
+          }
+          onTeamCommentClick={
+            onEditClick && node.isTeam
               ? () => onEditClick(node)
               : undefined
           }

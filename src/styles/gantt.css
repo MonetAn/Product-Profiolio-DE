@@ -111,8 +111,9 @@
 
 .gantt-hierarchy-row {
   display: grid;
-  grid-template-columns: 320px var(--gantt-timeline-width, minmax(0, 1fr));
-  min-width: 0;
+  grid-template-columns: 320px minmax(0, 1fr);
+  width: 100%;
+  min-width: calc(320px + var(--gantt-timeline-width, 0px));
   border-bottom: 1px solid hsl(var(--border));
   color: hsl(var(--foreground));
 }
@@ -157,8 +158,58 @@
   font-variant-numeric: tabular-nums;
 }
 
+.gantt-hierarchy-comment-button {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 26px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.gantt-hierarchy-comment-button:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted));
+}
+
+.gantt-hierarchy-comment-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.gantt-hierarchy-comment-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.gantt-hierarchy-comment-unread {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid hsl(var(--background));
+  border-radius: 999px;
+  background: rgb(56 189 248);
+}
+
 .gantt-hierarchy-track {
+  display: flex;
   min-width: 0;
+  align-items: center;
+  overflow: hidden;
   background-image: repeating-linear-gradient(
     to right,
     transparent 0,
@@ -166,6 +217,34 @@
     hsl(var(--border) / 0.55) calc(160px - 1px),
     hsl(var(--border) / 0.55) 160px
   );
+}
+
+.gantt-hierarchy-summary {
+  display: flex;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  padding: 5px 10px;
+  font-size: 10px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.gantt-hierarchy-summary-item {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: hsl(var(--foreground) / 0.9);
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-hierarchy-summary-item strong {
+  font-weight: 650;
+}
+
+.gantt-hierarchy-summary-item span {
+  color: hsl(var(--muted-foreground));
 }
 
 .gantt-rows {

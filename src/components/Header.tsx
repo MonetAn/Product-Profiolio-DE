@@ -42,7 +42,12 @@ const Header = ({
       {/* Logo — переход на стартовую страницу с полным сбросом состояния */}
       <button
         type="button"
-        onClick={() => navigate('/', { state: { reset: true }, replace: true })}
+        onClick={() =>
+          navigate('/allocations', {
+            state: { reset: true },
+            replace: true,
+          })
+        }
         className="flex items-center gap-2 font-semibold text-foreground rounded-lg px-2 py-1.5 -ml-1 cursor-pointer bg-transparent border-0 hover:bg-secondary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-150"
         aria-label="На стартовую страницу"
       >
@@ -52,6 +57,22 @@ const Header = ({
 
       {/* Tabs */}
       <nav className="flex gap-1 ml-12">
+        <button
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
+            currentView === 'allocations'
+              ? 'text-foreground'
+              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+          }`}
+          onClick={() => onViewChange('allocations')}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Split size={14} />
+            Аллокации
+          </span>
+          {currentView === 'allocations' && (
+            <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
+          )}
+        </button>
         <button
           className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
             currentView === 'budget'
@@ -88,22 +109,6 @@ const Header = ({
         >
           Таймлайн <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
           {currentView === 'timeline' && (
-            <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
-          )}
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
-            currentView === 'allocations'
-              ? 'text-foreground'
-              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-          }`}
-          onClick={() => onViewChange('allocations')}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <Split size={14} />
-            Аллокации
-          </span>
-          {currentView === 'allocations' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
         </button>

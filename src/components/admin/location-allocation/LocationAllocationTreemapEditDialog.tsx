@@ -222,7 +222,7 @@ export function LocationAllocationTreemapEditDialog({
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
-            {!readOnly ? (
+            {!readOnly && target.level !== 'unit' ? (
               <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-3.5">
                 <InitiativeAllocationComments
                   scope={
@@ -231,16 +231,11 @@ export function LocationAllocationTreemapEditDialog({
                           type: 'initiative',
                           initiativeId: target.initiativeIds[0],
                         }
-                      : target.level === 'team'
-                        ? {
-                            type: 'team',
-                            unit: target.breadcrumb,
-                            team: target.title,
-                          }
-                        : {
-                            type: 'unit',
-                            unit: target.title,
-                          }
+                      : {
+                          type: 'team',
+                          unit: target.breadcrumb,
+                          team: target.title,
+                        }
                   }
                   legacyNote={
                     target.level === 'initiative' ? savedSplit?.note : undefined

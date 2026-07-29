@@ -51,6 +51,16 @@ describe('buildLocationAllocationCommentSummary', () => {
     expect(
       summary.byTeam.get(locationTeamKey(initiative.unit, initiative.team))
     ).toEqual({ openCount: 2, unreadCount: 1 });
+    expect(
+      summary.byTeamDirect.get(
+        locationTeamKey(initiative.unit, initiative.team)
+      )
+    ).toEqual({ openCount: 1, unreadCount: 0 });
+    expect(
+      summary.byTeamInitiatives.get(
+        locationTeamKey(initiative.unit, initiative.team)
+      )
+    ).toEqual({ openCount: 1, unreadCount: 1 });
     expect(summary.byUnit.get(initiative.unit)).toEqual({
       openCount: 3,
       unreadCount: 2,
@@ -79,6 +89,16 @@ describe('buildLocationAllocationCommentSummary', () => {
     });
     expect(
       summary.byTeam.get(locationTeamKey(initiative.unit, initiative.team))
+    ).toEqual({ openCount: 0, unreadCount: 2 });
+    expect(
+      summary.byTeamDirect.get(
+        locationTeamKey(initiative.unit, initiative.team)
+      )
+    ).toBeUndefined();
+    expect(
+      summary.byTeamInitiatives.get(
+        locationTeamKey(initiative.unit, initiative.team)
+      )
     ).toEqual({ openCount: 0, unreadCount: 2 });
     expect(summary.byUnit.get(initiative.unit)).toEqual({
       openCount: 0,
