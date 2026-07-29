@@ -310,29 +310,6 @@ export function LocationAllocationFilterBar({
           </Popover>
         </FilterField>
 
-        <FilterField label="Регион" className="min-w-[142px] flex-[0.9_1_160px]">
-          <Select
-            value={region ?? ALL_VALUE}
-            onValueChange={(value) =>
-              onRegionChange(
-                value === ALL_VALUE ? null : (value as TopRegionLabel)
-              )
-            }
-          >
-            <SelectTrigger className="h-8 px-2.5 text-xs" aria-label="Регион">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>Все регионы</SelectItem>
-              {TOP_REGION_ORDER.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {TOP_REGION_DISPLAY_LABELS[value]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FilterField>
-
         <FilterField label="Юнит" className="min-w-[142px] flex-1">
           <Select
             value={unit ?? ALL_VALUE}
@@ -386,6 +363,29 @@ export function LocationAllocationFilterBar({
               {teams.map((item) => (
                 <SelectItem key={item.key} value={item.key}>
                   {unit ? item.team : `${item.unit} · ${item.team}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+
+        <FilterField label="Регион" className="min-w-[142px] flex-[0.9_1_160px]">
+          <Select
+            value={region ?? ALL_VALUE}
+            onValueChange={(value) =>
+              onRegionChange(
+                value === ALL_VALUE ? null : (value as TopRegionLabel)
+              )
+            }
+          >
+            <SelectTrigger className="h-8 px-2.5 text-xs" aria-label="Регион">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>Все регионы</SelectItem>
+              {TOP_REGION_ORDER.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {TOP_REGION_DISPLAY_LABELS[value]}
                 </SelectItem>
               ))}
             </SelectContent>
