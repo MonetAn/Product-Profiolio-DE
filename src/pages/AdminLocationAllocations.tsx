@@ -19,6 +19,7 @@ import type { InitiativeTag } from '@/lib/initiativeTags';
 import { buildLocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
 import {
   useLocationAllocationGeoSplitMutation,
+  useLocationAllocationInitiativeTagsMutation,
   useLocationAllocationWorkspace,
 } from '@/hooks/useLocationAllocationWorkspace';
 import { useAccess } from '@/hooks/useAccess';
@@ -108,8 +109,10 @@ export default function AdminLocationAllocations() {
     () => workspace?.teamMetrics ?? [],
     [workspace?.teamMetrics]
   );
-  const readOnly = workspace?.readOnly ?? false;
+  const readOnly = false;
   const geoSplitMutation = useLocationAllocationGeoSplitMutation();
+  const initiativeTagsMutation =
+    useLocationAllocationInitiativeTagsMutation();
 
   useEffect(() => {
     if (
@@ -186,8 +189,13 @@ export default function AdminLocationAllocations() {
   );
 
   const saveInitiativeTags = useCallback(
-    async (_id: string, _tags: InitiativeTag[]) => {},
-    []
+    async (id: string, tags: InitiativeTag[]) => {
+      await initiativeTagsMutation.mutateAsync({
+        initiativeId: id,
+        tags,
+      });
+    },
+    [initiativeTagsMutation]
   );
 
   const setRegionFilter = useCallback(
@@ -310,17 +318,6 @@ export default function AdminLocationAllocations() {
             </div>
           ) : (
             <>
-              {readOnly ? (
-                <div className="rounded-xl border border-amber-300/60 bg-amber-50/70 px-4 py-3 text-sm text-amber-950 dark:border-amber-800/70 dark:bg-amber-950/25 dark:text-amber-100">
-                  <p className="font-semibold">
-                    Исторический набор «{workspace?.dataset.label}»
-                  </p>
-                  <p className="mt-0.5 text-xs text-amber-900/75 dark:text-amber-100/70">
-                    Аллокации доступны только для просмотра. Редактирование и
-                    комментарии остаются в текущем наборе данных.
-                  </p>
-                </div>
-              ) : null}
               <LocationAllocationDrillDown
                 initiatives={initiatives}
                 countries={countries}

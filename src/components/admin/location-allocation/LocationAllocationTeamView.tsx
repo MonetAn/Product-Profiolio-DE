@@ -31,10 +31,7 @@ import {
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
 import { formatLocationExactRub } from '@/lib/locationDisplayFormat';
-import {
-  useLocationAllocationTeamMetrics,
-  type LocationAllocationTeamMetric,
-} from '@/hooks/useLocationAllocationTeamMetrics';
+import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
 import {
   useLocationAllocationScenario,
   type LocationAllocationScenarioRegion,
@@ -1090,21 +1087,14 @@ export function LocationAllocationTeamView({
   onSelectedUnitChange,
 }: Props) {
   const { user } = useAuth();
-  const liveMetrics = useLocationAllocationTeamMetrics({ enabled: !readOnly });
   const metricByTeam = useMemo(() => {
-    const map = new Map(
+    return new Map(
       teamMetrics.map((metric) => [
         locationTeamKey(metric.unit, metric.team),
         metric,
       ])
     );
-    if (!readOnly) {
-      for (const metric of liveMetrics.data ?? []) {
-        map.set(locationTeamKey(metric.unit, metric.team), metric);
-      }
-    }
-    return map;
-  }, [liveMetrics.data, readOnly, teamMetrics]);
+  }, [teamMetrics]);
 
   const sourceTeams = useMemo<LocationAllocationScenarioSourceTeam[]>(() => {
     const rowsByTeam = new Map<string, AdminDataRow[]>();
@@ -1152,7 +1142,7 @@ export function LocationAllocationTeamView({
 
   const scenario = useLocationAllocationScenario({
     sourceTeams,
-    enabled: readOnly || !liveMetrics.isLoading,
+    enabled: true,
   });
   const [expandedTeamIds, setExpandedTeamIds] = useState<Set<string>>(
     () => new Set()
@@ -1303,7 +1293,7 @@ export function LocationAllocationTeamView({
     void scenario.reorderTeams({ teamIds: nextTeamIds });
   };
 
-  if (scenario.isLoading || (!readOnly && liveMetrics.isLoading)) {
+  if (scenario.isLoading) {
     return (
       <div className="rounded-xl border border-border bg-card px-4 py-14 text-center text-sm text-muted-foreground">
         Загружаем команды…
