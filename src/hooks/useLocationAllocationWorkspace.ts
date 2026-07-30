@@ -16,6 +16,7 @@ import {
 } from '@/lib/peopleDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
+import type { InitiativeTag } from '@/lib/initiativeTags';
 
 type WorkspacePayload = {
   dataset?: Record<string, unknown>;
@@ -207,13 +208,50 @@ export function useLocationAllocationGeoSplitMutation() {
       queryClient.setQueryData<LocationAllocationWorkspace>(
         LOCATION_ALLOCATION_WORKSPACE_QUERY_KEY,
         (previous) => {
-          if (!previous || previous.readOnly) return previous;
+          if (!previous) return previous;
           return {
             ...previous,
             initiatives: previous.initiatives.map((row) =>
               row.id === initiativeId
                 ? { ...row, initiativeGeoCostSplit: split }
                 : row
+            ),
+          };
+        }
+      );
+    },
+  });
+}
+
+export function useLocationAllocationInitiativeTagsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      initiativeId,
+      tags,
+    }: {
+      initiativeId: string;
+      tags: InitiativeTag[];
+    }) => {
+      const { error } = await sb.rpc(
+        'set_location_allocation_initiative_tags',
+        {
+          p_initiative_id: initiativeId,
+          p_tags: tags,
+        }
+      );
+      if (error) throw error;
+      return { initiativeId, tags };
+    },
+    onSuccess: ({ initiativeId, tags }) => {
+      queryClient.setQueryData<LocationAllocationWorkspace>(
+        LOCATION_ALLOCATION_WORKSPACE_QUERY_KEY,
+        (previous) => {
+          if (!previous) return previous;
+          return {
+            ...previous,
+            initiatives: previous.initiatives.map((row) =>
+              row.id === initiativeId ? { ...row, tags } : row
             ),
           };
         }
