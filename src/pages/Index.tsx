@@ -44,7 +44,10 @@ import { useCrossInitiatives } from '@/hooks/useCrossInitiatives';
 import { useActivePortfolioDataset } from '@/hooks/useActivePortfolioDataset';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import type { UnificationBudgetContext } from '@/lib/unificationBudget';
-import { filterQuarters2026 } from '@/lib/budgetTruth2026';
+import {
+  defaultPortfolioQuarters2026,
+  filterQuarters2026,
+} from '@/lib/budgetTruth2026';
 import { dashboardSensitiveRowKey } from '@/lib/sensitiveScopes';
 import {
   filtersToBudgetTreemapPath,
@@ -273,15 +276,15 @@ const Index = () => {
   useEffect(() => {
     if (dbData && dbData.length > 0 && !isUsingCSV) {
       const result = convertFromDB(dbData, budgetAllocationsByInitiativeId);
+      const dashboardQuarters = defaultPortfolioQuarters2026(result.availableQuarters);
       setRawData(result.rawData);
       setAvailableYears(result.availableYears);
-      setAvailableQuarters(result.availableQuarters);
+      setAvailableQuarters(dashboardQuarters);
       setStakeholderCombinations(result.stakeholderCombinations);
       
       // Only set selectedQuarters on first load
-      if (!quartersInitializedRef.current && result.availableQuarters.length > 0) {
-        const q2026 = filterQuarters2026(result.availableQuarters);
-        setSelectedQuarters(q2026.length > 0 ? q2026 : [...result.availableQuarters]);
+      if (!quartersInitializedRef.current && dashboardQuarters.length > 0) {
+        setSelectedQuarters(dashboardQuarters);
         quartersInitializedRef.current = true;
       }
       
@@ -295,7 +298,7 @@ const Index = () => {
       const next = filterQuarters2026(prev);
       if (next.length === prev.length && next.every((q, i) => q === prev[i])) return prev;
       if (next.length > 0) return next;
-      const fallback = filterQuarters2026(availableQuarters);
+      const fallback = defaultPortfolioQuarters2026(availableQuarters);
       return fallback.length > 0 ? fallback : prev;
     });
   }, [availableQuarters]);
@@ -634,8 +637,7 @@ const Index = () => {
     
     // Если период пустой, восстанавливаем все кварталы
     if (selectedQuarters.length === 0) {
-      const q2026 = filterQuarters2026(availableQuarters);
-      setSelectedQuarters(q2026.length > 0 ? q2026 : [...availableQuarters]);
+      setSelectedQuarters(defaultPortfolioQuarters2026(availableQuarters));
     }
   }, [selectedQuarters.length, availableQuarters, setScopeFilters]);
 

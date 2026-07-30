@@ -100,12 +100,13 @@ export function filterQuarters2026(quarters: string[]): string[] {
 }
 
 /**
- * Период по умолчанию для дашборда и кросс-инициатив в админке: все кварталы 2026 из каталога.
- * (Не один «текущий» квартал — иначе суммы в 2–4 раза ниже годового среза.)
+ * Период по умолчанию для дашборда и кросс-инициатив в админке: весь 2026 год.
+ * Даже если активный набор пока содержит только часть года (например Q1–Q2),
+ * Q3–Q4 остаются в каталоге и выбраны с нулевыми значениями до загрузки финансов.
  */
 export function defaultPortfolioQuarters2026(availableQuarters: string[]): string[] {
   const q2026 = filterQuarters2026(availableQuarters);
-  if (q2026.length > 0) return q2026;
+  if (q2026.length > 0) return [...Q2026];
   return availableQuarters.length > 0 ? [...availableQuarters] : [];
 }
 

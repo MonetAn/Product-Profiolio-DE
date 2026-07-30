@@ -18,7 +18,7 @@ import {
   type BudgetDepartmentAllocation,
 } from '@/lib/dataManager';
 import { prepareStaticTreemapTree } from '@/lib/staticTreemapData';
-import { filterQuarters2026 } from '@/lib/budgetTruth2026';
+import { defaultPortfolioQuarters2026 } from '@/lib/budgetTruth2026';
 import type { EmbedView } from '@/lib/publicEmbed';
 import {
   filtersToBudgetTreemapPath,
@@ -74,11 +74,11 @@ export default function EmbedPortfolio() {
       return;
     }
     const result = convertFromDB(data.initiatives, budgetAllocationsByInitiativeId);
+    const dashboardQuarters = defaultPortfolioQuarters2026(result.availableQuarters);
     setRawData(result.rawData);
-    setAvailableQuarters(result.availableQuarters);
-    if (!quartersInitializedRef.current && result.availableQuarters.length > 0) {
-      const q2026 = filterQuarters2026(result.availableQuarters);
-      setSelectedQuarters(q2026.length > 0 ? q2026 : [...result.availableQuarters]);
+    setAvailableQuarters(dashboardQuarters);
+    if (!quartersInitializedRef.current && dashboardQuarters.length > 0) {
+      setSelectedQuarters(dashboardQuarters);
       quartersInitializedRef.current = true;
     }
   }, [data, budgetAllocationsByInitiativeId]);
