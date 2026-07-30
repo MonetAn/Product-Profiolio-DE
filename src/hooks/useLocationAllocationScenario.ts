@@ -4,9 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
 import { useToast } from '@/hooks/use-toast';
 import {
-  TOP_REGION_ORDER,
-  type TopRegionLabel,
-} from '@/lib/locationRegionModel';
+  ALLOCATION_SCENARIO_AREA_ORDER,
+  type AllocationScenarioArea,
+} from '@/lib/allocationScenarioAreas';
 
 export type LocationAllocationScenarioSourceTeam = {
   unit: string;
@@ -22,7 +22,7 @@ export type LocationAllocationScenarioSourceTeam = {
 export type LocationAllocationScenarioRegion = {
   id: string;
   teamId: string;
-  region: TopRegionLabel;
+  region: AllocationScenarioArea;
   percent: number;
   description: string;
   sortOrder: number;
@@ -43,6 +43,19 @@ export type LocationAllocationScenarioTeam = {
   sortOrder: number;
   isArchived: boolean;
   regions: LocationAllocationScenarioRegion[];
+};
+
+export type LocationAllocationScenarioTeamCardInput = {
+  id: string;
+  description: string;
+  runPercent: number;
+  runDescription: string;
+  regions: Array<{
+    region: AllocationScenarioArea;
+    percent: number;
+    description: string;
+    sortOrder: number;
+  }>;
 };
 
 type TeamPatch = Partial<
@@ -86,7 +99,7 @@ function mapRegion(row: Record<string, unknown>): LocationAllocationScenarioRegi
   return {
     id: String(row.id),
     teamId: String(row.team_id),
-    region: String(row.region) as TopRegionLabel,
+    region: String(row.region) as AllocationScenarioArea,
     percent: normalizePercent(row.percent),
     description: String(row.description ?? ''),
     sortOrder: Number(row.sort_order) || 0,
@@ -146,12 +159,13 @@ export function useLocationAllocationScenario({
     queryKey: [...QUERY_KEY, sourceSignature],
     enabled,
     queryFn: async (): Promise<LocationAllocationScenarioTeam[]> => {
-      let { data: teamRows, error: teamError } = await sb
+      const { data: initialTeamRows, error: teamError } = await sb
         .from('location_allocation_scenario_teams')
         .select('*')
         .order('unit')
         .order('sort_order')
         .order('name');
+      let teamRows = initialTeamRows;
 
       if (teamError) {
         if (teamError.code === '42P01' || teamError.code === 'PGRST205') return [];
@@ -187,7 +201,7 @@ export function useLocationAllocationScenario({
         teamRows = seeded.data ?? [];
         const regionSeedRows = (teamRows ?? []).flatMap(
           (team: Record<string, unknown>) =>
-            TOP_REGION_ORDER.map((region, sortOrder) => ({
+            ALLOCATION_SCENARIO_AREA_ORDER.map((region, sortOrder) => ({
               team_id: String(team.id),
               region,
               sort_order: sortOrder,
@@ -260,6 +274,57 @@ export function useLocationAllocationScenario({
     onError: showError,
   });
 
+  const saveTeamCardMutation = useMutation({
+    mutationFn: async (input: LocationAllocationScenarioTeamCardInput) => {
+      const author = await getCurrentUserDisplayName();
+      const { error } = await sb.rpc('save_allocation_scenario_team_card', {
+        p_team_id: input.id,
+        p_description: input.description,
+        p_run_percent: normalizePercent(input.runPercent),
+        p_run_description: input.runDescription,
+        p_regions: input.regions.map((region) => ({
+          region: region.region,
+          percent: normalizePercent(region.percent),
+          description: region.description,
+          sort_order: region.sortOrder,
+        })),
+        p_updated_by_name: author.name,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async (_, input) => {
+      queryClient.setQueriesData<LocationAllocationScenarioTeam[]>(
+        { queryKey: QUERY_KEY },
+        (previous) =>
+          previous?.map((team) => {
+            if (team.id !== input.id) return team;
+            const regionByName = new Map(
+              input.regions.map((region) => [region.region, region])
+            );
+            return {
+              ...team,
+              description: input.description,
+              runPercent: normalizePercent(input.runPercent),
+              runDescription: input.runDescription,
+              regions: team.regions.map((region) => {
+                const next = regionByName.get(region.region);
+                return next
+                  ? {
+                      ...region,
+                      percent: normalizePercent(next.percent),
+                      description: next.description,
+                      sortOrder: next.sortOrder,
+                    }
+                  : region;
+              }),
+            };
+          })
+      );
+      await invalidate();
+    },
+    onError: showError,
+  });
+
   const createTeamMutation = useMutation({
     mutationFn: async ({ unit, name }: { unit: string; name: string }) => {
       const author = await getCurrentUserDisplayName();
@@ -285,7 +350,7 @@ export function useLocationAllocationScenario({
       const { error } = await sb
         .from('location_allocation_scenario_regions')
         .insert(
-          TOP_REGION_ORDER.map((region, sortOrder) => ({
+          ALLOCATION_SCENARIO_AREA_ORDER.map((region, sortOrder) => ({
             team_id: created.data.id,
             region,
             sort_order: sortOrder,
@@ -363,7 +428,7 @@ export function useLocationAllocationScenario({
       sortOrder,
     }: {
       teamId: string;
-      region: TopRegionLabel;
+      region: AllocationScenarioArea;
       sortOrder: number;
     }) => {
       const author = await getCurrentUserDisplayName();
@@ -404,7 +469,7 @@ export function useLocationAllocationScenario({
       patch,
     }: {
       teamId: string;
-      region: TopRegionLabel;
+      region: AllocationScenarioArea;
       patch: RegionPatch;
     }) => {
       const author = await getCurrentUserDisplayName();
@@ -444,6 +509,7 @@ export function useLocationAllocationScenario({
     ...query,
     teams: query.data ?? [],
     updateTeam: updateTeamMutation.mutateAsync,
+    saveTeamCard: saveTeamCardMutation.mutateAsync,
     createTeam: createTeamMutation.mutateAsync,
     archiveTeam: (id: string) =>
       updateTeamMutation.mutateAsync({ id, patch: { isArchived: true } }),
@@ -455,6 +521,7 @@ export function useLocationAllocationScenario({
     deleteRegion: deleteRegionMutation.mutateAsync,
     isSaving:
       updateTeamMutation.isPending ||
+      saveTeamCardMutation.isPending ||
       createTeamMutation.isPending ||
       reorderTeamMutation.isPending ||
       reorderTeamsMutation.isPending ||
