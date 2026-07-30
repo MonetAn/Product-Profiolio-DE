@@ -1,20 +1,26 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
 } from 'react';
 import {
   Building2,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Globe2,
   GripVertical,
+  Layers,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
+  Save,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -24,11 +30,6 @@ import {
   locationTeamKey,
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
-import {
-  TOP_REGION_ORDER,
-  TOP_REGION_SHORT_LABELS,
-  type TopRegionLabel,
-} from '@/lib/locationRegionModel';
 import { formatLocationExactRub } from '@/lib/locationDisplayFormat';
 import {
   useLocationAllocationTeamMetrics,
@@ -38,6 +39,7 @@ import {
   useLocationAllocationScenario,
   type LocationAllocationScenarioRegion,
   type LocationAllocationScenarioSourceTeam,
+  type LocationAllocationScenarioTeamCardInput,
   type LocationAllocationScenarioTeam,
 } from '@/hooks/useLocationAllocationScenario';
 import { useAuth } from '@/hooks/useAuth';
@@ -90,6 +92,11 @@ import {
 } from '@/lib/allocationScenarioUnits';
 import { reorderAllocationScenarioTeamIds } from '@/lib/allocationScenarioOrder';
 import { canManageAllocationScenarioTeams } from '@/lib/allocationScenarioPermissions';
+import {
+  ALLOCATION_SCENARIO_AREA_LABELS,
+  ALLOCATION_SCENARIO_AREA_ORDER,
+  type AllocationScenarioArea,
+} from '@/lib/allocationScenarioAreas';
 import { getTreemapUnitIcon } from '@/lib/treemapUnitIcons';
 import { DrinkitBrandMark } from './DrinkitBrandMark';
 
@@ -114,11 +121,20 @@ type TeamPatch = Partial<
   >
 >;
 
-type RegionPatch = Partial<
-  Pick<LocationAllocationScenarioRegion, 'percent' | 'description' | 'sortOrder'>
->;
+type AllocationKind = AllocationScenarioArea | 'RUN';
 
-type AllocationKind = TopRegionLabel | 'RUN';
+type TeamCardDraft = {
+  description: string;
+  runPercent: number;
+  runDescription: string;
+  regions: Record<
+    AllocationScenarioArea,
+    {
+      percent: number;
+      description: string;
+    }
+  >;
+};
 
 const ALLOCATION_APPEARANCE: Record<
   AllocationKind,
@@ -143,6 +159,11 @@ const ALLOCATION_APPEARANCE: Record<
     tint: 'rgba(24, 45, 168, 0.045)',
     text: '#182DA8',
   },
+  Platform: {
+    accent: '#0F766E',
+    tint: 'rgba(15, 118, 110, 0.055)',
+    text: '#0F766E',
+  },
   RUN: {
     accent: '#64748B',
     tint: 'rgba(100, 116, 139, 0.055)',
@@ -151,7 +172,7 @@ const ALLOCATION_APPEARANCE: Record<
 };
 
 function allocationLabel(kind: AllocationKind): string {
-  return kind === 'RUN' ? 'RUN' : TOP_REGION_SHORT_LABELS[kind];
+  return kind === 'RUN' ? 'RUN' : ALLOCATION_SCENARIO_AREA_LABELS[kind];
 }
 
 function AllocationBrandMark({
@@ -210,7 +231,7 @@ function AllocationBrandMark({
     );
   }
 
-  const Icon = RefreshCw;
+  const Icon = kind === 'Platform' ? Layers : RefreshCw;
 
   return (
     <span
@@ -240,13 +261,55 @@ function formatPercent(value: number): string {
   }).format(value);
 }
 
+function createTeamCardDraft(
+  team: LocationAllocationScenarioTeam
+): TeamCardDraft {
+  return {
+    description: team.description,
+    runPercent: team.runPercent,
+    runDescription: team.runDescription,
+    regions: Object.fromEntries(
+      ALLOCATION_SCENARIO_AREA_ORDER.map((region) => {
+        const item = getRegion(team, region);
+        return [
+          region,
+          {
+            percent: item?.percent ?? 0,
+            description: item?.description ?? '',
+          },
+        ];
+      })
+    ) as TeamCardDraft['regions'],
+  };
+}
+
+function teamCardDraftEquals(
+  left: TeamCardDraft,
+  right: TeamCardDraft
+): boolean {
+  if (
+    left.description !== right.description ||
+    Math.abs(left.runPercent - right.runPercent) > 0.001 ||
+    left.runDescription !== right.runDescription
+  ) {
+    return false;
+  }
+  return ALLOCATION_SCENARIO_AREA_ORDER.every(
+    (region) =>
+      Math.abs(
+        left.regions[region].percent - right.regions[region].percent
+      ) <= 0.001 &&
+      left.regions[region].description === right.regions[region].description
+  );
+}
+
 function NumberEditor({
   value,
-  onCommit,
+  onChange,
   ariaLabel,
 }: {
   value: number;
-  onCommit: (value: number) => Promise<unknown>;
+  onChange: (value: number) => void;
   ariaLabel: string;
 }) {
   const [draft, setDraft] = useState(String(Number(value.toFixed(2))));
@@ -255,25 +318,37 @@ function NumberEditor({
     setDraft(String(Number(value.toFixed(2))));
   }, [value]);
 
-  const commit = async () => {
-    const next = Math.max(0, Math.min(100, Number(draft) || 0));
+  const normalizeDraft = () => {
+    const next = Math.max(
+      0,
+      Math.min(100, Number(draft.replace(',', '.')) || 0)
+    );
     setDraft(String(Number(next.toFixed(2))));
-    if (Math.abs(next - value) > 0.001) await onCommit(next);
+    onChange(next);
   };
 
   return (
     <div className="relative w-[88px]">
       <Input
-        type="number"
-        min={0}
-        max={100}
-        step={0.1}
+        type="text"
+        inputMode="decimal"
         value={draft}
         aria-label={ariaLabel}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => void commit()}
+        onChange={(event) => {
+          const nextDraft = event.target.value;
+          setDraft(nextDraft);
+          const nextValue = Math.max(
+            0,
+            Math.min(100, Number(nextDraft.replace(',', '.')) || 0)
+          );
+          onChange(nextValue);
+        }}
+        onBlur={normalizeDraft}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            normalizeDraft();
+          }
         }}
         className="h-9 pr-7 text-right font-semibold tabular-nums"
       />
@@ -286,30 +361,23 @@ function NumberEditor({
 
 function TextEditor({
   value,
-  onCommit,
+  onChange,
   placeholder,
   ariaLabel,
   className,
 }: {
   value: string;
-  onCommit: (value: string) => Promise<unknown>;
+  onChange: (value: string) => void;
   placeholder: string;
   ariaLabel: string;
   className?: string;
 }) {
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => setDraft(value), [value]);
-
   return (
     <Textarea
-      value={draft}
+      value={value}
       placeholder={placeholder}
       aria-label={ariaLabel}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => {
-        if (draft !== value) void onCommit(draft);
-      }}
+      onChange={(event) => onChange(event.target.value)}
       className={className}
     />
   );
@@ -317,7 +385,7 @@ function TextEditor({
 
 function getRegion(
   team: LocationAllocationScenarioTeam,
-  region: TopRegionLabel
+  region: AllocationScenarioArea
 ): LocationAllocationScenarioRegion | null {
   return team.regions.find((item) => item.region === region) ?? null;
 }
@@ -345,7 +413,7 @@ function AllocationSummary({
   className?: string;
 }) {
   const items = [
-    ...TOP_REGION_ORDER.map((region) => ({
+    ...ALLOCATION_SCENARIO_AREA_ORDER.map((region) => ({
       key: region,
       kind: region as AllocationKind,
       percent: getRegion(team, region)?.percent ?? 0,
@@ -389,23 +457,28 @@ function AllocationBlock({
   description,
   team,
   editMode,
-  onPercentCommit,
-  onDescriptionCommit,
+  className,
+  onPercentChange,
+  onDescriptionChange,
 }: {
   kind: AllocationKind;
   percent: number;
   description: string;
   team: LocationAllocationScenarioTeam;
   editMode: boolean;
-  onPercentCommit: (value: number) => Promise<unknown>;
-  onDescriptionCommit: (value: string) => Promise<unknown>;
+  className?: string;
+  onPercentChange: (value: number) => void;
+  onDescriptionChange: (value: string) => void;
 }) {
   const label = allocationLabel(kind);
   const appearance = ALLOCATION_APPEARANCE[kind];
 
   return (
     <div
-      className="rounded-xl border border-border/80 border-t-[3px] p-4"
+      className={cn(
+        'rounded-xl border border-border/80 border-t-[3px] p-4',
+        className
+      )}
       style={{
         borderTopColor: appearance.accent,
         background: `linear-gradient(135deg, ${appearance.tint}, transparent 45%), hsl(var(--background))`,
@@ -437,7 +510,7 @@ function AllocationBlock({
           <NumberEditor
             value={percent}
             ariaLabel={`Процент ${label} команды ${team.name}`}
-            onCommit={onPercentCommit}
+            onChange={onPercentChange}
           />
         ) : null}
       </div>
@@ -450,9 +523,11 @@ function AllocationBlock({
             placeholder={
               kind === 'RUN'
                 ? 'Что входит в операционку команды? Чем больше процент, тем больше стоит расписать тут'
+                : kind === 'Platform'
+                  ? 'Что команда делает для всех регионов/концепций'
                 : `Что команда делает для ${label}`
             }
-            onCommit={onDescriptionCommit}
+            onChange={onDescriptionChange}
             className="min-h-[86px] resize-y bg-muted/20"
           />
         ) : (
@@ -485,7 +560,8 @@ function TeamCard({
   onDragEnd,
   updateTeam,
   archiveTeam,
-  saveRegion,
+  saveTeamCard,
+  onDirtyStateChange,
 }: {
   team: LocationAllocationScenarioTeam;
   isExpanded: boolean;
@@ -501,30 +577,115 @@ function TeamCard({
   onDragEnd: () => void;
   updateTeam: (id: string, patch: TeamPatch) => Promise<unknown>;
   archiveTeam: (id: string) => Promise<unknown>;
-  saveRegion: (
-    teamId: string,
-    region: TopRegionLabel,
-    patch: RegionPatch
+  saveTeamCard: (
+    input: LocationAllocationScenarioTeamCardInput
   ) => Promise<unknown>;
+  onDirtyStateChange: (teamId: string, dirty: boolean) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [collapseConfirmOpen, setCollapseConfirmOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState(team.name);
+  const [draft, setDraft] = useState<TeamCardDraft>(() =>
+    createTeamCardDraft(team)
+  );
+  const [isCardSaving, setIsCardSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const previousSavedDraftRef = useRef(createTeamCardDraft(team));
+  const canReorder = editMode && canManageTeamActions;
+  const savedDraft = createTeamCardDraft(team);
+  const hasUnsavedChanges = !teamCardDraftEquals(draft, savedDraft);
 
   useEffect(() => setRenameDraft(team.name), [team.name]);
+
+  useEffect(() => {
+    const nextSavedDraft = createTeamCardDraft(team);
+    setDraft((current) =>
+      teamCardDraftEquals(current, previousSavedDraftRef.current)
+        ? nextSavedDraft
+        : current
+    );
+    previousSavedDraftRef.current = nextSavedDraft;
+  }, [team]);
+
+  useEffect(() => {
+    onDirtyStateChange(team.id, hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyStateChange, team.id]);
+
+  useEffect(
+    () => () => onDirtyStateChange(team.id, false),
+    [onDirtyStateChange, team.id]
+  );
+
+  const discardDraft = () => {
+    setDraft(createTeamCardDraft(team));
+    setSaveFailed(false);
+  };
+
+  const saveDraft = async (): Promise<boolean> => {
+    if (!hasUnsavedChanges) return true;
+    setIsCardSaving(true);
+    setSaveFailed(false);
+    try {
+      await saveTeamCard({
+        id: team.id,
+        description: draft.description,
+        runPercent: draft.runPercent,
+        runDescription: draft.runDescription,
+        regions: ALLOCATION_SCENARIO_AREA_ORDER.map((region, sortOrder) => ({
+          region,
+          percent: draft.regions[region].percent,
+          description: draft.regions[region].description,
+          sortOrder,
+        })),
+      });
+      return true;
+    } catch {
+      setSaveFailed(true);
+      return false;
+    } finally {
+      setIsCardSaving(false);
+    }
+  };
+
+  const requestToggle = () => {
+    if (isExpanded && hasUnsavedChanges) {
+      setCollapseConfirmOpen(true);
+      return;
+    }
+    onToggle();
+  };
+
+  const previewTeam: LocationAllocationScenarioTeam = {
+    ...team,
+    description: draft.description,
+    runPercent: draft.runPercent,
+    runDescription: draft.runDescription,
+    regions: ALLOCATION_SCENARIO_AREA_ORDER.map((region, sortOrder) => {
+      const savedRegion = getRegion(team, region);
+      return {
+        id: savedRegion?.id ?? `${team.id}:${region}`,
+        teamId: team.id,
+        region,
+        percent: draft.regions[region].percent,
+        description: draft.regions[region].description,
+        sortOrder,
+      };
+    }),
+  };
 
   return (
     <div
       className="relative"
-      onDragOver={editMode ? onDragOver : undefined}
-      onDrop={editMode ? onDrop : undefined}
+      onDragOver={canReorder ? onDragOver : undefined}
+      onDrop={canReorder ? onDrop : undefined}
     >
-      {dropPosition === 'before' ? (
+      {canReorder && dropPosition === 'before' ? (
         <span className="pointer-events-none absolute -top-1.5 left-2 right-2 z-10 h-1 rounded-full bg-primary shadow-sm" />
       ) : null}
       <section
         className={cn(
-          'overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all',
+          'rounded-xl border border-border bg-card shadow-sm transition-all',
           isDragging && 'scale-[0.995] opacity-45'
         )}
       >
@@ -532,18 +693,21 @@ function TeamCard({
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
-        className="grid cursor-pointer gap-5 px-4 py-4 outline-none transition-colors hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 xl:grid-cols-[minmax(320px,0.85fr)_minmax(440px,1.15fr)] xl:items-center"
-        onClick={onToggle}
+        className={cn(
+          'grid cursor-pointer gap-5 px-4 py-4 outline-none transition-colors hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 xl:grid-cols-[minmax(320px,0.85fr)_minmax(440px,1.15fr)] xl:items-center',
+          isExpanded ? 'rounded-t-xl' : 'rounded-xl'
+        )}
+        onClick={requestToggle}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            onToggle();
+            requestToggle();
           }
         }}
       >
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            {editMode ? (
+            {canReorder ? (
               <button
                 type="button"
                 draggable={!isSaving}
@@ -631,14 +795,14 @@ function TeamCard({
             Распределение ФОТ 2026
           </p>
           <AllocationSummary
-            team={team}
+            team={editMode ? previewTeam : team}
             className="mt-1.5 xl:justify-end"
           />
         </div>
       </div>
 
       {isExpanded ? (
-        <div className="border-t border-border bg-muted/[0.12] px-4 py-5 sm:px-5">
+        <div className="rounded-b-xl border-t border-border bg-muted/[0.12] px-4 py-5 sm:px-5">
           <div className="space-y-6">
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -646,11 +810,11 @@ function TeamCard({
               </p>
               {editMode ? (
                 <TextEditor
-                  value={team.description}
+                  value={draft.description}
                   ariaLabel={`Описание команды ${team.name}`}
                   placeholder="Коротко опишите, чем занимается команда, какие ключевые проекты, какая зона ответственности"
-                  onCommit={(description) =>
-                    updateTeam(team.id, { description })
+                  onChange={(description) =>
+                    setDraft((current) => ({ ...current, description }))
                   }
                   className="min-h-[112px] resize-y bg-background"
                 />
@@ -668,40 +832,116 @@ function TeamCard({
               )}
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              {TOP_REGION_ORDER.map((region, sortOrder) => {
-                const item = getRegion(team, region);
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {ALLOCATION_SCENARIO_AREA_ORDER.map((region) => {
+                const item = draft.regions[region];
                 return (
                   <AllocationBlock
                     key={region}
                     kind={region}
-                    percent={item?.percent ?? 0}
-                    description={item?.description ?? ''}
+                    className={region === 'Platform' ? 'xl:col-span-2' : undefined}
+                    percent={item.percent}
+                    description={item.description}
                     team={team}
                     editMode={editMode}
-                    onPercentCommit={(percent) =>
-                      saveRegion(team.id, region, { percent, sortOrder })
+                    onPercentChange={(percent) =>
+                      setDraft((current) => ({
+                        ...current,
+                        regions: {
+                          ...current.regions,
+                          [region]: {
+                            ...current.regions[region],
+                            percent,
+                          },
+                        },
+                      }))
                     }
-                    onDescriptionCommit={(description) =>
-                      saveRegion(team.id, region, { description, sortOrder })
+                    onDescriptionChange={(description) =>
+                      setDraft((current) => ({
+                        ...current,
+                        regions: {
+                          ...current.regions,
+                          [region]: {
+                            ...current.regions[region],
+                            description,
+                          },
+                        },
+                      }))
                     }
                   />
                 );
               })}
               <AllocationBlock
                 kind="RUN"
-                percent={team.runPercent}
-                description={team.runDescription}
+                percent={draft.runPercent}
+                description={draft.runDescription}
                 team={team}
                 editMode={editMode}
-                onPercentCommit={(runPercent) =>
-                  updateTeam(team.id, { runPercent })
+                onPercentChange={(runPercent) =>
+                  setDraft((current) => ({ ...current, runPercent }))
                 }
-                onDescriptionCommit={(runDescription) =>
-                  updateTeam(team.id, { runDescription })
+                onDescriptionChange={(runDescription) =>
+                  setDraft((current) => ({ ...current, runDescription }))
                 }
               />
             </div>
+
+            {editMode ? (
+              <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/90">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex min-w-0 items-center gap-2 text-sm"
+                >
+                  {isCardSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                      <span className="font-medium">Сохраняем изменения…</span>
+                    </>
+                  ) : saveFailed ? (
+                    <>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-destructive" />
+                      <span>
+                        <span className="font-medium text-destructive">
+                          Не удалось сохранить.
+                        </span>{' '}
+                        <span className="text-muted-foreground">
+                          Введённые данные не потеряны.
+                        </span>
+                      </span>
+                    </>
+                  ) : hasUnsavedChanges ? (
+                    <>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" />
+                      <span className="font-medium">
+                        Есть несохранённые изменения
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                        Все изменения сохранены
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    disabled={!hasUnsavedChanges || isCardSaving}
+                    onClick={() => void saveDraft()}
+                  >
+                    {isCardSaving ? (
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-1.5 h-4 w-4" />
+                    )}
+                    Сохранить изменения
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="border-t border-border pt-5">
               <InitiativeAllocationComments
@@ -781,8 +1021,60 @@ function TeamCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        open={collapseConfirmOpen}
+        onOpenChange={setCollapseConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Сохранить изменения в «{team.name}»?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              В карточке остались несохранённые данные. Можно сохранить их
+              перед сворачиванием или отменить изменения.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:flex-wrap">
+            <AlertDialogCancel disabled={isCardSaving}>
+              Остаться
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isCardSaving}
+              onClick={() => {
+                discardDraft();
+                setCollapseConfirmOpen(false);
+                onToggle();
+              }}
+            >
+              Свернуть без сохранения
+            </Button>
+            <Button
+              type="button"
+              disabled={isCardSaving}
+              onClick={() => {
+                void saveDraft().then((saved) => {
+                  if (!saved) return;
+                  setCollapseConfirmOpen(false);
+                  onToggle();
+                });
+              }}
+            >
+              {isCardSaving ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 h-4 w-4" />
+              )}
+              Сохранить и свернуть
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </section>
-      {dropPosition === 'after' ? (
+      {canReorder && dropPosition === 'after' ? (
         <span className="pointer-events-none absolute -bottom-1.5 left-2 right-2 z-10 h-1 rounded-full bg-primary shadow-sm" />
       ) : null}
     </div>
@@ -876,6 +1168,51 @@ export function LocationAllocationTeamView({
     teamId: string;
     position: 'before' | 'after';
   } | null>(null);
+  const [dirtyTeamIds, setDirtyTeamIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [pendingUnitChange, setPendingUnitChange] = useState<string | null>(
+    null
+  );
+
+  const handleDirtyStateChange = useCallback(
+    (teamId: string, dirty: boolean) => {
+      setDirtyTeamIds((current) => {
+        const next = new Set(current);
+        if (dirty) next.add(teamId);
+        else next.delete(teamId);
+        if (
+          next.size === current.size &&
+          [...next].every((id) => current.has(id))
+        ) {
+          return current;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const applyUnitChange = useCallback(
+    (unit: string) => {
+      setActiveUnit(unit);
+      setExpandedTeamIds(new Set());
+      setDirtyTeamIds(new Set());
+      setPendingUnitChange(null);
+      onSelectedUnitChange(unit);
+    },
+    [onSelectedUnitChange]
+  );
+
+  useEffect(() => {
+    if (dirtyTeamIds.size === 0) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [dirtyTeamIds.size]);
 
   const groups = useMemo(() => {
     const byUnit = new Map<string, LocationAllocationScenarioTeam[]>();
@@ -901,10 +1238,14 @@ export function LocationAllocationTeamView({
       groups.find((group) => group.unit === requestedUnit)?.unit ??
       groups[0].unit;
     if (nextUnit !== activeUnit) {
-      setActiveUnit(nextUnit);
-      setExpandedTeamIds(new Set());
+      if (dirtyTeamIds.size > 0) {
+        setPendingUnitChange(nextUnit);
+      } else {
+        setActiveUnit(nextUnit);
+        setExpandedTeamIds(new Set());
+      }
     }
-  }, [activeUnit, groups, selectedUnit]);
+  }, [activeUnit, dirtyTeamIds.size, groups, selectedUnit]);
 
   const activeGroup =
     groups.find((group) => group.unit === activeUnit) ?? groups[0];
@@ -1030,10 +1371,13 @@ export function LocationAllocationTeamView({
                             key={group.unit}
                             value={group.unit}
                             onSelect={() => {
-                              setActiveUnit(group.unit);
-                              onSelectedUnitChange(group.unit);
-                              setExpandedTeamIds(new Set());
                               setUnitPickerOpen(false);
+                              if (group.unit === activeUnit) return;
+                              if (dirtyTeamIds.size > 0) {
+                                setPendingUnitChange(group.unit);
+                              } else {
+                                applyUnitChange(group.unit);
+                              }
                             }}
                           >
                             <Check
@@ -1158,9 +1502,8 @@ export function LocationAllocationTeamView({
                 onDragEnd={resetDrag}
                 updateTeam={(id, patch) => scenario.updateTeam({ id, patch })}
                 archiveTeam={scenario.archiveTeam}
-                saveRegion={(teamId, region, patch) =>
-                  scenario.saveRegion({ teamId, region, patch })
-                }
+                saveTeamCard={scenario.saveTeamCard}
+                onDirtyStateChange={handleDirtyStateChange}
               />
             ))}
           </section>
@@ -1217,6 +1560,40 @@ export function LocationAllocationTeamView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(pendingUnitChange)}
+        onOpenChange={(open) => {
+          if (open) return;
+          setPendingUnitChange(null);
+          onSelectedUnitChange(activeUnit);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Перейти в другой юнит?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {dirtyTeamIds.size === 1
+                ? 'В одной карточке остались несохранённые изменения.'
+                : `В ${dirtyTeamIds.size} карточках остались несохранённые изменения.`}{' '}
+              Сохраните их перед переходом или продолжите без сохранения.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Остаться</AlertDialogCancel>
+            <Button
+              type="button"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!pendingUnitChange) return;
+                applyUnitChange(pendingUnitChange);
+              }}
+            >
+              Перейти без сохранения
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
