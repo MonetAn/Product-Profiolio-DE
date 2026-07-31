@@ -8,26 +8,39 @@ import { compareQuarters, getCurrentQuarter } from './quarterUtils';
 
 export type InitiativePaybackQuarter = Pick<
   QuarterData,
-  'budget' | 'revenueRubHistory' | 'costHistory'
+  | 'budget'
+  | 'profitRubHistory'
+  | 'grossRevenueRubHistory'
+  | 'costHistory'
 > & {
-  revenueRub?: number;
+  profitRub?: number;
+  grossRevenueRub?: number;
   cost?: number;
   otherCosts?: number;
 };
 
 export interface InitiativePaybackSummary {
+  /** Прибыль за период. Legacy-название сохранено внутри расчётов для совместимости UI. */
   periodRevenue: number;
+  /** Валовая выручка за период. */
+  periodGrossRevenue: number;
   periodCost: number;
   /** null when periodCost is 0 */
   ratio: number | null;
+  /** Выручка / затраты; не является ROI. */
+  grossRevenueToCostRatio: number | null;
   isPaidOff: boolean;
-  revenueQuarters: string[];
+  financialQuarters: string[];
 }
 
 export interface InitiativePaybackHorizonSummary {
+  /** Прибыль за период. */
   periodRevenue: number;
+  /** Валовая выручка за период. */
+  periodGrossRevenue: number;
   periodCost: number;
   ratio: number | null;
+  grossRevenueToCostRatio: number | null;
   isPaidOff: boolean;
 }
 
@@ -53,10 +66,16 @@ export interface InitiativePaybackDashboard {
   yearEnd: InitiativePaybackHorizonSummary | null;
 }
 
-function quarterHasRevenue(q: InitiativePaybackQuarter | undefined): boolean {
+export function quarterHasFinancialEffect(q: InitiativePaybackQuarter | undefined): boolean {
   if (!q) return false;
-  const rev = q.revenueRub;
-  return typeof rev === 'number' && Number.isFinite(rev) && rev > 0;
+  const profit = q.profitRub;
+  const grossRevenue = q.grossRevenueRub;
+  return (
+    (typeof profit === 'number' && Number.isFinite(profit) && profit > 0) ||
+    (typeof grossRevenue === 'number' &&
+      Number.isFinite(grossRevenue) &&
+      grossRevenue > 0)
+  );
 }
 
 function quarterCost(q: InitiativePaybackQuarter): number {
@@ -86,24 +105,31 @@ function summarizeHorizon(
   if (!quarterlyData || quarters.length === 0) return null;
 
   let periodRevenue = 0;
+  let periodGrossRevenue = 0;
   let periodCost = 0;
   for (const q of quarters) {
     const qd = quarterlyData[q];
     if (!qd) continue;
     const cost = quarterCost(qd);
-    const rev = qd.revenueRub ?? 0;
+    const profit = qd.profitRub ?? 0;
+    const grossRevenue = qd.grossRevenueRub ?? 0;
     if (cost > 0) periodCost += cost;
-    if (rev > 0) periodRevenue += rev;
+    if (profit > 0) periodRevenue += profit;
+    if (grossRevenue > 0) periodGrossRevenue += grossRevenue;
   }
 
-  if (periodRevenue <= 0 && periodCost <= 0) return null;
+  if (periodRevenue <= 0 && periodGrossRevenue <= 0 && periodCost <= 0) return null;
 
   const ratio =
-    periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : periodCost > 0 ? 0 : null;
+    periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : null;
+  const grossRevenueToCostRatio =
+    periodCost > 0 && periodGrossRevenue > 0 ? periodGrossRevenue / periodCost : null;
   return {
     periodRevenue,
+    periodGrossRevenue,
     periodCost,
     ratio,
+    grossRevenueToCostRatio,
     isPaidOff: periodCost > 0 && periodRevenue >= periodCost,
   };
 }
@@ -123,8 +149,10 @@ export function computeInitiativePaybackDashboard(
   if (year === 0) return null;
 
   const yearQuarters = calendarQuartersForYear(year);
-  const hasAnyRevenue = yearQuarters.some((q) => quarterHasRevenue(quarterlyData[q]));
-  if (!hasAnyRevenue) return null;
+  const hasAnyFinancialEffect = yearQuarters.some((q) =>
+    quarterHasFinancialEffect(quarterlyData[q])
+  );
+  if (!hasAnyFinancialEffect) return null;
 
   const ytdQuarters = calendarQuartersThrough(asOf);
   return {
@@ -135,7 +163,8 @@ export function computeInitiativePaybackDashboard(
 }
 
 /**
- * Окупаемость за выбранный период фильтра (плитка тримэпа): только кварталы с заработком.
+ * Финансовый эффект за выбранный период фильтра.
+ * Затраты суммируются по всему периоду, включая инвестиционные кварталы без прибыли.
  */
 export function computeInitiativePayback(
   quarterlyData: Record<string, InitiativePaybackQuarter | AdminQuarterData> | undefined,
@@ -143,24 +172,33 @@ export function computeInitiativePayback(
 ): InitiativePaybackSummary | null {
   if (!quarterlyData || selectedQuarters.length === 0) return null;
 
-  const revenueQuarters = selectedQuarters.filter((q) => quarterHasRevenue(quarterlyData[q]));
-  if (revenueQuarters.length === 0) return null;
+  const financialQuarters = selectedQuarters.filter((q) =>
+    quarterHasFinancialEffect(quarterlyData[q])
+  );
+  if (financialQuarters.length === 0) return null;
 
   let periodRevenue = 0;
+  let periodGrossRevenue = 0;
   let periodCost = 0;
-  for (const q of revenueQuarters) {
-    const qd = quarterlyData[q]!;
-    periodRevenue += qd.revenueRub ?? 0;
+  for (const q of selectedQuarters) {
+    const qd = quarterlyData[q];
+    if (!qd) continue;
+    periodRevenue += qd.profitRub ?? 0;
+    periodGrossRevenue += qd.grossRevenueRub ?? 0;
     periodCost += quarterCost(qd);
   }
 
-  const ratio = periodCost > 0 ? periodRevenue / periodCost : null;
+  const ratio = periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : null;
+  const grossRevenueToCostRatio =
+    periodCost > 0 && periodGrossRevenue > 0 ? periodGrossRevenue / periodCost : null;
   return {
     periodRevenue,
+    periodGrossRevenue,
     periodCost,
     ratio,
+    grossRevenueToCostRatio,
     isPaidOff: periodCost > 0 && periodRevenue >= periodCost,
-    revenueQuarters,
+    financialQuarters,
   };
 }
 
@@ -170,6 +208,14 @@ export function formatPaybackRatio(ratio: number): string {
   if (ratio >= 10) return `×${ratio.toFixed(1)}`;
   const rounded = Math.round(ratio * 100) / 100;
   return `×${rounded}`;
+}
+
+export function formatRoiPercent(ratio: number): string {
+  if (!Number.isFinite(ratio)) return '—';
+  const percent = ratio * 100;
+  if (Math.abs(percent) >= 1000) return `${Math.round(percent).toLocaleString('ru-RU')}%`;
+  const rounded = Math.round(percent * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
 }
 
 /** Компактная сумма для строки «стоимость vs заработок»: 3.9 млн, 120 тыс. */
@@ -193,12 +239,22 @@ export function formatPaybackVsAmounts(costRub: number, revenueRub: number): str
 }
 
 export function formatPaybackStatusLine(summary: InitiativePaybackHorizonSummary): string {
-  if (summary.periodCost <= 0 && summary.periodRevenue <= 0) return '—';
-  if (summary.periodCost > 0 && summary.periodRevenue <= 0) {
-    return `${formatPaybackRatio(0)} · не окупилась`;
+  if (
+    summary.periodCost <= 0 &&
+    summary.periodRevenue <= 0 &&
+    summary.periodGrossRevenue <= 0
+  ) {
+    return '—';
   }
-  if (summary.ratio == null) return '—';
-  return `${formatPaybackRatio(summary.ratio)} · ${summary.isPaidOff ? 'окупилась' : 'не окупилась'}`;
+  if (summary.ratio != null) {
+    return `ROI ${formatRoiPercent(summary.ratio)} · ${
+      summary.isPaidOff ? 'окупилась' : 'не окупилась'
+    }`;
+  }
+  if (summary.grossRevenueToCostRatio != null) {
+    return `Выручка / затраты ${formatPaybackRatio(summary.grossRevenueToCostRatio)}`;
+  }
+  return '—';
 }
 
 export function paybackToneColor(isPaidOff: boolean): string {
@@ -210,12 +266,18 @@ export function paybackToneClass(isPaidOff: boolean): string {
 }
 
 export function paybackSummaryTitle(summary: InitiativePaybackSummary): string {
-  const parts = [
-    `Прибыль: ${summary.periodRevenue.toLocaleString('ru-RU')} ₽`,
-    `Стоимость: ${summary.periodCost.toLocaleString('ru-RU')} ₽`,
-  ];
+  const parts: string[] = [];
+  if (summary.periodRevenue > 0) {
+    parts.push(`Прибыль: ${summary.periodRevenue.toLocaleString('ru-RU')} ₽`);
+  }
+  if (summary.periodGrossRevenue > 0) {
+    parts.push(`Выручка: ${summary.periodGrossRevenue.toLocaleString('ru-RU')} ₽`);
+  }
+  parts.push(`Стоимость: ${summary.periodCost.toLocaleString('ru-RU')} ₽`);
   if (summary.ratio != null) {
-    parts.push(summary.isPaidOff ? 'Окупилась' : 'Не окупилась');
+    parts.push(`ROI ${formatRoiPercent(summary.ratio)}`);
+  } else if (summary.grossRevenueToCostRatio != null) {
+    parts.push(`Выручка / затраты ${formatPaybackRatio(summary.grossRevenueToCostRatio)}`);
   }
   return parts.join(' · ');
 }
@@ -234,15 +296,36 @@ function pickLastHistoryEntryAsOf<T extends { at: string; setInQuarter: string }
 }
 
 /** Прибыль квартала, какой она была на конец asOfQuarter (последняя запись истории). */
-export function pickRevenueRubAsOf(
-  qData: Pick<QuarterData, 'revenueRub' | 'revenueRubHistory'> | undefined,
+export function pickProfitRubAsOf(
+  qData: Pick<QuarterData, 'profitRub' | 'profitRubHistory'> | undefined,
   asOfQuarter: string
 ): number | undefined {
   if (!qData) return undefined;
-  const fromHistory = pickLastHistoryEntryAsOf(qData.revenueRubHistory, asOfQuarter)?.value;
+  const fromHistory = pickLastHistoryEntryAsOf(qData.profitRubHistory, asOfQuarter)?.value;
   if (typeof fromHistory === 'number' && fromHistory > 0) return fromHistory;
-  if (typeof qData.revenueRub === 'number' && qData.revenueRub > 0 && !qData.revenueRubHistory?.length) {
-    return qData.revenueRub;
+  if (typeof qData.profitRub === 'number' && qData.profitRub > 0 && !qData.profitRubHistory?.length) {
+    return qData.profitRub;
+  }
+  return undefined;
+}
+
+/** Выручка квартала, какой она была на конец asOfQuarter. */
+export function pickGrossRevenueRubAsOf(
+  qData: Pick<QuarterData, 'grossRevenueRub' | 'grossRevenueRubHistory'> | undefined,
+  asOfQuarter: string
+): number | undefined {
+  if (!qData) return undefined;
+  const fromHistory = pickLastHistoryEntryAsOf(
+    qData.grossRevenueRubHistory,
+    asOfQuarter
+  )?.value;
+  if (typeof fromHistory === 'number' && fromHistory > 0) return fromHistory;
+  if (
+    typeof qData.grossRevenueRub === 'number' &&
+    qData.grossRevenueRub > 0 &&
+    !qData.grossRevenueRubHistory?.length
+  ) {
+    return qData.grossRevenueRub;
   }
   return undefined;
 }
@@ -259,7 +342,7 @@ export function pickBudgetRubAsOf(
 }
 
 /**
- * Окупаемость на конец квартала: накопительно по scopeQuarters с прибылью,
+ * Окупаемость на конец квартала: накопительно по scopeQuarters,
  * значения — из истории (последняя запись на тот момент).
  */
 export function computeInitiativePaybackAsOf(
@@ -269,27 +352,27 @@ export function computeInitiativePaybackAsOf(
 ): InitiativePaybackHorizonSummary | null {
   if (!quarterlyData || scopeQuarters.length === 0) return null;
 
-  const eligibleTargets = scopeQuarters
-    .filter((q) => {
-      const rev = pickRevenueRubAsOf(quarterlyData[q] as QuarterData, asOfQuarter);
-      return typeof rev === 'number' && rev > 0;
-    });
-
-  if (eligibleTargets.length === 0) return null;
-
   let periodRevenue = 0;
+  let periodGrossRevenue = 0;
   let periodCost = 0;
-  for (const q of eligibleTargets) {
+  for (const q of scopeQuarters) {
     const qd = quarterlyData[q] as QuarterData;
-    periodRevenue += pickRevenueRubAsOf(qd, asOfQuarter) ?? 0;
+    periodRevenue += pickProfitRubAsOf(qd, asOfQuarter) ?? 0;
+    periodGrossRevenue += pickGrossRevenueRubAsOf(qd, asOfQuarter) ?? 0;
     periodCost += pickBudgetRubAsOf(qd, asOfQuarter);
   }
 
-  const ratio = periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : periodCost > 0 ? 0 : null;
+  if (periodRevenue <= 0 && periodGrossRevenue <= 0) return null;
+
+  const ratio = periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : null;
+  const grossRevenueToCostRatio =
+    periodCost > 0 && periodGrossRevenue > 0 ? periodGrossRevenue / periodCost : null;
   return {
     periodRevenue,
+    periodGrossRevenue,
     periodCost,
     ratio,
+    grossRevenueToCostRatio,
     isPaidOff: periodCost > 0 && periodRevenue >= periodCost,
   };
 }
@@ -298,16 +381,34 @@ export function computeInitiativePaybackAsOf(
  * Прогноз окупаемости на конец квартала планирования:
  * все кварталы выбранного периода, значения — какими они были на конец planningQuarter.
  */
-export function pickQuarterRevenueAtPlanning(
-  qData: Pick<QuarterData, 'revenueRub' | 'revenueRubHistory'> | undefined,
+export function pickQuarterProfitAtPlanning(
+  qData: Pick<QuarterData, 'profitRub' | 'profitRubHistory'> | undefined,
   planningQuarter: string,
   live: boolean
 ): number | undefined {
   if (!qData) return undefined;
-  if (live && typeof qData.revenueRub === 'number' && qData.revenueRub > 0) {
-    return qData.revenueRub;
+  if (live && typeof qData.profitRub === 'number' && qData.profitRub > 0) {
+    return qData.profitRub;
   }
-  return pickRevenueRubAsOf(qData, planningQuarter);
+  return pickProfitRubAsOf(qData, planningQuarter);
+}
+
+export function pickQuarterGrossRevenueAtPlanning(
+  qData:
+    | Pick<QuarterData, 'grossRevenueRub' | 'grossRevenueRubHistory'>
+    | undefined,
+  planningQuarter: string,
+  live: boolean
+): number | undefined {
+  if (!qData) return undefined;
+  if (
+    live &&
+    typeof qData.grossRevenueRub === 'number' &&
+    qData.grossRevenueRub > 0
+  ) {
+    return qData.grossRevenueRub;
+  }
+  return pickGrossRevenueRubAsOf(qData, planningQuarter);
 }
 
 export function pickQuarterBudgetAtPlanning(
@@ -324,7 +425,9 @@ export function pickQuarterBudgetAtPlanning(
 
 export interface PlanningForecastQuarterLine {
   targetQuarter: string;
+  /** Прибыль; имя оставлено для совместимости существующего cash-flow UI. */
   revenueRub: number;
+  grossRevenueRub?: number;
   costRub: number;
 }
 
@@ -344,6 +447,7 @@ export function buildInitiativeQuarterCashFlowForecast(
   if (sourceLines.length === 0) return null;
 
   let periodRevenue = 0;
+  let periodGrossRevenue = 0;
   let periodCost = 0;
   let cumulativeNetRub = 0;
   let breakEvenQuarter: string | null = null;
@@ -353,11 +457,16 @@ export function buildInitiativeQuarterCashFlowForecast(
     .sort((a, b) => compareQuarters(a.targetQuarter, b.targetQuarter))
     .map((line) => {
       const revenueRub = Number.isFinite(line.revenueRub) ? Math.max(0, line.revenueRub) : 0;
+      const grossRevenueRub =
+        typeof line.grossRevenueRub === 'number' && Number.isFinite(line.grossRevenueRub)
+        ? Math.max(0, line.grossRevenueRub)
+        : 0;
       const costRub = Number.isFinite(line.costRub) ? Math.max(0, line.costRub) : 0;
       const netRub = revenueRub - costRub;
 
-      if (revenueRub > 0 || costRub > 0) hasMoney = true;
+      if (revenueRub > 0 || grossRevenueRub > 0 || costRub > 0) hasMoney = true;
       periodRevenue += revenueRub;
+      periodGrossRevenue += grossRevenueRub;
       periodCost += costRub;
       cumulativeNetRub += netRub;
 
@@ -368,6 +477,7 @@ export function buildInitiativeQuarterCashFlowForecast(
       return {
         targetQuarter: line.targetQuarter,
         revenueRub,
+        grossRevenueRub,
         costRub,
         netRub,
         cumulativeNetRub,
@@ -376,12 +486,16 @@ export function buildInitiativeQuarterCashFlowForecast(
 
   if (!hasMoney) return null;
 
-  const ratio = periodCost > 0 ? periodRevenue / periodCost : null;
+  const ratio = periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : null;
+  const grossRevenueToCostRatio =
+    periodCost > 0 && periodGrossRevenue > 0 ? periodGrossRevenue / periodCost : null;
   return {
     lines,
     periodRevenue,
+    periodGrossRevenue,
     periodCost,
     ratio,
+    grossRevenueToCostRatio,
     isPaidOff: periodCost > 0 && periodRevenue >= periodCost,
     netRub: periodRevenue - periodCost,
     breakEvenQuarter,
@@ -399,7 +513,8 @@ export function computeInitiativeQuarterCashFlowForecast(
     const qd = quarterlyData[targetQuarter];
     return {
       targetQuarter,
-      revenueRub: qd?.revenueRub ?? 0,
+      revenueRub: qd?.profitRub ?? 0,
+      grossRevenueRub: qd?.grossRevenueRub ?? 0,
       costRub: qd ? quarterCost(qd) : 0,
     };
   });
@@ -421,12 +536,15 @@ export function computePlanningForecastBreakdown(
 
   for (const targetQuarter of [...scopeQuarters].sort(compareQuarters)) {
     const qd = quarterlyData[targetQuarter] as QuarterData | undefined;
-    const revenueRub = pickQuarterRevenueAtPlanning(qd, planningQuarter, live) ?? 0;
+    const revenueRub = pickQuarterProfitAtPlanning(qd, planningQuarter, live) ?? 0;
+    const grossRevenueRub =
+      pickQuarterGrossRevenueAtPlanning(qd, planningQuarter, live) ?? 0;
     const costRub = pickQuarterBudgetAtPlanning(qd, planningQuarter, live);
-    if (revenueRub > 0 || costRub > 0) hasMoney = true;
+    if (revenueRub > 0 || grossRevenueRub > 0 || costRub > 0) hasMoney = true;
     lines.push({
       targetQuarter,
       revenueRub,
+      grossRevenueRub,
       costRub,
     });
   }
@@ -434,22 +552,28 @@ export function computePlanningForecastBreakdown(
   if (!hasMoney) return null;
 
   let periodRevenue = 0;
+  let periodGrossRevenue = 0;
   let periodCost = 0;
   for (const line of lines) {
     periodRevenue += line.revenueRub;
+    periodGrossRevenue += line.grossRevenueRub ?? 0;
     periodCost += line.costRub;
   }
 
   const ratio =
-    periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : periodCost > 0 ? 0 : null;
+    periodCost > 0 && periodRevenue > 0 ? periodRevenue / periodCost : null;
+  const grossRevenueToCostRatio =
+    periodCost > 0 && periodGrossRevenue > 0 ? periodGrossRevenue / periodCost : null;
 
   return {
     planningQuarter,
     lines,
     summary: {
       periodRevenue,
+      periodGrossRevenue,
       periodCost,
       ratio,
+      grossRevenueToCostRatio,
       isPaidOff: periodCost > 0 && periodRevenue >= periodCost,
     },
   };
@@ -586,15 +710,38 @@ export function renderInitiativePaybackTooltipHtml(
     summary: InitiativePaybackHorizonSummary | null
   ): string => {
     const quarterLabel = formatQuarterHuman(quarterKey);
-    if (!summary || (summary.periodCost <= 0 && summary.periodRevenue <= 0)) {
+    if (
+      !summary ||
+      (summary.periodCost <= 0 &&
+        summary.periodRevenue <= 0 &&
+        summary.periodGrossRevenue <= 0)
+    ) {
       return `<div class="tooltip-payback-group">
   <div class="tooltip-payback-quarter">${quarterLabel}</div>
   <div class="tooltip-payback-muted">—</div>
 </div>`;
     }
-    const pct = formatPaybackReturnPercent(summary);
-    const paidOffWord = summary.isPaidOff ? 'окупилось' : 'не окупилось';
-    const detail = formatPaybackEffectCostLine(summary.periodRevenue, summary.periodCost);
+    const primaryLine =
+      summary.ratio != null
+        ? `<strong>ROI ${formatRoiPercent(summary.ratio)}</strong> · ${
+            summary.isPaidOff ? 'окупилось' : 'не окупилось'
+          }`
+        : summary.grossRevenueToCostRatio != null
+          ? `<strong>Выручка / затраты ${formatPaybackRatio(
+              summary.grossRevenueToCostRatio
+            )}</strong>`
+          : '<strong>Без затрат в периоде</strong>';
+    const detailParts = [];
+    if (summary.periodRevenue > 0) {
+      detailParts.push(`Прибыль ${formatPaybackRubAmount(summary.periodRevenue)}`);
+    }
+    if (summary.periodGrossRevenue > 0) {
+      detailParts.push(
+        `Выручка ${formatPaybackRubAmount(summary.periodGrossRevenue)}`
+      );
+    }
+    detailParts.push(`Затраты ${formatPaybackRubAmount(summary.periodCost)}`);
+    const detail = detailParts.join(' · ');
     const net = formatPaybackNetLine(summary.periodRevenue, summary.periodCost);
     const netRub = summary.periodRevenue - summary.periodCost;
     const netClass =
@@ -602,9 +749,13 @@ export function renderInitiativePaybackTooltipHtml(
 
     return `<div class="tooltip-payback-group">
   <div class="tooltip-payback-quarter">${quarterLabel}</div>
-  <div class="tooltip-payback-return"><strong>${pct}% возврата</strong> · ${paidOffWord}</div>
+  <div class="tooltip-payback-return">${primaryLine}</div>
   <div class="tooltip-payback-detail">${detail}</div>
-  <div class="tooltip-payback-net ${netClass}">${net}</div>
+  ${
+    summary.periodRevenue > 0 || summary.periodCost > 0
+      ? `<div class="tooltip-payback-net ${netClass}">${net}</div>`
+      : ''
+  }
 </div>`;
   };
 

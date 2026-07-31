@@ -11,6 +11,7 @@ import {
   getInitiativeQuarters,
   formatBudgetShort,
   formatBudget,
+  quarterHasFinancialEffect,
   rowPassesTimelineFilters,
   isNegligibleTimelineBudgetRub,
   type PreliminaryQuarterBudgetMap,
@@ -256,6 +257,7 @@ const GanttView = ({
       selectedStakeholders,
       includePreliminaryData,
       preliminaryQuarterBudgetMap,
+      includeFinancialEffects: showInitiativePayback,
       costFilterMin,
       costFilterMax,
       costType,
@@ -270,6 +272,7 @@ const GanttView = ({
       selectedStakeholders,
       includePreliminaryData,
       preliminaryQuarterBudgetMap,
+      showInitiativePayback,
       costFilterMin,
       costFilterMax,
       costType,
@@ -733,8 +736,24 @@ const GanttView = ({
         ) : null}
 
         <div className="gantt-quarter-popup-status">
-          <span className={`gantt-quarter-popup-badge ${isSupport ? 'support' : 'development'}`}>
-            {isSupport ? 'Support' : 'Development'}
+          <span
+            className={`gantt-quarter-popup-badge ${
+              showInitiativePayback &&
+              qData.budget <= 0 &&
+              quarterHasFinancialEffect(qData)
+                ? 'financial'
+                : isSupport
+                  ? 'support'
+                  : 'development'
+            }`}
+          >
+            {showInitiativePayback &&
+            qData.budget <= 0 &&
+            quarterHasFinancialEffect(qData)
+              ? 'Финансовый эффект'
+              : isSupport
+                ? 'Support'
+                : 'Development'}
           </span>
           {isOffTrack && (
             <span className="gantt-quarter-popup-badge off-track">Off-track</span>
@@ -750,13 +769,24 @@ const GanttView = ({
           </div>
         )}
 
-        {showInitiativePayback && (qData.revenueRub || qData.revenueRubHistory?.length) ? (
+        {showInitiativePayback && (qData.profitRub || qData.profitRubHistory?.length) ? (
           <div className="gantt-quarter-popup-budget-block">
             <div className="gantt-quarter-popup-budget gantt-quarter-popup-profit">
               Прибыль:{' '}
-              {qData.revenueRub ? formatBudget(qData.revenueRub) : '—'}
+              {qData.profitRub ? formatBudget(qData.profitRub) : '—'}
             </div>
-            <QuarterMoneyHistoryList entries={qData.revenueRubHistory} />
+            <QuarterMoneyHistoryList entries={qData.profitRubHistory} />
+          </div>
+        ) : null}
+
+        {showInitiativePayback &&
+        (qData.grossRevenueRub || qData.grossRevenueRubHistory?.length) ? (
+          <div className="gantt-quarter-popup-budget-block">
+            <div className="gantt-quarter-popup-budget gantt-quarter-popup-revenue">
+              Выручка:{' '}
+              {qData.grossRevenueRub ? formatBudget(qData.grossRevenueRub) : '—'}
+            </div>
+            <QuarterMoneyHistoryList entries={qData.grossRevenueRubHistory} />
           </div>
         ) : null}
 
@@ -978,6 +1008,7 @@ const GanttView = ({
       const qData = row.quarterlyData[q];
       if (!qData) return false;
       if (qData.budget > 0 && !isNegligibleTimelineBudgetRub(qData.budget)) return true;
+      if (showInitiativePayback && quarterHasFinancialEffect(qData)) return true;
       return Boolean(
         qData.metricPlan?.trim() ||
           qData.metricFact?.trim() ||
@@ -1123,6 +1154,18 @@ const GanttView = ({
 
                     {showMoney && qData.budget > 0 && !isNegligibleTimelineBudgetRub(qData.budget) ? (
                       <div className="gantt-detail-quarter-budget">Бюджет: {formatBudget(qData.budget)}</div>
+                    ) : null}
+
+                    {showInitiativePayback && qData.profitRub ? (
+                      <div className="gantt-detail-quarter-budget text-emerald-700 dark:text-emerald-400">
+                        Прибыль: {formatBudget(qData.profitRub)}
+                      </div>
+                    ) : null}
+
+                    {showInitiativePayback && qData.grossRevenueRub ? (
+                      <div className="gantt-detail-quarter-budget text-sky-700 dark:text-sky-400">
+                        Выручка: {formatBudget(qData.grossRevenueRub)}
+                      </div>
                     ) : null}
 
                     {qData.metricPlan?.trim() ? (
@@ -1451,16 +1494,60 @@ const GanttView = ({
                 <div className="gantt-segment-row">
                   {selectedQuarters.map((q, qIdx) => {
                     const qData = row.quarterlyData[q];
-                    if (
-                      !qData ||
-                      qData.budget === 0 ||
-                      isNegligibleTimelineBudgetRub(qData.budget)
-                    ) {
+                    if (!qData) {
+                      if (
+                        adminOnEditQuarter &&
+                        row.adminInitiativeRowId &&
+                        !row.isTimelineStub
+                      ) {
+                        return (
+                          <div
+                            key={q}
+                            className="gantt-segment financial-empty"
+                            style={{
+                              left: qIdx * quarterWidth + 4,
+                              width: quarterWidth - 8,
+                            }}
+                            onClick={(e) => handleSegmentClick(e, row, q)}
+                            title="Добавить данные квартала"
+                          >
+                            + данные
+                          </div>
+                        );
+                      }
                       return null;
+                    }
+                    const hasBudget =
+                      qData.budget > 0 && !isNegligibleTimelineBudgetRub(qData.budget);
+                    const hasFinancialEffect =
+                      showInitiativePayback && quarterHasFinancialEffect(qData);
+                    if (!hasBudget && !hasFinancialEffect) {
+                      if (
+                        !adminOnEditQuarter ||
+                        !row.adminInitiativeRowId ||
+                        row.isTimelineStub
+                      ) {
+                        return null;
+                      }
+                      return (
+                        <div
+                          key={q}
+                          className="gantt-segment financial-empty"
+                          style={{
+                            left: qIdx * quarterWidth + 4,
+                            width: quarterWidth - 8,
+                          }}
+                          onClick={(e) => handleSegmentClick(e, row, q)}
+                          title="Добавить данные квартала"
+                        >
+                          + данные
+                        </div>
+                      );
                     }
 
                     const isSupport = qData.support;
                     const isOffTrack = !qData.onTrack;
+                    const isFinancialOnly = !hasBudget && hasFinancialEffect;
                     const segWarnings = timelineQuarterWarningsForRow(row, q);
                     const segHasIssue = segWarnings.length > 0;
 
@@ -1469,8 +1556,12 @@ const GanttView = ({
                         key={q}
                         className={cn(
                           'gantt-segment',
-                          isSupport ? 'support' : 'development',
-                          isOffTrack && 'off-track',
+                          isFinancialOnly
+                            ? 'financial'
+                            : isSupport
+                              ? 'support'
+                              : 'development',
+                          !isFinancialOnly && isOffTrack && 'off-track',
                           segHasIssue && 'gantt-segment-admin-issue'
                         )}
                         style={{
@@ -1482,7 +1573,13 @@ const GanttView = ({
                         onMouseLeave={handleSegmentMouseLeave}
                         onClick={(e) => handleSegmentClick(e, row, q)}
                       >
-                        {showMoney ? formatBudgetShort(qData.budget) : ''}
+                        {showMoney
+                          ? hasBudget
+                            ? formatBudgetShort(qData.budget)
+                            : qData.profitRub
+                              ? `П +${formatBudgetShort(qData.profitRub)}`
+                              : `В +${formatBudgetShort(qData.grossRevenueRub ?? 0)}`
+                          : ''}
                       </div>
                     );
                   })}
@@ -1493,7 +1590,11 @@ const GanttView = ({
                   {selectedQuarters.map((q) => {
                     const qData = row.quarterlyData[q];
 
-                    if (!qData || qData.budget === 0) {
+                    if (
+                      !qData ||
+                      (qData.budget === 0 &&
+                        !(showInitiativePayback && quarterHasFinancialEffect(qData)))
+                    ) {
                       return <div key={q} className="gantt-quarter-detail" style={{ minWidth: quarterWidth }} />;
                     }
 

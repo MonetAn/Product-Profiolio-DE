@@ -30,6 +30,7 @@ import {
   getInitiativeDisplayName,
   getQuickFlowTimelineQuarterWarnings,
 } from '@/lib/adminDataManager';
+import { useAccess } from '@/hooks/useAccess';
 
 const TIMELINE_LEGEND_SWATCH = { h: 22, w: 46 } as const;
 
@@ -98,14 +99,6 @@ function QuickFlowTimelineSegmentLegend() {
   );
 }
 
-/** Квартал имеет смысл открывать в карточке, если есть затраты или ненулевые усилия. */
-function quarterHasMoneyOrEffort(row: AdminDataRow, q: string): boolean {
-  const qd = row.quarterlyData[q] ?? createEmptyQuarterData();
-  const money = Math.round(Number(qd.cost) || 0) + Math.round(Number(qd.otherCosts) || 0);
-  const eff = Math.round(Number(qd.effortCoefficient) || 0);
-  return money > 0 || eff > 0;
-}
-
 type Props = {
   rows: AdminDataRow[];
   fillQuarters: string[];
@@ -146,6 +139,7 @@ export function AdminQuickFlowTimelineFillStep({
   onFlushQuarterSaves,
   compactChrome = false,
 }: Props) {
+  const { hasEarlyAccess } = useAccess();
   const [quarterEdit, setQuarterEdit] = useState<{ id: string; quarter: string } | null>(null);
   const [quarterDialogDirty, setQuarterDialogDirty] = useState(false);
   const [discardPrompt, setDiscardPrompt] = useState<
@@ -189,7 +183,7 @@ export function AdminQuickFlowTimelineFillStep({
     };
   }, [quarterEdit, quarterEditRow]);
 
-  /** Соседние по списку кварталы, где у этой инициативы есть деньги или усилия (пустые пропускаем). */
+  /** Соседние кварталы выбранного периода, включая пока пустые. */
   const quarterDialogNav = useMemo(() => {
     if (!quarterEdit || !quarterEditRow) {
       return { prevQuarter: null as string | null, nextQuarter: null as string | null };
@@ -199,20 +193,8 @@ export function AdminQuickFlowTimelineFillStep({
     const i = qs.indexOf(cur);
     if (i < 0) return { prevQuarter: null, nextQuarter: null };
 
-    let prevQuarter: string | null = null;
-    for (let j = i - 1; j >= 0; j--) {
-      if (quarterHasMoneyOrEffort(quarterEditRow, qs[j])) {
-        prevQuarter = qs[j];
-        break;
-      }
-    }
-    let nextQuarter: string | null = null;
-    for (let j = i + 1; j < qs.length; j++) {
-      if (quarterHasMoneyOrEffort(quarterEditRow, qs[j])) {
-        nextQuarter = qs[j];
-        break;
-      }
-    }
+    const prevQuarter = i > 0 ? qs[i - 1] : null;
+    const nextQuarter = i < qs.length - 1 ? qs[i + 1] : null;
     return { prevQuarter, nextQuarter };
   }, [quarterEdit, quarterEditRow, previewPeriodQuarters]);
 
@@ -304,8 +286,10 @@ export function AdminQuickFlowTimelineFillStep({
                 selectedTeams={selectedTeams}
                 selectedStakeholders={[]}
                 showMoney
+                showInitiativePayback={hasEarlyAccess}
                 adminOnEditQuarter={(adminRowId, quarter) => setQuarterEdit({ id: adminRowId, quarter })}
                 adminTimelineQuarterWarnings={adminTimelineQuarterWarnings}
+                bypassTimelineFilters
               />
             </div>
           </div>
@@ -333,7 +317,7 @@ export function AdminQuickFlowTimelineFillStep({
                     size="icon"
                     className="h-9 w-9 shrink-0"
                     disabled={!quarterDialogNav.prevQuarter}
-                    aria-label="Предыдущий квартал с затратами или усилиями"
+                    aria-label="Предыдущий квартал с данными"
                     onClick={() => {
                       if (!quarterDialogNav.prevQuarter) return;
                       requestNavigateQuarter({
@@ -359,7 +343,7 @@ export function AdminQuickFlowTimelineFillStep({
                     size="icon"
                     className="h-9 w-9 shrink-0"
                     disabled={!quarterDialogNav.nextQuarter}
-                    aria-label="Следующий квартал с затратами или усилиями"
+                    aria-label="Следующий квартал с данными"
                     onClick={() => {
                       if (!quarterDialogNav.nextQuarter) return;
                       requestNavigateQuarter({

@@ -3,6 +3,7 @@ import { formatBudget } from '@/lib/dataManager';
 import {
   computeInitiativePayback,
   formatPaybackRatio,
+  formatRoiPercent,
   paybackSummaryTitle,
   paybackToneClass,
   type InitiativePaybackQuarter,
@@ -21,12 +22,12 @@ interface InitiativePaybackLabelProps {
 }
 
 function PaybackTileBadge({
-  isPaidOff,
+  tone,
   label,
   size,
   className,
 }: {
-  isPaidOff: boolean;
+  tone: 'profit-ok' | 'profit-warning' | 'revenue';
   label: string;
   size: 'xs' | 'sm';
   className?: string;
@@ -44,7 +45,9 @@ function PaybackTileBadge({
       <span
         className={cn(
           'h-1.5 w-1.5 shrink-0 rounded-full',
-          isPaidOff ? 'bg-emerald-300/85' : 'bg-amber-300/85'
+          tone === 'profit-ok' && 'bg-emerald-300/85',
+          tone === 'profit-warning' && 'bg-amber-300/85',
+          tone === 'revenue' && 'bg-sky-300/90'
         )}
         aria-hidden
       />
@@ -53,7 +56,7 @@ function PaybackTileBadge({
   );
 }
 
-/** Коэффициент окупаемости (×N) или сумма заработка, если затрат нет. */
+/** ROI по прибыли; если прибыли нет — отношение выручки к затратам. */
 export function InitiativePaybackLabel({
   quarterlyData,
   selectedQuarters,
@@ -71,26 +74,49 @@ export function InitiativePaybackLabel({
   const title = paybackSummaryTitle(summary);
   const sizeClass = size === 'xs' ? 'text-[10px]' : 'text-[12px]';
 
-  if (summary.ratio == null) {
-    const label = `+${formatBudget(summary.periodRevenue)}`;
+  if (summary.periodRevenue > 0) {
+    const label =
+      summary.ratio == null
+        ? `Прибыль +${formatBudget(summary.periodRevenue)}`
+        : `ROI ${formatRoiPercent(summary.ratio)}`;
     if (variant === 'tile') {
       return (
-        <PaybackTileBadge isPaidOff label={label} size={size} className={className} />
+        <PaybackTileBadge
+          tone={summary.isPaidOff ? 'profit-ok' : 'profit-warning'}
+          label={label}
+          size={size}
+          className={className}
+        />
       );
     }
     return (
-      <span className={cn('font-medium text-emerald-600', sizeClass, className)} title={title}>
+      <span
+        className={cn(
+          'font-semibold',
+          summary.ratio == null
+            ? 'text-emerald-600'
+            : paybackToneClass(summary.isPaidOff),
+          sizeClass,
+          className
+        )}
+        title={title}
+      >
         {label}
       </span>
     );
   }
 
-  const label = formatPaybackRatio(summary.ratio);
+  if (summary.periodGrossRevenue <= 0) return null;
+
+  const label =
+    summary.grossRevenueToCostRatio == null
+      ? `Выручка +${formatBudget(summary.periodGrossRevenue)}`
+      : `Выручка ${formatPaybackRatio(summary.grossRevenueToCostRatio)}`;
 
   if (variant === 'tile') {
     return (
       <PaybackTileBadge
-        isPaidOff={summary.isPaidOff}
+        tone="revenue"
         label={label}
         size={size}
         className={className}
@@ -100,7 +126,7 @@ export function InitiativePaybackLabel({
 
   return (
     <span
-      className={cn('font-semibold', paybackToneClass(summary.isPaidOff), sizeClass, className)}
+      className={cn('font-semibold text-sky-700 dark:text-sky-400', sizeClass, className)}
       title={title}
     >
       {label}

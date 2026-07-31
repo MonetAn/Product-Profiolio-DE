@@ -36,8 +36,11 @@ export interface QuarterData {
   /** false — предварительная стоимость квартала (например после Quick Flow) */
   costFinanceConfirmed?: boolean;
   /** Прибыль инициативы за квартал, ₽ (опционально) */
-  revenueRub?: number;
-  revenueRubHistory?: QuarterMoneyHistoryEntry[];
+  profitRub?: number;
+  profitRubHistory?: QuarterMoneyHistoryEntry[];
+  /** Валовая выручка инициативы за квартал, ₽ (опционально) */
+  grossRevenueRub?: number;
+  grossRevenueRubHistory?: QuarterMoneyHistoryEntry[];
   costHistory?: QuarterCostHistoryEntry[];
 }
 
@@ -201,12 +204,19 @@ export function convertFromDB(
         comment: adminQData.comment || '',
         effortCoefficient: adminQData.effortCoefficient ?? 0,
         ...(adminQData.costFinanceConfirmed === false ? { costFinanceConfirmed: false } : {}),
-        ...(typeof adminQData.revenueRub === 'number' &&
-        adminQData.revenueRub > 0
-          ? { revenueRub: adminQData.revenueRub }
+        ...(typeof adminQData.profitRub === 'number' &&
+        adminQData.profitRub > 0
+          ? { profitRub: adminQData.profitRub }
           : {}),
-        ...(adminQData.revenueRubHistory?.length
-          ? { revenueRubHistory: adminQData.revenueRubHistory }
+        ...(adminQData.profitRubHistory?.length
+          ? { profitRubHistory: adminQData.profitRubHistory }
+          : {}),
+        ...(typeof adminQData.grossRevenueRub === 'number' &&
+        adminQData.grossRevenueRub > 0
+          ? { grossRevenueRub: adminQData.grossRevenueRub }
+          : {}),
+        ...(adminQData.grossRevenueRubHistory?.length
+          ? { grossRevenueRubHistory: adminQData.grossRevenueRubHistory }
           : {}),
         ...(adminQData.costHistory?.length ? { costHistory: adminQData.costHistory } : {}),
       };
@@ -691,6 +701,20 @@ export function hasTimelineVisibleBudgetInPeriod(
   return true;
 }
 
+export function quarterHasFinancialEffect(qData: QuarterData | undefined): boolean {
+  if (!qData) return false;
+  return (qData.profitRub ?? 0) > 0 || (qData.grossRevenueRub ?? 0) > 0;
+}
+
+export function hasFinancialEffectInPeriod(
+  row: RawDataRow,
+  selectedQuarters: string[]
+): boolean {
+  return selectedQuarters.some((quarter) =>
+    quarterHasFinancialEffect(row.quarterlyData[quarter])
+  );
+}
+
 // Get all quarters where initiative has budget
 export function getInitiativeQuarters(row: RawDataRow): string[] {
   return Object.keys(row.quarterlyData).filter(q => row.quarterlyData[q].budget > 0);
@@ -764,6 +788,8 @@ export interface TimelineRowFilterOptions {
   selectedStakeholders: string[];
   includePreliminaryData?: boolean;
   preliminaryQuarterBudgetMap?: PreliminaryQuarterBudgetMap;
+  /** Early access: учитывать кварталы с прибылью/выручкой без видимого бюджета. */
+  includeFinancialEffects?: boolean;
   costFilterMin?: number | null;
   costFilterMax?: number | null;
   costType?: 'period' | 'total';
@@ -780,16 +806,19 @@ export function rowPassesTimelineFilters(row: RawDataRow, options: TimelineRowFi
     selectedStakeholders,
     includePreliminaryData = false,
     preliminaryQuarterBudgetMap,
+    includeFinancialEffects = false,
     costFilterMin = null,
     costFilterMax = null,
     costType = 'period',
   } = options;
 
+  const hasVisibleBudget = hasTimelineVisibleBudgetInPeriod(row, selectedQuarters, {
+    includePreliminaryData,
+    preliminaryQuarterBudgetMap,
+  });
   if (
-    !hasTimelineVisibleBudgetInPeriod(row, selectedQuarters, {
-      includePreliminaryData,
-      preliminaryQuarterBudgetMap,
-    })
+    !hasVisibleBudget &&
+    !(includeFinancialEffects && hasFinancialEffectInPeriod(row, selectedQuarters))
   ) {
     return false;
   }
