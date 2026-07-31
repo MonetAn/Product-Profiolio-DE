@@ -84,17 +84,18 @@ export function parseCostHistoryFromJson(raw: unknown): QuarterCostHistoryEntry[
   return parseCostHistory(raw);
 }
 
-export function appendRevenueRubHistory(
-  prev: AdminQuarterData,
-  nextRevenueRub: number | undefined,
+function appendMoneyHistory(
+  prevValue: number | undefined,
+  prevHistory: QuarterMoneyHistoryEntry[] | undefined,
+  nextValue: number | undefined,
   setInQuarter: string,
   saver?: QuarterHistorySaver
 ): QuarterMoneyHistoryEntry[] | undefined {
-  const nextVal = typeof nextRevenueRub === 'number' && nextRevenueRub > 0 ? nextRevenueRub : undefined;
-  if (nextVal === undefined) return prev.revenueRubHistory;
-  if (prev.revenueRub === nextVal) return prev.revenueRubHistory;
+  const nextVal = typeof nextValue === 'number' && nextValue > 0 ? nextValue : undefined;
+  if (nextVal === undefined) return prevHistory;
+  if (prevValue === nextVal) return prevHistory;
 
-  const history = [...(prev.revenueRubHistory ?? [])];
+  const history = [...(prevHistory ?? [])];
   const last = history[history.length - 1];
   if (last?.value === nextVal) return history;
 
@@ -106,6 +107,36 @@ export function appendRevenueRubHistory(
     ...(saver?.id ? { savedById: saver.id } : {}),
   });
   return history;
+}
+
+export function appendProfitRubHistory(
+  prev: AdminQuarterData,
+  nextProfitRub: number | undefined,
+  setInQuarter: string,
+  saver?: QuarterHistorySaver
+): QuarterMoneyHistoryEntry[] | undefined {
+  return appendMoneyHistory(
+    prev.profitRub,
+    prev.profitRubHistory,
+    nextProfitRub,
+    setInQuarter,
+    saver
+  );
+}
+
+export function appendGrossRevenueRubHistory(
+  prev: AdminQuarterData,
+  nextGrossRevenueRub: number | undefined,
+  setInQuarter: string,
+  saver?: QuarterHistorySaver
+): QuarterMoneyHistoryEntry[] | undefined {
+  return appendMoneyHistory(
+    prev.grossRevenueRub,
+    prev.grossRevenueRubHistory,
+    nextGrossRevenueRub,
+    setInQuarter,
+    saver
+  );
 }
 
 export function appendCostHistory(

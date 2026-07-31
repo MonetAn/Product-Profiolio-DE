@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminQuarterData } from './adminDataManager';
-import { appendCostHistory, appendRevenueRubHistory } from './quarterValueHistory';
+import {
+  appendCostHistory,
+  appendGrossRevenueRubHistory,
+  appendProfitRubHistory,
+} from './quarterValueHistory';
 
 const emptyQ = (): AdminQuarterData => ({
   cost: 0,
@@ -34,9 +38,22 @@ describe('appendCostHistory', () => {
   });
 });
 
-describe('appendRevenueRubHistory', () => {
+describe('financial value history', () => {
   it('appends when profit changes', () => {
-    const history = appendRevenueRubHistory(emptyQ(), 2_000_000, '2026-Q1');
+    const history = appendProfitRubHistory(emptyQ(), 2_000_000, '2026-Q1');
     expect(history?.[0]?.value).toBe(2_000_000);
+  });
+
+  it('keeps revenue history separate from profit history', () => {
+    const prev = {
+      ...emptyQ(),
+      profitRub: 2_000_000,
+      profitRubHistory: [
+        { value: 2_000_000, at: '2026-01-01', setInQuarter: '2026-Q1' },
+      ],
+    };
+    const history = appendGrossRevenueRubHistory(prev, 7_000_000, '2026-Q2');
+    expect(history).toHaveLength(1);
+    expect(history?.[0]).toMatchObject({ value: 7_000_000, setInQuarter: '2026-Q2' });
   });
 });

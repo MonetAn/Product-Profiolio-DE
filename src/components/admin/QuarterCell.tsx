@@ -56,7 +56,8 @@ const QuarterCell = ({
   const [localMetricFact, setLocalMetricFact] = useState(data.metricFact || '');
   const [localOtherCosts, setLocalOtherCosts] = useState(data.otherCosts || 0);
   const [localComment, setLocalComment] = useState(data.comment || '');
-  const [localRevenueRub, setLocalRevenueRub] = useState(data.revenueRub || 0);
+  const [localProfitRub, setLocalProfitRub] = useState(data.profitRub || 0);
+  const [localGrossRevenueRub, setLocalGrossRevenueRub] = useState(data.grossRevenueRub || 0);
   const { hasEarlyAccess } = useAccess();
 
   // Sync local state when external data changes (e.g. different row)
@@ -65,7 +66,10 @@ const QuarterCell = ({
   useEffect(() => { setLocalMetricFact(data.metricFact || ''); }, [data.metricFact]);
   useEffect(() => { setLocalOtherCosts(data.otherCosts || 0); }, [data.otherCosts]);
   useEffect(() => { setLocalComment(data.comment || ''); }, [data.comment]);
-  useEffect(() => { setLocalRevenueRub(data.revenueRub || 0); }, [data.revenueRub]);
+  useEffect(() => { setLocalProfitRub(data.profitRub || 0); }, [data.profitRub]);
+  useEffect(() => {
+    setLocalGrossRevenueRub(data.grossRevenueRub || 0);
+  }, [data.grossRevenueRub]);
 
   const effortValue = localEffort;
 
@@ -164,6 +168,18 @@ const QuarterCell = ({
                       <span className="font-medium">Стоимость:</span> {formatCurrency(totalCost)} ₽
                     </div>
                   )}
+                  {hasEarlyAccess && data.profitRub ? (
+                    <div>
+                      <span className="font-medium">Прибыль:</span>{' '}
+                      {formatCurrency(data.profitRub)} ₽
+                    </div>
+                  ) : null}
+                  {hasEarlyAccess && data.grossRevenueRub ? (
+                    <div>
+                      <span className="font-medium">Выручка:</span>{' '}
+                      {formatCurrency(data.grossRevenueRub)} ₽
+                    </div>
+                  ) : null}
                   {data.metricPlan && (
                     <div className="line-clamp-1">
                       <span className="font-medium">План:</span> {data.metricPlan}
@@ -247,18 +263,39 @@ const QuarterCell = ({
                 </div>
 
                 {hasEarlyAccess ? (
-                  <div className="space-y-1">
-                    <span className="text-xs text-muted-foreground">Прибыль (₽)</span>
-                    <RubAmountInput
-                      value={localRevenueRub}
-                      onChange={setLocalRevenueRub}
-                      onBlur={() =>
-                        onChange('revenueRub', localRevenueRub > 0 ? localRevenueRub : 0)
-                      }
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-7 text-sm"
-                      placeholder="0"
-                    />
+                  <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Финансовый эффект
+                    </span>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Прибыль (₽)</span>
+                      <RubAmountInput
+                        value={localProfitRub}
+                        onChange={setLocalProfitRub}
+                        onBlur={() =>
+                          onChange('profitRub', localProfitRub > 0 ? localProfitRub : 0)
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-7 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Выручка (₽)</span>
+                      <RubAmountInput
+                        value={localGrossRevenueRub}
+                        onChange={setLocalGrossRevenueRub}
+                        onBlur={() =>
+                          onChange(
+                            'grossRevenueRub',
+                            localGrossRevenueRub > 0 ? localGrossRevenueRub : 0
+                          )
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-7 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
                 ) : null}
 

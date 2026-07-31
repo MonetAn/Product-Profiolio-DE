@@ -528,6 +528,25 @@
   background: hsl(var(--support-color));
 }
 
+/* Финансовый квартал без затрат на разработку */
+.gantt-segment.financial {
+  background: linear-gradient(135deg, hsl(160 84% 32%), hsl(199 89% 42%));
+  box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.24);
+}
+
+.gantt-segment.financial-empty {
+  border: 1px dashed hsl(var(--border));
+  background: hsl(var(--muted) / 0.45);
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.gantt-segment.financial-empty:hover {
+  border-color: hsl(var(--primary) / 0.6);
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+}
+
 /* Off-track marker — soft corner in top-right */
 .gantt-segment.off-track {
   background-image: none;
@@ -953,6 +972,11 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
   color: hsl(var(--support-color));
 }
 
+.gantt-quarter-popup-badge.financial {
+  background: hsl(160 84% 39% / 0.13);
+  color: hsl(160 84% 30%);
+}
+
 .gantt-quarter-popup-badge.off-track {
   background: hsl(var(--destructive) / 0.2);
   color: hsl(var(--destructive));
@@ -977,6 +1001,10 @@ html.admin-engineering .gantt-quarter-popup-admin-warning-line {
 
 .gantt-quarter-popup-profit {
   background: hsl(var(--primary) / 0.08);
+}
+
+.gantt-quarter-popup-revenue {
+  background: hsl(199 89% 48% / 0.1);
 }
 
 .gantt-quarter-history {

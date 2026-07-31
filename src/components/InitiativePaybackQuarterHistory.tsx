@@ -9,6 +9,7 @@ import {
   computePlanningForecastBreakdown,
   formatPaybackRubAmount,
   formatPaybackRatio,
+  formatRoiPercent,
   formatQuarterHuman,
   paybackSummaryTitle,
   paybackToneClass,
@@ -27,7 +28,7 @@ interface InitiativePaybackRevenueTotalProps {
   size?: 'xs' | 'sm';
 }
 
-/** Сумма прибыли за выбранный период (вместо % от бюджета на экране). */
+/** Основной финансовый показатель за выбранный период. */
 export function InitiativePaybackRevenueTotal({
   quarterlyData,
   selectedQuarters,
@@ -39,17 +40,29 @@ export function InitiativePaybackRevenueTotal({
     [quarterlyData, selectedQuarters]
   );
 
-  if (!summary || summary.periodRevenue <= 0) return null;
+  if (!summary || (summary.periodRevenue <= 0 && summary.periodGrossRevenue <= 0)) {
+    return null;
+  }
 
   const sizeClass = size === 'xs' ? 'text-[10px]' : 'text-[12px]';
   const title = paybackSummaryTitle(summary);
+  const hasProfit = summary.periodRevenue > 0;
+  const value = hasProfit ? summary.periodRevenue : summary.periodGrossRevenue;
+  const label = hasProfit ? 'Прибыль' : 'Выручка';
 
   return (
     <span
-      className={cn('gantt-payback-revenue-total font-medium text-emerald-700 dark:text-emerald-400', sizeClass, className)}
+      className={cn(
+        'gantt-payback-revenue-total font-medium',
+        hasProfit
+          ? 'text-emerald-700 dark:text-emerald-400'
+          : 'text-sky-700 dark:text-sky-400',
+        sizeClass,
+        className
+      )}
       title={title}
     >
-      +{formatBudget(summary.periodRevenue)}
+      {label} +{formatBudget(value)}
     </span>
   );
 }
@@ -120,6 +133,9 @@ function QuarterCashFlowStrip({
       {forecast.lines.map((line) => {
         const prev = prevByTarget.get(line.targetQuarter);
         const revenueDelta = prev ? line.revenueRub - prev.revenueRub : null;
+        const grossRevenueDelta = prev
+          ? (line.grossRevenueRub ?? 0) - (prev.grossRevenueRub ?? 0)
+          : null;
         const costDelta = prev ? line.costRub - prev.costRub : null;
         const isNew = !prev;
         const isPositive = line.cumulativeNetRub > 0;
@@ -128,7 +144,8 @@ function QuarterCashFlowStrip({
           ? isNew
             ? ['Новый квартал в прогнозе']
             : [
-                formatDeltaHint(revenueDelta ?? 0, 'доходы'),
+                formatDeltaHint(revenueDelta ?? 0, 'прибыль'),
+                formatDeltaHint(grossRevenueDelta ?? 0, 'выручка'),
                 formatDeltaHint(costDelta ?? 0, 'расходы'),
               ].filter((hint): hint is string => Boolean(hint))
           : [];
@@ -164,8 +181,10 @@ function QuarterCashFlowStrip({
                 {formatQuarterHuman(line.targetQuarter)}
               </p>
               <div className="initiative-payback-quarter-tooltip-grid">
-                <span>Доходы за квартал</span>
+                <span>Прибыль за квартал</span>
                 <strong>+{formatPaybackRubAmount(line.revenueRub)}</strong>
+                <span>Выручка за квартал</span>
+                <strong>+{formatPaybackRubAmount(line.grossRevenueRub ?? 0)}</strong>
                 <span>Расходы за квартал</span>
                 <strong>−{formatPaybackRubAmount(line.costRub)}</strong>
                 <span>Результат квартала</span>
@@ -244,7 +263,13 @@ export function InitiativePaybackCurrentSummary({
   if (!forecast) return null;
 
   const ratioLabel =
-    forecast.ratio != null ? formatPaybackRatio(forecast.ratio) : '—';
+    forecast.ratio != null
+      ? formatRoiPercent(forecast.ratio)
+      : forecast.grossRevenueToCostRatio != null
+        ? formatPaybackRatio(forecast.grossRevenueToCostRatio)
+        : '—';
+  const ratioTitle =
+    forecast.ratio != null ? 'ROI' : 'Выручка / затраты';
 
   return (
     <section className="initiative-payback-forecast-section">
@@ -252,19 +277,26 @@ export function InitiativePaybackCurrentSummary({
         <div className="initiative-payback-current-head">
           <p className="initiative-payback-current-totals">
             <span>
-              Доходы <strong>{formatPaybackRubAmount(forecast.periodRevenue)}</strong>
+              Прибыль <strong>{formatPaybackRubAmount(forecast.periodRevenue)}</strong>
             </span>
             <span className="initiative-payback-current-totals-sep">/</span>
             <span>
-              Расходы <strong>{formatPaybackRubAmount(forecast.periodCost)}</strong>
+              Выручка{' '}
+              <strong>{formatPaybackRubAmount(forecast.periodGrossRevenue)}</strong>
+            </span>
+            <span className="initiative-payback-current-totals-sep">/</span>
+            <span>
+              Затраты <strong>{formatPaybackRubAmount(forecast.periodCost)}</strong>
             </span>
           </p>
           <span className="initiative-payback-current-ratio-wrap">
-            <span className="initiative-payback-current-ratio-label">Окупаемость</span>
+            <span className="initiative-payback-current-ratio-label">{ratioTitle}</span>
             <strong
               className={cn(
                 'initiative-payback-current-ratio tabular-nums',
-                forecast.ratio != null && paybackToneClass(forecast.isPaidOff)
+                forecast.ratio != null
+                  ? paybackToneClass(forecast.isPaidOff)
+                  : 'text-sky-700 dark:text-sky-400'
               )}
             >
               {ratioLabel}
@@ -351,7 +383,12 @@ export function InitiativePaybackQuarterHistoryPanel({
       {points.map((point, index) => {
         const { planningQuarter, summary, isCurrentPlanningQuarter } = point;
         const expanded = expandedPlanningQuarter === planningQuarter;
-        const ratioLabel = summary.ratio != null ? formatPaybackRatio(summary.ratio) : '—';
+        const ratioLabel =
+          summary.ratio != null
+            ? `ROI ${formatRoiPercent(summary.ratio)}`
+            : summary.grossRevenueToCostRatio != null
+              ? `Выручка ${formatPaybackRatio(summary.grossRevenueToCostRatio)}`
+              : '—';
         const planningLabel = formatQuarterHuman(planningQuarter);
 
         const breakdown = expanded
@@ -393,15 +430,20 @@ export function InitiativePaybackQuarterHistoryPanel({
                   ) : null}
                 </span>
                 <span className="gantt-detail-payback-history-totals">
-                  Доходы <strong>{formatPaybackRubAmount(summary.periodRevenue)}</strong>
+                  Прибыль <strong>{formatPaybackRubAmount(summary.periodRevenue)}</strong>
                   <span className="gantt-detail-payback-history-totals-sep">/</span>
-                  Расходы <strong>{formatPaybackRubAmount(summary.periodCost)}</strong>
+                  Выручка{' '}
+                  <strong>{formatPaybackRubAmount(summary.periodGrossRevenue)}</strong>
+                  <span className="gantt-detail-payback-history-totals-sep">/</span>
+                  Затраты <strong>{formatPaybackRubAmount(summary.periodCost)}</strong>
                 </span>
               </span>
               <span
                 className={cn(
                   'gantt-detail-payback-history-ratio font-semibold tabular-nums',
-                  summary.ratio != null && paybackToneClass(summary.isPaidOff)
+                  summary.ratio != null
+                    ? paybackToneClass(summary.isPaidOff)
+                    : 'text-sky-700 dark:text-sky-400'
                 )}
               >
                 {ratioLabel}
@@ -420,8 +462,8 @@ export function InitiativePaybackQuarterHistoryPanel({
     </ul>
     ) : (
       <p className="initiative-payback-history-empty text-sm text-muted-foreground">
-        Пока нет записей. Заполните прибыль по кварталам в админке и сохраните — история начнёт
-        копиться с первого изменения.
+        Пока нет записей. Заполните прибыль или выручку по кварталам в админке и
+        сохраните — история начнёт копиться с первого изменения.
       </p>
     );
 

@@ -15,6 +15,7 @@ import {
 import { Tables, Json } from '@/integrations/supabase/types';
 import { fetchPortfolioCompletedMap } from '@/lib/portfolioMeta';
 import { normalizeInitiativeTags } from '@/lib/initiativeTags';
+import { defaultPortfolioQuarters2026 } from '@/lib/budgetTruth2026';
 
 type DBInitiative = Pick<
   Tables<'initiatives'>,
@@ -74,6 +75,15 @@ export function parseAdminQuarterFromJson(
 ): AdminQuarterData | null {
   if (!isQuarterPeriodKey(quarterKey)) return null;
   const cfc = qData.costFinanceConfirmed;
+  const profitRub =
+    typeof qData.profitRub === 'number' && qData.profitRub > 0
+      ? qData.profitRub
+      : typeof qData.revenueRub === 'number' && qData.revenueRub > 0
+        ? qData.revenueRub
+        : undefined;
+  const profitRubHistory =
+    parseRevenueRubHistoryFromJson(qData.profitRubHistory) ??
+    parseRevenueRubHistoryFromJson(qData.revenueRubHistory);
   return {
     cost: typeof qData.cost === 'number' ? qData.cost : 0,
     otherCosts: typeof qData.otherCosts === 'number' ? qData.otherCosts : 0,
@@ -84,9 +94,13 @@ export function parseAdminQuarterFromJson(
     comment: typeof qData.comment === 'string' ? qData.comment : '',
     effortCoefficient: typeof qData.effortCoefficient === 'number' ? qData.effortCoefficient : 0,
     costFinanceConfirmed: cfc === false ? false : true,
-    revenueRub:
-      typeof qData.revenueRub === 'number' && qData.revenueRub > 0 ? qData.revenueRub : undefined,
-    revenueRubHistory: parseRevenueRubHistoryFromJson(qData.revenueRubHistory),
+    profitRub,
+    profitRubHistory,
+    grossRevenueRub:
+      typeof qData.grossRevenueRub === 'number' && qData.grossRevenueRub > 0
+        ? qData.grossRevenueRub
+        : undefined,
+    grossRevenueRubHistory: parseRevenueRubHistoryFromJson(qData.grossRevenueRubHistory),
     costHistory: parseCostHistoryFromJson(qData.costHistory),
   };
 }
@@ -154,11 +168,17 @@ function quarterlyDataToJson(data: Record<string, AdminQuarterData>): Json {
     if (value.costFinanceConfirmed === false) {
       row.costFinanceConfirmed = false;
     }
-    if (typeof value.revenueRub === 'number' && value.revenueRub > 0) {
-      row.revenueRub = value.revenueRub;
+    if (typeof value.profitRub === 'number' && value.profitRub > 0) {
+      row.profitRub = value.profitRub;
     }
-    if (value.revenueRubHistory?.length) {
-      row.revenueRubHistory = value.revenueRubHistory;
+    if (value.profitRubHistory?.length) {
+      row.profitRubHistory = value.profitRubHistory;
+    }
+    if (typeof value.grossRevenueRub === 'number' && value.grossRevenueRub > 0) {
+      row.grossRevenueRub = value.grossRevenueRub;
+    }
+    if (value.grossRevenueRubHistory?.length) {
+      row.grossRevenueRubHistory = value.grossRevenueRubHistory;
     }
     if (value.costHistory?.length) {
       row.costHistory = value.costHistory;
@@ -364,5 +384,5 @@ export function useInitiatives(scope?: InitiativesScope & { enabled?: boolean })
 // Hook to get unique quarters from loaded data
 export function useQuarters(data: AdminDataRow[] | undefined) {
   if (!data || data.length === 0) return [];
-  return extractQuartersFromData(data);
+  return defaultPortfolioQuarters2026(extractQuartersFromData(data));
 }

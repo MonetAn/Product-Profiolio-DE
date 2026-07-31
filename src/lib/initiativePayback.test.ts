@@ -21,7 +21,7 @@ describe('quarterly cash-flow forecast', () => {
       {
         '2026-Q1': { budget: 3_000_000 },
         '2026-Q2': { budget: 4_000_000 },
-        '2026-Q3': { budget: 4_000_000, revenueRub: 5_000_000 },
+        '2026-Q3': { budget: 4_000_000, profitRub: 5_000_000 },
       },
       ['2026-Q1', '2026-Q2', '2026-Q3']
     );
@@ -63,40 +63,73 @@ describe('computeInitiativePayback', () => {
     ).toBeNull();
   });
 
-  it('sums only quarters with revenue and matching cost', () => {
+  it('keeps investment quarters without profit in ROI cost', () => {
     const summary = computeInitiativePayback(
       {
         '2026-Q1': { budget: 1_000_000 },
-        '2026-Q2': { budget: 500_000, revenueRub: 2_000_000 },
-        '2026-Q3': { budget: 300_000, revenueRub: 400_000 },
+        '2026-Q2': { budget: 500_000, profitRub: 2_000_000 },
+        '2026-Q3': { budget: 300_000, profitRub: 400_000 },
       },
       ['2026-Q1', '2026-Q2', '2026-Q3']
     );
     expect(summary).toMatchObject({
       periodRevenue: 2_400_000,
-      periodCost: 800_000,
-      ratio: 3,
+      periodCost: 1_800_000,
+      ratio: 2_400_000 / 1_800_000,
       isPaidOff: true,
-      revenueQuarters: ['2026-Q2', '2026-Q3'],
+      financialQuarters: ['2026-Q2', '2026-Q3'],
     });
   });
 
   it('marks not paid off when revenue < cost', () => {
     const summary = computeInitiativePayback(
-      { '2026-Q2': { budget: 2_000_000, revenueRub: 1_000_000 } },
+      { '2026-Q2': { budget: 2_000_000, profitRub: 1_000_000 } },
       ['2026-Q2']
     );
     expect(summary?.isPaidOff).toBe(false);
     expect(summary?.ratio).toBe(0.5);
   });
+
+  it('supports profit in a quarter without development cost', () => {
+    const summary = computeInitiativePayback(
+      {
+        '2026-Q1': { budget: 3_000_000 },
+        '2026-Q2': { budget: 0, profitRub: 5_000_000 },
+      },
+      ['2026-Q1', '2026-Q2']
+    );
+    expect(summary).toMatchObject({
+      periodRevenue: 5_000_000,
+      periodCost: 3_000_000,
+      ratio: 5 / 3,
+      financialQuarters: ['2026-Q2'],
+    });
+  });
+
+  it('keeps gross revenue separate when profit is not provided', () => {
+    const summary = computeInitiativePayback(
+      {
+        '2026-Q1': { budget: 2_000_000 },
+        '2026-Q2': { budget: 0, grossRevenueRub: 6_000_000 },
+      },
+      ['2026-Q1', '2026-Q2']
+    );
+    expect(summary).toMatchObject({
+      periodRevenue: 0,
+      periodGrossRevenue: 6_000_000,
+      periodCost: 2_000_000,
+      ratio: null,
+      grossRevenueToCostRatio: 3,
+    });
+  });
 });
 
 describe('computeInitiativePaybackDashboard', () => {
   const data = {
-    '2026-Q1': { budget: 1_000_000, revenueRub: 500_000 },
-    '2026-Q2': { budget: 2_000_000, revenueRub: 3_000_000 },
+    '2026-Q1': { budget: 1_000_000, profitRub: 500_000 },
+    '2026-Q2': { budget: 2_000_000, profitRub: 3_000_000 },
     '2026-Q3': { budget: 500_000 },
-    '2026-Q4': { budget: 800_000, revenueRub: 1_000_000 },
+    '2026-Q4': { budget: 800_000, profitRub: 1_000_000 },
   };
 
   it('returns null when no revenue in year', () => {
@@ -128,8 +161,8 @@ describe('computeInitiativePaybackAsOf with history', () => {
     const data = {
       '2026-Q2': {
         budget: 2_000_000,
-        revenueRub: 3_000_000,
-        revenueRubHistory: [
+        profitRub: 3_000_000,
+        profitRubHistory: [
           { value: 1_000_000, at: '2026-01-10T10:00:00.000Z', setInQuarter: '2026-Q1' },
           { value: 2_000_000, at: '2026-04-15T10:00:00.000Z', setInQuarter: '2026-Q2' },
         ],
@@ -165,9 +198,9 @@ describe('computeInitiativePaybackAsOf with history', () => {
 describe('computeInitiativePlanningForecastSeries', () => {
   it('shows full-period forecast per planning quarter, not cumulative initiative quarters', () => {
     const data = {
-      '2026-Q2': { budget: 2_000_000, revenueRub: 3_000_000 },
-      '2026-Q3': { budget: 1_000_000, revenueRub: 1_500_000 },
-      '2026-Q4': { budget: 800_000, revenueRub: 1_000_000 },
+      '2026-Q2': { budget: 2_000_000, profitRub: 3_000_000 },
+      '2026-Q3': { budget: 1_000_000, profitRub: 1_500_000 },
+      '2026-Q4': { budget: 800_000, profitRub: 1_000_000 },
     };
 
     const q2Forecast = computeInitiativePaybackForecastAtPlanningQuarter(
@@ -194,8 +227,8 @@ describe('computeInitiativePlanningForecastSeries', () => {
     const data = {
       '2026-Q2': {
         budget: 2_000_000,
-        revenueRub: 4_000_000,
-        revenueRubHistory: [
+        profitRub: 4_000_000,
+        profitRubHistory: [
           { value: 3_000_000, at: '2026-04-01T10:00:00.000Z', setInQuarter: '2026-Q2' },
           { value: 4_000_000, at: '2026-07-01T10:00:00.000Z', setInQuarter: '2026-Q3' },
         ],
@@ -221,8 +254,8 @@ describe('computeInitiativePlanningForecastSeries', () => {
   it('breaks down forecast by initiative quarter', () => {
     const breakdown = computePlanningForecastBreakdown(
       {
-        '2026-Q2': { budget: 2_000_000, revenueRub: 3_000_000 },
-        '2026-Q4': { budget: 800_000, revenueRub: 1_000_000 },
+        '2026-Q2': { budget: 2_000_000, profitRub: 3_000_000 },
+        '2026-Q4': { budget: 800_000, profitRub: 1_000_000 },
       },
       ['2026-Q2', '2026-Q4'],
       '2026-Q2'
@@ -236,16 +269,31 @@ describe('computeInitiativePlanningForecastSeries', () => {
     const breakdown = computePlanningForecastBreakdown(
       {
         '2026-Q1': { budget: 3_000_000 },
-        '2026-Q2': { budget: 4_000_000, revenueRub: 5_000_000 },
+        '2026-Q2': { budget: 4_000_000, profitRub: 5_000_000 },
       },
       ['2026-Q1', '2026-Q2', '2026-Q3'],
       '2026-Q1'
     );
 
     expect(breakdown?.lines).toEqual([
-      { targetQuarter: '2026-Q1', costRub: 3_000_000, revenueRub: 0 },
-      { targetQuarter: '2026-Q2', costRub: 4_000_000, revenueRub: 5_000_000 },
-      { targetQuarter: '2026-Q3', costRub: 0, revenueRub: 0 },
+      {
+        targetQuarter: '2026-Q1',
+        costRub: 3_000_000,
+        revenueRub: 0,
+        grossRevenueRub: 0,
+      },
+      {
+        targetQuarter: '2026-Q2',
+        costRub: 4_000_000,
+        revenueRub: 5_000_000,
+        grossRevenueRub: 0,
+      },
+      {
+        targetQuarter: '2026-Q3',
+        costRub: 0,
+        revenueRub: 0,
+        grossRevenueRub: 0,
+      },
     ]);
     expect(breakdown?.summary.periodCost).toBe(7_000_000);
   });
@@ -267,8 +315,10 @@ describe('formatPaybackVsAmounts', () => {
 describe('payback tooltip copy', () => {
   const ytd = {
     periodRevenue: 2_000_000,
+    periodGrossRevenue: 0,
     periodCost: 2_600_000,
     ratio: 2_000_000 / 2_600_000,
+    grossRevenueToCostRatio: null,
     isPaidOff: false,
   };
 

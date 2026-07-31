@@ -26,7 +26,12 @@ import {
   frozenTeamTotalsForTeam,
   redistributeTeamCosts2026InDb,
 } from '@/lib/redistributeTeamCosts2026';
-import { appendCostHistory, appendRevenueRubHistory, type QuarterHistorySaver } from '@/lib/quarterValueHistory';
+import {
+  appendCostHistory,
+  appendGrossRevenueRubHistory,
+  appendProfitRubHistory,
+  type QuarterHistorySaver,
+} from '@/lib/quarterValueHistory';
 import { getCurrentQuarter } from '@/lib/quarterUtils';
 import { getCurrentUserDisplayName } from '@/lib/authDisplayName';
 import { BUDGET_DEPARTMENT_ALLOCATIONS_QUERY_KEY } from '@/hooks/useBudgetDepartmentAllocations';
@@ -594,12 +599,15 @@ export function useInitiativeMutations() {
         field === 'costFinanceConfirmed'
           ? { ...prevQ, [field]: value as boolean }
           : { ...prevQ, [field]: value, costFinanceConfirmed: true };
-      if (
-        field === 'revenueRub' &&
-        (value === undefined || value === 0 || value === null)
-      ) {
-        const { revenueRub: _removed, ...rest } = nextQuarter;
-        nextQuarter = rest as AdminQuarterData;
+      if (value === undefined || value === 0 || value === null) {
+        if (field === 'profitRub') {
+          const { profitRub: _removed, ...rest } = nextQuarter;
+          nextQuarter = rest as AdminQuarterData;
+        }
+        if (field === 'grossRevenueRub') {
+          const { grossRevenueRub: _removed, ...rest } = nextQuarter;
+          nextQuarter = rest as AdminQuarterData;
+        }
       }
 
       const setInQuarter = getCurrentQuarter();
@@ -613,12 +621,25 @@ export function useInitiativeMutations() {
           costHistory: appendCostHistory(prevQ, nextCost, nextOtherCosts, setInQuarter, saver),
         };
       }
-      if (field === 'revenueRub') {
-        const nextRevenue =
+      if (field === 'profitRub') {
+        const nextProfit =
           typeof value === 'number' && value > 0 ? value : undefined;
         nextQuarter = {
           ...nextQuarter,
-          revenueRubHistory: appendRevenueRubHistory(prevQ, nextRevenue, setInQuarter, saver),
+          profitRubHistory: appendProfitRubHistory(prevQ, nextProfit, setInQuarter, saver),
+        };
+      }
+      if (field === 'grossRevenueRub') {
+        const nextGrossRevenue =
+          typeof value === 'number' && value > 0 ? value : undefined;
+        nextQuarter = {
+          ...nextQuarter,
+          grossRevenueRubHistory: appendGrossRevenueRubHistory(
+            prevQ,
+            nextGrossRevenue,
+            setInQuarter,
+            saver
+          ),
         };
       }
 

@@ -64,9 +64,13 @@ export interface AdminQuarterData {
   /** false — предварительная стоимость (Quick Flow); true/undefined — подтверждено финансами */
   costFinanceConfirmed?: boolean;
   /** Прибыль инициативы за квартал, ₽ (опционально, early access) */
-  revenueRub?: number;
+  profitRub?: number;
   /** История изменений прибыли за квартал */
-  revenueRubHistory?: QuarterMoneyHistoryEntry[];
+  profitRubHistory?: QuarterMoneyHistoryEntry[];
+  /** Валовая выручка инициативы за квартал, ₽ (опционально, early access) */
+  grossRevenueRub?: number;
+  /** История изменений валовой выручки за квартал */
+  grossRevenueRubHistory?: QuarterMoneyHistoryEntry[];
   /** История изменений бюджета (cost + otherCosts) за квартал */
   costHistory?: QuarterCostHistoryEntry[];
 }

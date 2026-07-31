@@ -82,6 +82,49 @@ describe('rowPassesTimelineFilters', () => {
     ).toBe(false);
   });
 
+  it('passes when the period has profit without development cost', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          quarterlyData: {
+            '2026-Q1': { budget: 0, profitRub: 2_000_000 },
+          },
+        }),
+        { ...baseOptions, includeFinancialEffects: true }
+      )
+    ).toBe(true);
+  });
+
+  it('passes when the period has gross revenue without development cost', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          quarterlyData: {
+            '2026-Q1': { budget: 0, grossRevenueRub: 6_000_000 },
+          },
+        }),
+        { ...baseOptions, includeFinancialEffects: true }
+      )
+    ).toBe(true);
+  });
+
+  it('hides a financial-only period without early access', () => {
+    expect(
+      rowPassesTimelineFilters(
+        baseRow({
+          quarterlyData: {
+            '2026-Q1': {
+              budget: 0,
+              profitRub: 2_000_000,
+              grossRevenueRub: 6_000_000,
+            },
+          },
+        }),
+        baseOptions
+      )
+    ).toBe(false);
+  });
+
   it('passes off-track filter when any selected quarter is off-track', () => {
     expect(
       rowPassesTimelineFilters(
