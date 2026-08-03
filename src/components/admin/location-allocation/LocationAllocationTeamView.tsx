@@ -39,7 +39,6 @@ import {
   type LocationAllocationScenarioTeamCardInput,
   type LocationAllocationScenarioTeam,
 } from '@/hooks/useLocationAllocationScenario';
-import { useAuth } from '@/hooks/useAuth';
 import { InitiativeAllocationComments } from './InitiativeAllocationComments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1086,7 +1085,6 @@ export function LocationAllocationTeamView({
   selectedUnit = null,
   onSelectedUnitChange,
 }: Props) {
-  const { user } = useAuth();
   const metricByTeam = useMemo(() => {
     return new Map(
       teamMetrics.map((metric) => [
@@ -1243,7 +1241,7 @@ export function LocationAllocationTeamView({
     getTreemapUnitIcon(activeGroup?.unit ?? '') ?? Building2;
   const editMode = !readOnly && Boolean(activeGroup);
   const canManageActiveUnit =
-    !readOnly && canManageAllocationScenarioTeams(user?.email);
+    !readOnly && canManageAllocationScenarioTeams();
   const activeFot2025 =
     activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ?? 0;
   const activeFot2026 =

@@ -2,7 +2,8 @@ export const ALLOCATION_SCENARIO_UNITS = [
   'App&Web',
   'B2B Pizza',
   'Client Platform',
-  'Data Office + AI Hub',
+  'Data Office',
+  'AI Hub',
   'Tech Platform',
 ] as const;
 
@@ -10,7 +11,7 @@ export type AllocationScenarioUnit =
   (typeof ALLOCATION_SCENARIO_UNITS)[number];
 
 export const DEFAULT_ALLOCATION_SCENARIO_UNIT: AllocationScenarioUnit =
-  'Data Office + AI Hub';
+  'Data Office';
 
 const ALLOCATION_SCENARIO_UNIT_SET = new Set<string>(
   ALLOCATION_SCENARIO_UNITS
@@ -20,7 +21,7 @@ export function normalizeAllocationScenarioUnit(
   value: string | null | undefined
 ): AllocationScenarioUnit | null {
   const unit = value?.trim() ?? '';
-  if (unit === 'Data Office') return 'Data Office + AI Hub';
+  if (unit === 'Data Office + AI Hub') return 'Data Office';
   return ALLOCATION_SCENARIO_UNIT_SET.has(unit)
     ? (unit as AllocationScenarioUnit)
     : null;
