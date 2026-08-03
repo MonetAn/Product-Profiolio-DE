@@ -22,10 +22,8 @@ import {
   RefreshCw,
   Save,
   Trash2,
-  Users,
 } from 'lucide-react';
 import type { AdminDataRow } from '@/lib/adminDataManager';
-import type { LocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
 import {
   locationTeamKey,
   sumTeamCostForYear,
@@ -99,7 +97,6 @@ import { DrinkitBrandMark } from './DrinkitBrandMark';
 
 type Props = {
   initiatives: AdminDataRow[];
-  headcount: LocationHeadcountIndex;
   teamMetrics?: LocationAllocationTeamMetric[];
   readOnly?: boolean;
   selectedUnit?: string | null;
@@ -787,15 +784,6 @@ function TeamCard({
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Люди
-              </p>
-              <p className="mt-0.5 flex items-center gap-1 text-lg font-semibold tabular-nums">
-                <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                {team.peopleCount}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 ФОТ 2025
               </p>
               <p className="mt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
@@ -1103,7 +1091,6 @@ function TeamCard({
 
 export function LocationAllocationTeamView({
   initiatives,
-  headcount,
   teamMetrics = [],
   readOnly = false,
   selectedUnit = null,
@@ -1144,8 +1131,6 @@ export function LocationAllocationTeamView({
           name: metric?.teamDisplayName ?? sourceTeam,
           fot2025Rub: metric?.fot2025Rub ?? sumTeamCostForYear(rows, 2025),
           fot2026Rub: metric?.fot2026Rub ?? sumTeamCostForYear(rows, 2026),
-          peopleCount:
-            metric?.peopleCountOverride ?? headcount.byTeam.get(key) ?? 0,
           runPercent: 0,
         };
       })
@@ -1161,7 +1146,7 @@ export function LocationAllocationTeamView({
               b.unit as (typeof ALLOCATION_SCENARIO_UNITS)[number]
             ) || a.name.localeCompare(b.name, 'ru')
       );
-  }, [headcount.byTeam, initiatives, metricByTeam]);
+  }, [initiatives, metricByTeam]);
 
   const scenario = useLocationAllocationScenario({
     sourceTeams,
@@ -1331,9 +1316,6 @@ export function LocationAllocationTeamView({
     activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ?? 0;
   const activeFot2026 =
     activeGroup?.teams.reduce((sum, team) => sum + team.fot2026Rub, 0) ?? 0;
-  const activePeople =
-    activeGroup?.teams.reduce((sum, team) => sum + team.peopleCount, 0) ?? 0;
-
   useEffect(() => {
     if (!editMode) {
       setDraggedTeamId(null);
@@ -1494,14 +1476,6 @@ export function LocationAllocationTeamView({
                 </p>
                 <p className="text-xl font-semibold tabular-nums">
                   {formatLocationExactRub(activeFot2026)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Люди
-                </p>
-                <p className="text-lg font-semibold tabular-nums">
-                  {activePeople}
                 </p>
               </div>
               <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground">

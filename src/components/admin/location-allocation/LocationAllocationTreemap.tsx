@@ -24,7 +24,6 @@ import {
   type LocationAllocationGeoEditTarget,
 } from '@/lib/locationAllocationGeoEdit';
 import type { InitiativeTag } from '@/lib/initiativeTags';
-import type { LocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
 import { useLocationAllocationCommentSummary } from '@/hooks/useLocationAllocationCommentSummary';
 import { locationAllocationFilterFocusPath } from '@/lib/locationAllocationFilterNavigation';
 
@@ -39,7 +38,6 @@ type Props = {
   countryIdToClusterKey: Map<string, string>;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
-  headcount?: LocationHeadcountIndex;
   showTeams: boolean;
   onShowTeamsChange: (show: boolean) => void;
   showInitiatives: boolean;
@@ -63,7 +61,6 @@ export function LocationAllocationTreemap({
   countryIdToClusterKey,
   onGeoCostSplitSave,
   onInitiativeTagsSave,
-  headcount,
   showTeams,
   onShowTeamsChange,
   showInitiatives,
@@ -129,10 +126,9 @@ export function LocationAllocationTreemap({
         filteredInitiatives,
         yearQuarters,
         countries,
-        countryIdToClusterKey,
-        headcount
+        countryIdToClusterKey
       ),
-    [filteredInitiatives, yearQuarters, countries, countryIdToClusterKey, headcount]
+    [filteredInitiatives, yearQuarters, countries, countryIdToClusterKey]
   );
 
   const initiativesById = useMemo(

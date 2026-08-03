@@ -11,7 +11,6 @@ export type LocationAllocationTeamMetric = {
   fot2026Rub: number | null;
   unitDisplayName: string | null;
   teamDisplayName: string | null;
-  peopleCountOverride: number | null;
   runPercentOverride: number | null;
   updatedByName: string;
   updatedAt: string | null;
@@ -23,11 +22,21 @@ type MetricPatch = {
   fot2025Rub?: number | null;
   fot2026Rub?: number | null;
   teamDisplayName?: string | null;
-  peopleCountOverride?: number | null;
   runPercentOverride?: number | null;
 };
 
 const QUERY_KEY = ['location-allocation-team-metrics'] as const;
+const TEAM_METRIC_SELECT = [
+  'unit',
+  'team',
+  'fot_2025_rub',
+  'fot_2026_rub',
+  'unit_display_name',
+  'team_display_name',
+  'run_percent_override',
+  'updated_by_name',
+  'updated_at',
+].join(',');
 // Новая таблица появится после миграции, поэтому клиент до регенерации типов untyped.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -46,7 +55,7 @@ export function useLocationAllocationTeamMetrics({
     queryFn: async (): Promise<LocationAllocationTeamMetric[]> => {
       const { data, error } = await sb
         .from('location_allocation_team_metrics')
-        .select('*');
+        .select(TEAM_METRIC_SELECT);
       if (error) {
         // До применения миграции командный вид остаётся доступен в расчётном режиме.
         if (error.code === '42P01' || error.code === 'PGRST205') return [];
@@ -67,10 +76,6 @@ export function useLocationAllocationTeamMetrics({
           typeof row.team_display_name === 'string' && row.team_display_name.trim()
             ? row.team_display_name.trim()
             : null,
-        peopleCountOverride:
-          row.people_count_override == null
-            ? null
-            : Math.max(0, Math.round(Number(row.people_count_override) || 0)),
         runPercentOverride:
           row.run_percent_override == null
             ? null
@@ -99,9 +104,6 @@ export function useLocationAllocationTeamMetrics({
       if ('fot2026Rub' in patch) row.fot_2026_rub = patch.fot2026Rub;
       if ('teamDisplayName' in patch) {
         row.team_display_name = patch.teamDisplayName?.trim() || null;
-      }
-      if ('peopleCountOverride' in patch) {
-        row.people_count_override = patch.peopleCountOverride;
       }
       if ('runPercentOverride' in patch) {
         row.run_percent_override = patch.runPercentOverride;

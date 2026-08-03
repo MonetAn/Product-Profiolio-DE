@@ -52,8 +52,8 @@ interface DetailPanelData {
 
 type GanttHierarchyGrouping = {
   mode: 'unit-team' | 'team';
-  headcountByUnit: Map<string, number>;
-  headcountByTeam: Map<string, number>;
+  headcountByUnit?: Map<string, number>;
+  headcountByTeam?: Map<string, number>;
   unitSummaries?: Map<
     string,
     readonly {
@@ -412,7 +412,7 @@ const GanttView = ({
     for (const unitGroup of sortedUnits) {
       if (hierarchyGrouping.mode === 'unit-team') {
         const headcount =
-          hierarchyGrouping.headcountByUnit.get(unitGroup.unit);
+          hierarchyGrouping.headcountByUnit?.get(unitGroup.unit);
         items.push({
           type: 'unit',
           key: `unit:${unitGroup.unit}`,
@@ -430,7 +430,7 @@ const GanttView = ({
       for (const teamGroup of sortedTeams) {
         const teamKey = `${unitGroup.unit}\t${teamGroup.team}`;
         const headcount =
-          hierarchyGrouping.headcountByTeam.get(teamKey);
+          hierarchyGrouping.headcountByTeam?.get(teamKey);
         items.push({
           type: 'team',
           key: `team:${teamKey}`,
