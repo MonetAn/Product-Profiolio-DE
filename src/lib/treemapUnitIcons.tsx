@@ -5,6 +5,7 @@ import {
   Globe,
   Pencil,
   Pizza,
+  Sparkles,
   Users,
   Wallet,
   type LucideIcon,
@@ -23,6 +24,7 @@ export function getTreemapUnitIcon(unitName: string): LucideIcon | null {
   if (u.includes('drinkit') || u.includes('дринкит')) return CupSoda;
   if (u.includes('client') && u.includes('platform')) return Users;
   if (u.includes('data') && u.includes('office')) return Building2;
+  if (u === 'ai hub') return Sparkles;
   if (u.includes('tech') && u.includes('platform')) return Code;
   if (u === 'fap' || u.includes('фап')) return Wallet;
   if (u.includes('design') || u.includes('дизайн')) return Pencil;
