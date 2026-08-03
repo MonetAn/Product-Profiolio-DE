@@ -156,6 +156,9 @@ export function useInitiativeAllocationComments(
     queryClient.invalidateQueries({
       queryKey: ['location-allocation-comment-summary'],
     });
+    queryClient.invalidateQueries({
+      queryKey: ['allocation-notifications'],
+    });
   };
 
   const currentUserQuery = useQuery({

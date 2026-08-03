@@ -151,6 +151,29 @@ export function useAllocationNotifications(enabled = true) {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 
+  const deleteCommentMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      const { data, error } = await sb
+        .from('initiative_allocation_comments')
+        .delete()
+        .eq('id', commentId)
+        .select('id');
+      if (error) throw error;
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('Комментарий уже удалён или недоступен для удаления.');
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({
+        queryKey: ['location-allocation-comments'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['location-allocation-comment-summary'],
+      });
+    },
+  });
+
   const notifications = query.data ?? [];
   return {
     ...query,
@@ -160,5 +183,7 @@ export function useAllocationNotifications(enabled = true) {
     markReadMany: markManyMutation.mutateAsync,
     markAllRead: markAllMutation.mutateAsync,
     isMarkingAll: markAllMutation.isPending,
+    deleteComment: deleteCommentMutation.mutateAsync,
+    isDeletingComment: deleteCommentMutation.isPending,
   };
 }
