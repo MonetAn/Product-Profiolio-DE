@@ -566,6 +566,7 @@ function TeamCard({
   onDirtyStateChange,
   focusedCommentId,
   focusedReplyId,
+  focusedCommentScope,
 }: {
   team: LocationAllocationScenarioTeam;
   isExpanded: boolean;
@@ -587,6 +588,7 @@ function TeamCard({
   onDirtyStateChange: (teamId: string, dirty: boolean) => void;
   focusedCommentId?: string | null;
   focusedReplyId?: string | null;
+  focusedCommentScope?: LocationAllocationGeoEditScope | null;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -599,6 +601,15 @@ function TeamCard({
   const [saveFailed, setSaveFailed] = useState(false);
   const previousSavedDraftRef = useRef(createTeamCardDraft(team));
   const canReorder = editMode && canManageTeamActions;
+  const commentsScope: LocationAllocationGeoEditScope =
+    focusedCommentId && focusedCommentScope
+      ? focusedCommentScope
+      : {
+          type: 'team',
+          unit: team.sourceUnit ?? team.unit,
+          team: team.sourceTeam ?? team.name,
+        };
+  const showsInitiativeComment = commentsScope.type === 'initiative';
   const savedDraft = createTeamCardDraft(team);
   const hasUnsavedChanges = !teamCardDraftEquals(draft, savedDraft);
 
@@ -950,12 +961,13 @@ function TeamCard({
             ) : null}
 
             <div className="border-t border-border pt-5">
+              {showsInitiativeComment ? (
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  Обсуждение инициативы из уведомления
+                </p>
+              ) : null}
               <InitiativeAllocationComments
-                scope={{
-                  type: 'team',
-                  unit: team.sourceUnit ?? team.unit,
-                  team: team.sourceTeam ?? team.name,
-                }}
+                scope={commentsScope}
                 compact
                 hideEmptyState
                 focusedCommentId={focusedCommentId}
@@ -1573,6 +1585,11 @@ export function LocationAllocationTeamView({
                 focusedReplyId={
                   focusedTeamTarget?.teamId === team.id
                     ? focusedComment?.replyId
+                    : null
+                }
+                focusedCommentScope={
+                  focusedTeamTarget?.teamId === team.id
+                    ? focusedComment?.scope
                     : null
                 }
               />

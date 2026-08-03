@@ -4,8 +4,10 @@ import {
   Bell,
   CheckCheck,
   ChevronDown,
+  Loader2,
   MessageSquareText,
   Settings2,
+  Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -16,6 +18,16 @@ import {
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   RadioGroup,
   RadioGroupItem,
@@ -88,6 +100,8 @@ export function AllocationNotificationsBell() {
     useState<HTMLDivElement | null>(null);
   const notificationElementsRef = useRef(new Map<string, HTMLButtonElement>());
   const [open, setOpen] = useState(false);
+  const [deletingNotification, setDeletingNotification] =
+    useState<AllocationNotification | null>(null);
   const [view, setView] = useState<'notifications' | 'settings'>(
     'notifications'
   );
@@ -97,7 +111,7 @@ export function AllocationNotificationsBell() {
     AllocationNotificationTeamPair[]
   >([]);
   const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
-  const { canAccess, accessLoading } = useAccess();
+  const { canAccess, accessLoading, isSuperAdmin } = useAccess();
   const {
     notifications,
     unreadCount,
@@ -106,6 +120,8 @@ export function AllocationNotificationsBell() {
     markReadMany,
     markAllRead,
     isMarkingAll,
+    deleteComment,
+    isDeletingComment,
   } = useAllocationNotifications(canAccess && !accessLoading);
   const {
     preferences,
@@ -257,6 +273,23 @@ export function AllocationNotificationsBell() {
     }
   };
 
+  const confirmDeleteComment = async () => {
+    if (!deletingNotification) return;
+    try {
+      await deleteComment(deletingNotification.commentId);
+      setDeletingNotification(null);
+      setOpen(false);
+      toast({ title: 'Комментарий и связанные уведомления удалены' });
+    } catch (error) {
+      toast({
+        title: 'Не удалось удалить комментарий',
+        description:
+          error instanceof Error ? error.message : 'Попробуйте ещё раз.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const customSelectionEmpty =
     !draftAllScopes &&
     draftSelectedUnits.length === 0 &&
@@ -265,13 +298,14 @@ export function AllocationNotificationsBell() {
   if (!canAccess || accessLoading) return null;
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) setView('notifications');
-      }}
-    >
+    <>
+      <Popover
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) setView('notifications');
+        }}
+      >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -568,59 +602,119 @@ export function AllocationNotificationsBell() {
               ) : (
                 <div className="divide-y divide-border/70">
                   {notifications.map((item) => (
-                    <button
+                    <div
                       key={item.id}
-                      ref={(element) => setNotificationElement(item.id, element)}
-                      type="button"
-                      data-notification-id={item.id}
-                      data-notification-unread={!item.readAt}
                       className={cn(
-                        'flex w-full items-start gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                        'flex items-start transition-colors hover:bg-muted/60',
                         !item.readAt && 'bg-primary/[0.045]'
                       )}
-                      onClick={() => void openNotification(item)}
                     >
-                      <Avatar className="mt-0.5 h-8 w-8 border border-border">
-                        {item.actorAvatarUrl ? (
-                          <AvatarImage
-                            src={item.actorAvatarUrl}
-                            alt=""
-                            className="object-cover"
-                          />
-                        ) : null}
-                        <AvatarFallback className="text-[10px] font-semibold">
-                          {initials(item.actorName || item.actorEmail)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-start gap-2">
-                          <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-foreground">
-                            {notificationTitle(item)}
-                          </span>
-                          {!item.readAt ? (
-                            <span
-                              className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary"
-                              aria-label="Не прочитано"
+                      <button
+                        ref={(element) =>
+                          setNotificationElement(item.id, element)
+                        }
+                        type="button"
+                        data-notification-id={item.id}
+                        data-notification-unread={!item.readAt}
+                        className="flex min-w-0 flex-1 items-start gap-2.5 px-3.5 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        onClick={() => void openNotification(item)}
+                      >
+                        <Avatar className="mt-0.5 h-8 w-8 border border-border">
+                          {item.actorAvatarUrl ? (
+                            <AvatarImage
+                              src={item.actorAvatarUrl}
+                              alt=""
+                              className="object-cover"
                             />
                           ) : null}
-                        </span>
-                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                          {scopeLabel(item)} · {formatDate(item.createdAt)}
-                        </span>
-                        {item.excerpt ? (
-                          <span className="mt-1 line-clamp-2 block text-[11px] leading-relaxed text-foreground/70">
-                            {item.excerpt}
+                          <AvatarFallback className="text-[10px] font-semibold">
+                            {initials(item.actorName || item.actorEmail)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-start gap-2">
+                            <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-foreground">
+                              {notificationTitle(item)}
+                            </span>
+                            {!item.readAt ? (
+                              <span
+                                className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary"
+                                aria-label="Не прочитано"
+                              />
+                            ) : null}
                           </span>
-                        ) : null}
-                      </span>
-                    </button>
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            {scopeLabel(item)} · {formatDate(item.createdAt)}
+                          </span>
+                          {item.excerpt ? (
+                            <span className="mt-1 line-clamp-2 block text-[11px] leading-relaxed text-foreground/70">
+                              {item.excerpt}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                      {isSuperAdmin ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="mr-2 mt-2 h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                          aria-label="Удалить комментарий из уведомления"
+                          title="Удалить комментарий у всех"
+                          onClick={() => setDeletingNotification(item)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               )}
             </ScrollArea>
           </>
         )}
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+
+      <AlertDialog
+        open={Boolean(deletingNotification)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !isDeletingComment) setDeletingNotification(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить комментарий у всех?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Комментарий, весь тред и связанные уведомления исчезнут у всех
+              пользователей. Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deletingNotification?.excerpt ? (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm text-foreground/80">
+              {deletingNotification.excerpt}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingComment}>
+              Отмена
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeletingComment}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDeleteComment();
+              }}
+            >
+              {isDeletingComment ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Удалить у всех
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

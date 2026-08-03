@@ -4,8 +4,14 @@ import { InitiativeAllocationComments } from '@/components/admin/location-alloca
 
 const mocks = vi.hoisted(() => ({
   addReply: vi.fn(),
+  deleteComment: vi.fn(),
+  isSuperAdmin: true,
   markMessagesRead: vi.fn(),
   toast: vi.fn(),
+}));
+
+vi.mock('@/hooks/useAccess', () => ({
+  useAccess: () => ({ isSuperAdmin: mocks.isSuperAdmin }),
 }));
 
 vi.mock('@/hooks/useInitiativeAllocationComments', () => ({
@@ -52,7 +58,7 @@ vi.mock('@/hooks/useInitiativeAllocationComments', () => ({
     isAdding: false,
     updateComment: vi.fn(),
     isUpdating: false,
-    deleteComment: vi.fn(),
+    deleteComment: mocks.deleteComment,
     isDeleting: false,
     addReply: mocks.addReply,
     isAddingReply: false,
@@ -75,7 +81,49 @@ describe('InitiativeAllocationComments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.addReply.mockResolvedValue(undefined);
+    mocks.deleteComment.mockResolvedValue(undefined);
+    mocks.isSuperAdmin = true;
     mocks.markMessagesRead.mockResolvedValue(undefined);
+  });
+
+  it('lets a super admin delete a foreign comment without editing it', async () => {
+    render(
+      <InitiativeAllocationComments
+        scope={{ type: 'initiative', initiativeId: 'initiative-1' }}
+      />
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Редактировать комментарий' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Удалить комментарий' })
+    );
+    expect(
+      screen.getByText(/связанные уведомления исчезнут у всех пользователей/i)
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }));
+
+    await waitFor(() => {
+      expect(mocks.deleteComment).toHaveBeenCalledWith('comment-1');
+    });
+  });
+
+  it('keeps foreign comment deletion hidden from non-super-admin users', () => {
+    mocks.isSuperAdmin = false;
+    render(
+      <InitiativeAllocationComments
+        scope={{ type: 'initiative', initiativeId: 'initiative-1' }}
+      />
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Удалить комментарий' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Удалить ответ' })
+    ).toBeInTheDocument();
   });
 
   it('renders replies as a thread and keeps resolution on the root only', async () => {

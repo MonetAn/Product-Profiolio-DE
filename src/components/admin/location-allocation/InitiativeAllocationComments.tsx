@@ -35,6 +35,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from '@/components/ui/avatar';
+import { useAccess } from '@/hooks/useAccess';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -149,6 +150,7 @@ function InlineMessageEditor({
 function ReplyCard({
   reply,
   currentUserId,
+  canDeleteAnyComment,
   isEditing,
   editingDraft,
   isUpdating,
@@ -161,6 +163,7 @@ function ReplyCard({
 }: {
   reply: InitiativeAllocationCommentReply;
   currentUserId: string | null;
+  canDeleteAnyComment: boolean;
   isEditing: boolean;
   editingDraft: string;
   isUpdating: boolean;
@@ -171,8 +174,9 @@ function ReplyCard({
   onDelete: () => void;
   isFocused: boolean;
 }) {
-  const canManage =
+  const isAuthor =
     Boolean(currentUserId) && reply.authorUserId === currentUserId;
+  const canDelete = isAuthor || canDeleteAnyComment;
 
   return (
     <div
@@ -218,30 +222,34 @@ function ReplyCard({
                 : ''}
             </time>
           </div>
-          {canManage && !isEditing ? (
+          {(isAuthor || canDelete) && !isEditing ? (
             <div className="flex shrink-0 items-center gap-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                aria-label="Редактировать ответ"
-                title="Редактировать"
-                onClick={onStartEdit}
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-destructive hover:text-destructive"
-                aria-label="Удалить ответ"
-                title="Удалить"
-                onClick={onDelete}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              {isAuthor ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  aria-label="Редактировать ответ"
+                  title="Редактировать"
+                  onClick={onStartEdit}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              ) : null}
+              {canDelete ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-destructive hover:text-destructive"
+                  aria-label="Удалить ответ"
+                  title="Удалить"
+                  onClick={onDelete}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -266,6 +274,7 @@ function ReplyCard({
 type CommentCardProps = {
   comment: InitiativeAllocationComment;
   currentUserId: string | null;
+  canDeleteAnyComment: boolean;
   editingTarget: EditingTarget | null;
   editingDraft: string;
   replyingToId: string | null;
@@ -292,6 +301,7 @@ type CommentCardProps = {
 function CommentCard({
   comment,
   currentUserId,
+  canDeleteAnyComment,
   editingTarget,
   editingDraft,
   replyingToId,
@@ -314,8 +324,9 @@ function CommentCard({
   onSubmitReply,
   focusedMessageId,
 }: CommentCardProps) {
-  const canManage =
+  const isAuthor =
     Boolean(currentUserId) && comment.authorUserId === currentUserId;
+  const canDelete = isAuthor || canDeleteAnyComment;
   const isResolved = comment.status === 'resolved';
   const isEditingComment =
     editingTarget?.type === 'comment' && editingTarget.id === comment.id;
@@ -402,30 +413,34 @@ function CommentCard({
                   {isResolved ? 'Вернуть' : 'Решить'}
                 </Button>
               ) : null}
-              {canManage && !isEditingComment ? (
+              {(isAuthor || canDelete) && !isEditingComment ? (
                 <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    aria-label="Редактировать комментарий"
-                    title="Редактировать"
-                    onClick={onStartCommentEdit}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-destructive hover:text-destructive"
-                    aria-label="Удалить комментарий"
-                    title="Удалить"
-                    onClick={onDeleteComment}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  {isAuthor ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      aria-label="Редактировать комментарий"
+                      title="Редактировать"
+                      onClick={onStartCommentEdit}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  ) : null}
+                  {canDelete ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive"
+                      aria-label="Удалить комментарий"
+                      title="Удалить"
+                      onClick={onDeleteComment}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -476,6 +491,7 @@ function CommentCard({
                         key={reply.id}
                         reply={reply}
                         currentUserId={currentUserId}
+                        canDeleteAnyComment={canDeleteAnyComment}
                         isEditing={
                           editingTarget?.type === 'reply' &&
                           editingTarget.id === reply.id
@@ -563,6 +579,7 @@ export function InitiativeAllocationComments({
   focusedReplyId = null,
 }: Props) {
   const { toast } = useToast();
+  const { isSuperAdmin } = useAccess();
   const [draft, setDraft] = useState('');
   const [editingTarget, setEditingTarget] =
     useState<EditingTarget | null>(null);
@@ -793,6 +810,7 @@ export function InitiativeAllocationComments({
       key={comment.id}
       comment={comment}
       currentUserId={currentUserId}
+      canDeleteAnyComment={isSuperAdmin}
       editingTarget={editingTarget}
       editingDraft={editingDraft}
       replyingToId={replyingToId}
@@ -968,8 +986,8 @@ export function InitiativeAllocationComments({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {deletingTarget?.type === 'reply'
-                ? 'Ответ исчезнет из треда. Это действие нельзя отменить.'
-                : 'Комментарий и все ответы на него исчезнут из истории. Это действие нельзя отменить.'}
+                ? 'Ответ и связанные с ним уведомления исчезнут. Это действие нельзя отменить.'
+                : 'Комментарий, все ответы и связанные уведомления исчезнут у всех пользователей. Это действие нельзя отменить.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

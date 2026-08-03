@@ -8,17 +8,25 @@ const {
   markReadMock,
   markReadManyMock,
   markAllReadMock,
+  deleteCommentMock,
+  accessState,
   notificationState,
 } = vi.hoisted(() => ({
   savePreferencesMock: vi.fn().mockResolvedValue(undefined),
   markReadMock: vi.fn().mockResolvedValue(undefined),
   markReadManyMock: vi.fn().mockResolvedValue(undefined),
   markAllReadMock: vi.fn().mockResolvedValue(undefined),
+  deleteCommentMock: vi.fn().mockResolvedValue(undefined),
+  accessState: { isSuperAdmin: true },
   notificationState: { notifications: [] as Record<string, unknown>[] },
 }));
 
 vi.mock('@/hooks/useAccess', () => ({
-  useAccess: () => ({ canAccess: true, accessLoading: false }),
+  useAccess: () => ({
+    canAccess: true,
+    accessLoading: false,
+    isSuperAdmin: accessState.isSuperAdmin,
+  }),
 }));
 
 vi.mock('@/hooks/useAllocationNotifications', () => ({
@@ -32,6 +40,8 @@ vi.mock('@/hooks/useAllocationNotifications', () => ({
     markReadMany: markReadManyMock,
     markAllRead: markAllReadMock,
     isMarkingAll: false,
+    deleteComment: deleteCommentMock,
+    isDeletingComment: false,
   }),
 }));
 
@@ -64,6 +74,7 @@ describe('AllocationNotificationsBell', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    accessState.isSuperAdmin = true;
     notificationState.notifications = [];
     intersectionCallback = null;
     class IntersectionObserverMock {
@@ -229,5 +240,91 @@ describe('AllocationNotificationsBell', () => {
       expect(params.get('reply')).toBe('reply-1');
       expect(params.get('commentScope')).toBe('team');
     });
+  });
+
+  it('lets a super admin delete the whole comment from its notification', async () => {
+    notificationState.notifications = [
+      {
+        id: 'stale-notification',
+        eventType: 'comment_created',
+        commentId: 'stale-comment',
+        replyId: null,
+        actorName: 'Анна',
+        actorEmail: 'anna@example.com',
+        actorAvatarUrl: null,
+        scopeType: 'initiative',
+        initiativeId: 'old-initiative',
+        scopeUnit: 'Data Office',
+        scopeTeam: 'Data Platform+Core Data',
+        excerpt: 'Тестовый комментарий',
+        createdAt: '2026-07-29T08:27:05.000Z',
+        readAt: null,
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <AllocationNotificationsBell />
+      </MemoryRouter>
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Уведомления: 1/ })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Удалить комментарий из уведомления',
+      })
+    );
+
+    expect(
+      screen.getByText(/связанные уведомления исчезнут у всех/i)
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Удалить у всех' })
+    );
+
+    await waitFor(() => {
+      expect(deleteCommentMock).toHaveBeenCalledWith('stale-comment');
+    });
+  });
+
+  it('keeps notification deletion hidden from other users', async () => {
+    accessState.isSuperAdmin = false;
+    notificationState.notifications = [
+      {
+        id: 'regular-notification',
+        eventType: 'comment_created',
+        commentId: 'comment-1',
+        replyId: null,
+        actorName: 'Анна',
+        actorEmail: 'anna@example.com',
+        actorAvatarUrl: null,
+        scopeType: 'team',
+        initiativeId: null,
+        scopeUnit: 'Data Office',
+        scopeTeam: 'Analytics',
+        excerpt: 'Обычный комментарий',
+        createdAt: '2026-08-03T09:00:00.000Z',
+        readAt: null,
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <AllocationNotificationsBell />
+      </MemoryRouter>
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Уведомления: 1/ })
+    );
+
+    expect(
+      await screen.findByText('Обычный комментарий')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Удалить комментарий из уведомления',
+      })
+    ).not.toBeInTheDocument();
   });
 });
