@@ -35,6 +35,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
 
 type Props = {
   scope: LocationAllocationCommentScope;
@@ -42,6 +43,7 @@ type Props = {
   compact?: boolean;
   hideEmptyState?: boolean;
   focusedCommentId?: string | null;
+  focusedReplyId?: string | null;
 };
 
 type EditingTarget = {
@@ -155,6 +157,7 @@ function ReplyCard({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  isFocused,
 }: {
   reply: InitiativeAllocationCommentReply;
   currentUserId: string | null;
@@ -166,12 +169,19 @@ function ReplyCard({
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onDelete: () => void;
+  isFocused: boolean;
 }) {
   const canManage =
     Boolean(currentUserId) && reply.authorUserId === currentUserId;
 
   return (
-    <div className="flex items-start gap-2 py-1.5">
+    <div
+      id={`allocation-reply-${reply.id}`}
+      className={cn(
+        'flex items-start gap-2 rounded-md py-1.5 transition-[background-color,box-shadow] duration-700',
+        isFocused && 'bg-primary/10 shadow-[0_0_0_2px_hsl(var(--primary)/0.65)]'
+      )}
+    >
       <span className="relative shrink-0">
         <Avatar className="h-5 w-5 border border-border/70">
           {reply.authorAvatarUrl ? (
@@ -276,6 +286,7 @@ type CommentCardProps = {
   onReplyDraftChange: (value: string) => void;
   onCancelReply: () => void;
   onSubmitReply: () => void;
+  focusedMessageId: string | null;
 };
 
 function CommentCard({
@@ -301,6 +312,7 @@ function CommentCard({
   onReplyDraftChange,
   onCancelReply,
   onSubmitReply,
+  focusedMessageId,
 }: CommentCardProps) {
   const canManage =
     Boolean(currentUserId) && comment.authorUserId === currentUserId;
@@ -312,11 +324,14 @@ function CommentCard({
   return (
     <article
       id={`allocation-comment-${comment.id}`}
-      className={`rounded-lg border px-2.5 py-2 ${
+      className={cn(
+        'rounded-lg border px-2.5 py-2 transition-[background-color,box-shadow] duration-700',
         isResolved
           ? 'border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-900/60 dark:bg-emerald-950/15'
-          : 'border-border/60 bg-muted/20'
-      }`}
+          : 'border-border/60 bg-muted/20',
+        focusedMessageId === comment.id &&
+          'bg-primary/10 shadow-[0_0_0_2px_hsl(var(--primary)/0.65)]'
+      )}
     >
       <div className="flex items-start gap-2">
         <span className="relative shrink-0">
@@ -472,6 +487,7 @@ function CommentCard({
                         onCancelEdit={onCancelEdit}
                         onSaveEdit={onSaveEdit}
                         onDelete={() => onDeleteReply(reply)}
+                        isFocused={focusedMessageId === reply.id}
                       />
                     ))}
                   </div>
@@ -544,6 +560,7 @@ export function InitiativeAllocationComments({
   compact = false,
   hideEmptyState = false,
   focusedCommentId = null,
+  focusedReplyId = null,
 }: Props) {
   const { toast } = useToast();
   const [draft, setDraft] = useState('');
@@ -555,6 +572,9 @@ export function InitiativeAllocationComments({
   const [showResolved, setShowResolved] = useState(false);
   const [deletingTarget, setDeletingTarget] =
     useState<DeletingTarget | null>(null);
+  const [focusedMessageId, setFocusedMessageId] = useState<string | null>(
+    null
+  );
   const {
     data = [],
     isLoading,
@@ -624,13 +644,25 @@ export function InitiativeAllocationComments({
     ) {
       setShowResolved(true);
     }
-    const timeoutId = window.setTimeout(() => {
+    const targetId = focusedReplyId || focusedCommentId;
+    const targetPrefix = focusedReplyId
+      ? 'allocation-reply'
+      : 'allocation-comment';
+    setFocusedMessageId(targetId);
+    const scrollTimeoutId = window.setTimeout(() => {
       document
-        .getElementById(`allocation-comment-${focusedCommentId}`)
-        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }, 80);
-    return () => window.clearTimeout(timeoutId);
-  }, [data, focusedCommentId]);
+        .getElementById(`${targetPrefix}-${targetId}`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 120);
+    const highlightTimeoutId = window.setTimeout(
+      () => setFocusedMessageId(null),
+      3200
+    );
+    return () => {
+      window.clearTimeout(scrollTimeoutId);
+      window.clearTimeout(highlightTimeoutId);
+    };
+  }, [data, focusedCommentId, focusedReplyId]);
 
   const submit = async () => {
     if (!draft.trim() || isAdding) return;
@@ -797,6 +829,7 @@ export function InitiativeAllocationComments({
         setReplyDraft('');
       }}
       onSubmitReply={() => void submitReply()}
+      focusedMessageId={focusedMessageId}
     />
   );
 

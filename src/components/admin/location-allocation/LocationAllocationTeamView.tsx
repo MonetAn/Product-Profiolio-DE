@@ -32,6 +32,7 @@ import {
 } from '@/lib/locationAllocationPlanning';
 import { formatLocationExactRub } from '@/lib/locationDisplayFormat';
 import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
+import type { LocationAllocationGeoEditScope } from '@/lib/locationAllocationGeoEdit';
 import {
   useLocationAllocationScenario,
   type LocationAllocationScenarioRegion,
@@ -103,6 +104,11 @@ type Props = {
   readOnly?: boolean;
   selectedUnit?: string | null;
   onSelectedUnitChange: (unit: string) => void;
+  focusedComment?: {
+    id: string;
+    replyId?: string | null;
+    scope: LocationAllocationGeoEditScope;
+  } | null;
 };
 
 type TeamPatch = Partial<
@@ -558,6 +564,8 @@ function TeamCard({
   archiveTeam,
   saveTeamCard,
   onDirtyStateChange,
+  focusedCommentId,
+  focusedReplyId,
 }: {
   team: LocationAllocationScenarioTeam;
   isExpanded: boolean;
@@ -577,6 +585,8 @@ function TeamCard({
     input: LocationAllocationScenarioTeamCardInput
   ) => Promise<unknown>;
   onDirtyStateChange: (teamId: string, dirty: boolean) => void;
+  focusedCommentId?: string | null;
+  focusedReplyId?: string | null;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -948,6 +958,8 @@ function TeamCard({
                 }}
                 compact
                 hideEmptyState
+                focusedCommentId={focusedCommentId}
+                focusedReplyId={focusedReplyId}
               />
             </div>
           </div>
@@ -1084,6 +1096,7 @@ export function LocationAllocationTeamView({
   readOnly = false,
   selectedUnit = null,
   onSelectedUnitChange,
+  focusedComment = null,
 }: Props) {
   const metricByTeam = useMemo(() => {
     return new Map(
@@ -1187,9 +1200,11 @@ export function LocationAllocationTeamView({
       setExpandedTeamIds(new Set());
       setDirtyTeamIds(new Set());
       setPendingUnitChange(null);
-      onSelectedUnitChange(unit);
+      if (normalizeAllocationScenarioUnit(selectedUnit) !== unit) {
+        onSelectedUnitChange(unit);
+      }
     },
-    [onSelectedUnitChange]
+    [onSelectedUnitChange, selectedUnit]
   );
 
   useEffect(() => {
@@ -1219,6 +1234,40 @@ export function LocationAllocationTeamView({
     }));
   }, [scenario.teams]);
 
+  const focusedTeamTarget = useMemo(() => {
+    if (!focusedComment) return null;
+
+    let sourceUnit: string | null = null;
+    let sourceTeam: string | null = null;
+    if (focusedComment.scope.type === 'team') {
+      sourceUnit = focusedComment.scope.unit;
+      sourceTeam = focusedComment.scope.team;
+    } else if (focusedComment.scope.type === 'initiative') {
+      const initiative = initiatives.find(
+        (row) => row.id === focusedComment.scope.initiativeId
+      );
+      sourceUnit = initiative?.unit ?? null;
+      sourceTeam = initiative?.team ?? null;
+    } else {
+      sourceUnit = focusedComment.scope.unit;
+    }
+
+    const unit = normalizeAllocationScenarioUnit(sourceUnit);
+    if (!unit) return null;
+    const group = groups.find((item) => item.unit === unit);
+    const normalizedTeam = sourceTeam?.trim().toLocaleLowerCase('ru') ?? '';
+    const team = normalizedTeam
+      ? group?.teams.find((item) =>
+          [item.sourceTeam, item.name].some(
+            (candidate) =>
+              candidate?.trim().toLocaleLowerCase('ru') === normalizedTeam
+          )
+        ) ?? null
+      : null;
+
+    return { unit, teamId: team?.id ?? null };
+  }, [focusedComment, groups, initiatives]);
+
   useEffect(() => {
     if (groups.length === 0) return;
     const requestedUnit = resolveAllocationScenarioUnit(selectedUnit);
@@ -1234,6 +1283,30 @@ export function LocationAllocationTeamView({
       }
     }
   }, [activeUnit, dirtyTeamIds.size, groups, selectedUnit]);
+
+  useEffect(() => {
+    if (!focusedTeamTarget) return;
+    if (focusedTeamTarget.unit !== activeUnit) {
+      if (dirtyTeamIds.size > 0) {
+        setPendingUnitChange(focusedTeamTarget.unit);
+      } else {
+        setActiveUnit(focusedTeamTarget.unit);
+        setExpandedTeamIds(
+          focusedTeamTarget.teamId
+            ? new Set([focusedTeamTarget.teamId])
+            : new Set()
+        );
+      }
+      return;
+    }
+    if (!focusedTeamTarget.teamId) return;
+    setExpandedTeamIds((current) => {
+      if (current.has(focusedTeamTarget.teamId!)) return current;
+      const next = new Set(current);
+      next.add(focusedTeamTarget.teamId!);
+      return next;
+    });
+  }, [activeUnit, dirtyTeamIds.size, focusedTeamTarget]);
 
   const activeGroup =
     groups.find((group) => group.unit === activeUnit) ?? groups[0];
@@ -1492,6 +1565,16 @@ export function LocationAllocationTeamView({
                 archiveTeam={scenario.archiveTeam}
                 saveTeamCard={scenario.saveTeamCard}
                 onDirtyStateChange={handleDirtyStateChange}
+                focusedCommentId={
+                  focusedTeamTarget?.teamId === team.id
+                    ? focusedComment?.id
+                    : null
+                }
+                focusedReplyId={
+                  focusedTeamTarget?.teamId === team.id
+                    ? focusedComment?.replyId
+                    : null
+                }
               />
             ))}
           </section>

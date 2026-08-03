@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Bell,
@@ -84,6 +84,9 @@ function scopeLabel(item: AllocationNotification): string {
 export function AllocationNotificationsBell() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [notificationViewport, setNotificationViewport] =
+    useState<HTMLDivElement | null>(null);
+  const notificationElementsRef = useRef(new Map<string, HTMLButtonElement>());
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'notifications' | 'settings'>(
     'notifications'
@@ -100,6 +103,7 @@ export function AllocationNotificationsBell() {
     unreadCount,
     isLoading,
     markRead,
+    markReadMany,
     markAllRead,
     isMarkingAll,
   } = useAllocationNotifications(canAccess && !accessLoading);
@@ -116,6 +120,61 @@ export function AllocationNotificationsBell() {
     [unreadCount]
   );
 
+  const setNotificationElement = useCallback(
+    (id: string, element: HTMLButtonElement | null) => {
+      if (element) notificationElementsRef.current.set(id, element);
+      else notificationElementsRef.current.delete(id);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (
+      !open ||
+      view !== 'notifications' ||
+      isLoading ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      return;
+    }
+
+    if (!notificationViewport) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleUnreadIds = entries.flatMap((entry) => {
+          const element = entry.target as HTMLButtonElement;
+          const id = element.dataset.notificationId;
+          return entry.isIntersecting &&
+            entry.intersectionRatio >= 0.65 &&
+            element.dataset.notificationUnread === 'true' &&
+            id
+            ? [id]
+            : [];
+        });
+        if (visibleUnreadIds.length > 0) {
+          void markReadMany(visibleUnreadIds).catch(() => undefined);
+        }
+      },
+      { root: notificationViewport, threshold: 0.65 }
+    );
+
+    for (const item of notifications) {
+      if (item.readAt) continue;
+      const element = notificationElementsRef.current.get(item.id);
+      if (element) observer.observe(element);
+    }
+
+    return () => observer.disconnect();
+  }, [
+    isLoading,
+    markReadMany,
+    notificationViewport,
+    notifications,
+    open,
+    view,
+  ]);
+
   const openNotification = async (item: AllocationNotification) => {
     setOpen(false);
     if (!item.readAt) {
@@ -130,6 +189,9 @@ export function AllocationNotificationsBell() {
     }
     params.set('comment', item.commentId);
     params.set('commentScope', item.scopeType);
+    if (item.replyId) {
+      params.set('reply', item.replyId);
+    }
     if (item.initiativeId) {
       params.set('initiative', item.initiativeId);
     }
@@ -484,7 +546,10 @@ export function AllocationNotificationsBell() {
               </div>
             </div>
 
-            <ScrollArea className="max-h-[min(65vh,430px)]">
+            <ScrollArea
+              viewportRef={setNotificationViewport}
+              className="max-h-[min(65vh,430px)]"
+            >
               {isLoading ? (
                 <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                   Загружаем…
@@ -505,7 +570,10 @@ export function AllocationNotificationsBell() {
                   {notifications.map((item) => (
                     <button
                       key={item.id}
+                      ref={(element) => setNotificationElement(item.id, element)}
                       type="button"
+                      data-notification-id={item.id}
+                      data-notification-unread={!item.readAt}
                       className={cn(
                         'flex w-full items-start gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                         !item.readAt && 'bg-primary/[0.045]'

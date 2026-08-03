@@ -38,6 +38,7 @@ type Props = {
   readOnly?: boolean;
   focusedComment?: {
     id: string;
+    replyId?: string | null;
     scope: LocationAllocationGeoEditScope;
   } | null;
 };
@@ -54,6 +55,7 @@ export function LocationAllocationDrillDown({
   readOnly = false,
   unitFilter,
   onUnitFilterChange,
+  focusedComment = null,
 }: Props) {
   return (
     <section id="location-initiatives" className="scroll-mt-4">
@@ -64,6 +66,7 @@ export function LocationAllocationDrillDown({
         readOnly={readOnly}
         selectedUnit={unitFilter}
         onSelectedUnitChange={onUnitFilterChange}
+        focusedComment={focusedComment}
       />
     </section>
   );

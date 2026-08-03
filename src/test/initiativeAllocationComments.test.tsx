@@ -127,4 +127,24 @@ describe('InitiativeAllocationComments', () => {
       });
     });
   });
+
+  it('scrolls to and highlights the exact reply from a notification', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    render(
+      <InitiativeAllocationComments
+        scope={{ type: 'initiative', initiativeId: 'initiative-1' }}
+        focusedCommentId="comment-1"
+        focusedReplyId="reply-1"
+      />
+    );
+
+    const reply = document.getElementById('allocation-reply-reply-1');
+    expect(reply).toHaveClass('bg-primary/10');
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  });
 });
