@@ -46,6 +46,7 @@ export default function AdminLocationAllocations() {
   const marketCountryId = searchParams.get('market') || '';
   const focusedComment = useMemo(() => {
     const id = searchParams.get('comment')?.trim() ?? '';
+    const replyId = searchParams.get('reply')?.trim() || null;
     const scopeType = searchParams.get('commentScope');
     if (!id) return null;
     if (scopeType === 'initiative') {
@@ -53,6 +54,7 @@ export default function AdminLocationAllocations() {
       return initiativeId
         ? {
             id,
+            replyId,
             scope: {
               type: 'initiative' as const,
               initiativeId,
@@ -63,6 +65,7 @@ export default function AdminLocationAllocations() {
     if (scopeType === 'team' && unitFilter && teamFilter) {
       return {
         id,
+        replyId,
         scope: {
           type: 'team' as const,
           unit: unitFilter,
@@ -73,6 +76,7 @@ export default function AdminLocationAllocations() {
     if (scopeType === 'unit' && unitFilter) {
       return {
         id,
+        replyId,
         scope: {
           type: 'unit' as const,
           unit: unitFilter,
