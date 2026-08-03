@@ -16,7 +16,6 @@ import {
 } from '@/lib/locationRegionModel';
 import { excludePortfolioGhostRows } from '@/lib/portfolioVisibility';
 import type { InitiativeTag } from '@/lib/initiativeTags';
-import { buildLocationHeadcountIndex } from '@/lib/locationAllocationPlanning';
 import {
   useLocationAllocationGeoSplitMutation,
   useLocationAllocationInitiativeTagsMutation,
@@ -101,14 +100,6 @@ export default function AdminLocationAllocations() {
     () => workspace?.countries ?? [],
     [workspace?.countries]
   );
-  const people = useMemo(
-    () => workspace?.people ?? [],
-    [workspace?.people]
-  );
-  const assignments = useMemo(
-    () => workspace?.assignments ?? [],
-    [workspace?.assignments]
-  );
   const teamMetrics = useMemo(
     () => workspace?.teamMetrics ?? [],
     [workspace?.teamMetrics]
@@ -179,8 +170,6 @@ export default function AdminLocationAllocations() {
       }
     );
   }, [periodOptions, requestedPeriod]);
-
-  const headcount = useMemo(() => buildLocationHeadcountIndex(people), [people]);
 
   const saveGeoCostSplit = useCallback(
     async (id: string, split: GeoCostSplit | undefined) => {
@@ -344,9 +333,6 @@ export default function AdminLocationAllocations() {
                 onMarketFilterChange={setMarketFilter}
                 onGeoCostSplitSave={saveGeoCostSplit}
                 onInitiativeTagsSave={saveInitiativeTags}
-                people={people}
-                assignments={assignments}
-                headcount={headcount}
                 teamMetrics={teamMetrics}
                 readOnly={readOnly}
                 focusedComment={readOnly ? null : focusedComment}

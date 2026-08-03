@@ -6,7 +6,6 @@ import {
   collectLocationTreemapInitiativeIds,
   resolveLocationTreemapNodeYearCost,
   resolveLocationTreemapNodeScopedCost,
-  resolveLocationTreemapNodeHeadcount,
   sumLocationTreemapRegionBreakdown,
   treemapScopeLabel,
 } from '@/lib/locationAllocationTreemap';
@@ -149,7 +148,6 @@ const ParentHeader = memo(function ParentHeader({
   textColorClass,
   isTiny,
   isSmall,
-  headcount,
   teamCommentCount,
   initiativeCommentCount,
   onTeamCommentClick,
@@ -158,7 +156,6 @@ const ParentHeader = memo(function ParentHeader({
   textColorClass: string;
   isTiny: boolean;
   isSmall: boolean;
-  headcount: number | null;
   teamCommentCount: LocationAllocationCommentCount;
   initiativeCommentCount: LocationAllocationCommentCount;
   onTeamCommentClick?: () => void;
@@ -177,10 +174,7 @@ const ParentHeader = memo(function ParentHeader({
         lineHeight: '1.2',
       }}
     >
-      <span className="min-w-0 truncate">
-        {node.name}
-        {headcount != null ? ` · ${headcount} чел.` : ''}
-      </span>
+      <span className="min-w-0 truncate">{node.name}</span>
       {node.isTeam ? (
         <TeamCommentIndicators
           teamCount={teamCommentCount}
@@ -243,11 +237,6 @@ const CellCenterStack = memo(function CellCenterStack({
     () => sumLocationTreemapRegionBreakdown(initiativeIds, meta),
     [initiativeIds, meta]
   );
-  const headcount = useMemo(
-    () => resolveLocationTreemapNodeHeadcount(node, meta),
-    [node, meta]
-  );
-
   const isFiltered = treemapScope.kind !== 'all';
   const primaryCost = isFiltered ? scopedCost : fullCost;
 
@@ -329,12 +318,6 @@ const CellCenterStack = memo(function CellCenterStack({
           </button>
         ) : null}
       </div>
-
-      {headcount != null && !isTiny ? (
-        <div className={`mt-0.5 leading-tight ${mutedClass} ${regionSize}`}>
-          {headcount} чел.
-        </div>
-      ) : null}
 
       {showMoney && primaryCost > 0 && !isTiny ? (
         <div className={`mt-0.5 tabular-nums leading-tight ${labelClass} ${totalSize}`}>
@@ -433,10 +416,6 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   const showsParentHeader = Boolean(hasChildren && shouldRenderChildren);
-  const headcount = useMemo(
-    () => resolveLocationTreemapNodeHeadcount(node, meta),
-    [node, meta]
-  );
   const teamKey = useMemo(() => {
     if (!node.isTeam) return null;
     const unit = node.data.unit?.trim() ?? '';
@@ -541,7 +520,6 @@ export const LocationAllocationTreemapNode = memo(function LocationAllocationTre
           textColorClass={textColorClass}
           isTiny={isTiny}
           isSmall={isSmall}
-          headcount={headcount}
           teamCommentCount={teamCommentCount}
           initiativeCommentCount={
             isFocusedTeamView

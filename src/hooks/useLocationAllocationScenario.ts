@@ -15,7 +15,6 @@ export type LocationAllocationScenarioSourceTeam = {
   name: string;
   fot2025Rub: number;
   fot2026Rub: number;
-  peopleCount: number;
   runPercent: number;
 };
 
@@ -37,7 +36,6 @@ export type LocationAllocationScenarioTeam = {
   description: string;
   fot2025Rub: number;
   fot2026Rub: number;
-  peopleCount: number;
   runPercent: number;
   runDescription: string;
   sortOrder: number;
@@ -65,7 +63,6 @@ type TeamPatch = Partial<
     | 'description'
     | 'fot2025Rub'
     | 'fot2026Rub'
-    | 'peopleCount'
     | 'runPercent'
     | 'runDescription'
     | 'sortOrder'
@@ -78,6 +75,20 @@ type RegionPatch = Partial<
 >;
 
 const QUERY_KEY = ['location-allocation-scenario'] as const;
+const SCENARIO_TEAM_SELECT = [
+  'id',
+  'unit',
+  'source_unit',
+  'source_team',
+  'name',
+  'description',
+  'fot_2025_rub',
+  'fot_2026_rub',
+  'run_percent',
+  'run_description',
+  'sort_order',
+  'is_archived',
+].join(',');
 // Сценарные таблицы добавляются новой миграцией; типы Supabase обновим вместе
 // с общим следующим снимком схемы.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,10 +99,6 @@ function normalizePercent(value: unknown): number {
 }
 
 function normalizeMoney(value: unknown): number {
-  return Math.max(0, Math.round(Number(value) || 0));
-}
-
-function normalizeCount(value: unknown): number {
   return Math.max(0, Math.round(Number(value) || 0));
 }
 
@@ -119,7 +126,6 @@ function mapTeam(
     description: String(row.description ?? ''),
     fot2025Rub: normalizeMoney(row.fot_2025_rub),
     fot2026Rub: normalizeMoney(row.fot_2026_rub),
-    peopleCount: normalizeCount(row.people_count),
     runPercent: normalizePercent(row.run_percent),
     runDescription: String(row.run_description ?? ''),
     sortOrder: Number(row.sort_order) || 0,
@@ -161,7 +167,7 @@ export function useLocationAllocationScenario({
     queryFn: async (): Promise<LocationAllocationScenarioTeam[]> => {
       const { data: initialTeamRows, error: teamError } = await sb
         .from('location_allocation_scenario_teams')
-        .select('*')
+        .select(SCENARIO_TEAM_SELECT)
         .order('unit')
         .order('sort_order')
         .order('name');
@@ -185,7 +191,6 @@ export function useLocationAllocationScenario({
             name: team.name,
             fot_2025_rub: normalizeMoney(team.fot2025Rub),
             fot_2026_rub: normalizeMoney(team.fot2026Rub),
-            people_count: normalizeCount(team.peopleCount),
             run_percent: normalizePercent(team.runPercent),
             sort_order: sortOrder,
             created_by: author.id,
@@ -196,7 +201,7 @@ export function useLocationAllocationScenario({
         const seeded = await sb
           .from('location_allocation_scenario_teams')
           .insert(seedRows)
-          .select('*');
+          .select(SCENARIO_TEAM_SELECT);
         if (seeded.error) throw seeded.error;
         teamRows = seeded.data ?? [];
         const regionSeedRows = (teamRows ?? []).flatMap(
@@ -259,7 +264,6 @@ export function useLocationAllocationScenario({
       if ('description' in patch) row.description = patch.description ?? '';
       if ('fot2025Rub' in patch) row.fot_2025_rub = normalizeMoney(patch.fot2025Rub);
       if ('fot2026Rub' in patch) row.fot_2026_rub = normalizeMoney(patch.fot2026Rub);
-      if ('peopleCount' in patch) row.people_count = normalizeCount(patch.peopleCount);
       if ('runPercent' in patch) row.run_percent = normalizePercent(patch.runPercent);
       if ('runDescription' in patch) row.run_description = patch.runDescription ?? '';
       if ('sortOrder' in patch) row.sort_order = patch.sortOrder;

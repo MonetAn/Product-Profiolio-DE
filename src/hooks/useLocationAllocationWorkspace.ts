@@ -9,11 +9,6 @@ import {
   type AdminDataRow,
   type GeoCostSplit,
 } from '@/lib/adminDataManager';
-import {
-  normalizePersonRow,
-  type Person,
-  type PersonAssignment,
-} from '@/lib/peopleDataManager';
 import type { MarketCountryRow } from '@/hooks/useMarketCountries';
 import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
 import type { InitiativeTag } from '@/lib/initiativeTags';
@@ -23,8 +18,6 @@ type WorkspacePayload = {
   read_only?: unknown;
   initiatives?: Record<string, unknown>[];
   portfolio_meta?: { initiative_id?: unknown }[];
-  people?: Record<string, unknown>[];
-  assignments?: Record<string, unknown>[];
   countries?: Record<string, unknown>[];
   team_metrics?: Record<string, unknown>[];
 };
@@ -44,8 +37,6 @@ export type LocationAllocationWorkspace = {
   dataset: LocationAllocationDatasetMeta;
   readOnly: boolean;
   initiatives: AdminDataRow[];
-  people: Person[];
-  assignments: PersonAssignment[];
   countries: MarketCountryRow[];
   teamMetrics: LocationAllocationTeamMetric[];
 };
@@ -103,35 +94,6 @@ function parsePayload(value: unknown): LocationAllocationWorkspace {
     initiatives: initiatives.map((row) =>
       normalizeSupportCascade(row, quarters)
     ),
-    people: (payload.people ?? []).map((row) =>
-      normalizePersonRow({
-        external_id: null,
-        email: null,
-        hr_structure: null,
-        position: null,
-        leader: null,
-        hired_at: null,
-        created_at: null,
-        updated_at: null,
-        ...row,
-      })
-    ),
-    assignments: (payload.assignments ?? []).map((row) => ({
-      id: String(row.id ?? ''),
-      person_id: String(row.person_id ?? ''),
-      initiative_id: String(row.initiative_id ?? ''),
-      quarterly_effort:
-        row.quarterly_effort &&
-        typeof row.quarterly_effort === 'object' &&
-        !Array.isArray(row.quarterly_effort)
-          ? (row.quarterly_effort as Record<string, number>)
-          : {},
-      is_auto: row.is_auto !== false,
-      created_at:
-        typeof row.created_at === 'string' ? row.created_at : null,
-      updated_at:
-        typeof row.updated_at === 'string' ? row.updated_at : null,
-    })),
     countries: (payload.countries ?? []) as MarketCountryRow[],
     teamMetrics: (payload.team_metrics ?? []).map((row) => ({
       unit: String(row.unit ?? ''),
@@ -146,13 +108,6 @@ function parsePayload(value: unknown): LocationAllocationWorkspace {
           : Math.max(0, Number(row.fot_2026_rub) || 0),
       unitDisplayName: nullableString(row.unit_display_name),
       teamDisplayName: nullableString(row.team_display_name),
-      peopleCountOverride:
-        row.people_count_override == null
-          ? null
-          : Math.max(
-              0,
-              Math.round(Number(row.people_count_override) || 0)
-            ),
       runPercentOverride:
         row.run_percent_override == null
           ? null

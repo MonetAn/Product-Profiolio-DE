@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { UsersRound } from 'lucide-react';
 import type { AdminDataRow, GeoCostSplit } from '@/lib/adminDataManager';
 import GanttView from '@/components/GanttView';
 import { calculateTotalBudget, convertFromDB, type RawDataRow } from '@/lib/dataManager';
@@ -20,7 +19,6 @@ import type { InitiativeTag } from '@/lib/initiativeTags';
 import {
   buildInitiativesRegionPayments,
   locationTeamKey,
-  type LocationHeadcountIndex,
 } from '@/lib/locationAllocationPlanning';
 import {
   Dialog,
@@ -41,7 +39,6 @@ type Props = {
   marketCountry?: MarketCountryRow | null;
   countries: MarketCountryRow[];
   countryIdToClusterKey: Map<string, string>;
-  headcount: LocationHeadcountIndex;
   onGeoCostSplitSave: (id: string, split: GeoCostSplit | undefined) => Promise<void>;
   onInitiativeTagsSave: (id: string, tags: InitiativeTag[]) => Promise<void>;
   readOnly?: boolean;
@@ -60,7 +57,6 @@ export function LocationAllocationTimeline({
   marketCountry = null,
   countries,
   countryIdToClusterKey,
-  headcount,
   onGeoCostSplitSave,
   onInitiativeTagsSave,
   readOnly = false,
@@ -198,24 +194,6 @@ export function LocationAllocationTimeline({
     if (teamFilter) parts.push(teamFilter.team);
     return parts.length > 0 ? parts.join(' · ') : 'все регионы';
   })();
-  const scopeHeadcount = useMemo(() => {
-    if (headcount.byUnit.size === 0) return null;
-    if (teamFilter) {
-      const value = headcount.byTeam.get(
-        locationTeamKey(teamFilter.unit, teamFilter.team)
-      );
-      return value != null && value > 0 ? value : null;
-    }
-    if (unitFilter) {
-      const value = headcount.byUnit.get(unitFilter);
-      return value != null && value > 0 ? value : null;
-    }
-    const total = [...headcount.byUnit.values()].reduce(
-      (sum, value) => sum + value,
-      0
-    );
-    return total > 0 ? total : null;
-  }, [headcount, teamFilter, unitFilter]);
   const allocationSummaries = useMemo(() => {
     const rowsByTeam = new Map<string, AdminDataRow[]>();
     const rowsByUnit = new Map<string, AdminDataRow[]>();
@@ -285,8 +263,6 @@ export function LocationAllocationTimeline({
         unitFilter || teamFilter
           ? ('team' as const)
           : ('unit-team' as const),
-      headcountByUnit: headcount.byUnit,
-      headcountByTeam: headcount.byTeam,
       unitSummaries: allocationSummaries.byUnit,
       teamSummaries: allocationSummaries.byTeam,
       teamCommentCounts: commentSummaryQuery.data?.byTeamDirect,
@@ -294,7 +270,6 @@ export function LocationAllocationTimeline({
     }),
     [
       commentSummaryQuery.data,
-      headcount,
       openTeamComments,
       readOnly,
       allocationSummaries,
@@ -329,15 +304,6 @@ export function LocationAllocationTimeline({
               ? ' · сортировка по платежу региона'
               : ' · сортировка по полной стоимости'}
           </p>
-          {scopeHeadcount != null ? (
-            <span
-              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 font-medium tabular-nums text-foreground/75"
-              title="Текущий состав по данным раздела «Люди», не историческое значение выбранного периода"
-            >
-              <UsersRound className="h-3 w-3" aria-hidden />
-              {scopeHeadcount} чел. сейчас
-            </span>
-          ) : null}
         </div>
         <p className="text-xs tabular-nums text-muted-foreground">
           {regionFilter ? (
