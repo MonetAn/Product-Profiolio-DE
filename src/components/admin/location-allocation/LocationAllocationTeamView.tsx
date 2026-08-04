@@ -29,8 +29,10 @@ import {
   locationTeamKey,
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
+import { calculateUnitAllocationSummary } from '@/lib/locationAllocationUnitSummary';
 import { formatLocationMillionsRub } from '@/lib/locationDisplayFormat';
 import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
+import { useAuth } from '@/hooks/useAuth';
 import type { LocationAllocationGeoEditScope } from '@/lib/locationAllocationGeoEdit';
 import {
   useLocationAllocationScenario,
@@ -172,7 +174,8 @@ const ALLOCATION_APPEARANCE: Record<
 };
 
 function allocationLabel(kind: AllocationKind): string {
-  return kind === 'RUN' ? 'RUN' : ALLOCATION_SCENARIO_AREA_LABELS[kind];
+  if (kind === 'RUN') return kind;
+  return ALLOCATION_SCENARIO_AREA_LABELS[kind];
 }
 
 function AllocationBrandMark({
@@ -429,22 +432,18 @@ function resolveTeamDropPosition(
   return event.clientY < boundary ? 'before' : 'after';
 }
 
-function AllocationSummary({
-  team,
+function AllocationSummaryItems({
+  items,
   className,
 }: {
-  team: LocationAllocationScenarioTeam;
+  items: Array<{
+    key: string;
+    kind: AllocationKind;
+    amountRub: number;
+    percent: number;
+  }>;
   className?: string;
 }) {
-  const items = [
-    ...ALLOCATION_SCENARIO_AREA_ORDER.map((region) => ({
-      key: region,
-      kind: region as AllocationKind,
-      percent: getRegion(team, region)?.percent ?? 0,
-    })),
-    { key: 'run', kind: 'RUN' as AllocationKind, percent: team.runPercent },
-  ];
-
   return (
     <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-1.5', className)}>
       {items.map((item) => (
@@ -464,7 +463,7 @@ function AllocationSummary({
             {allocationLabel(item.kind)}
           </span>
           <span className="font-semibold tabular-nums text-foreground">
-            {formatLocationMillionsRub(allocationAmount(team, item.percent))}
+            {formatLocationMillionsRub(item.amountRub)}
           </span>
           <span className="tabular-nums text-muted-foreground">
             ({formatPercent(item.percent)}%)
@@ -473,6 +472,34 @@ function AllocationSummary({
       ))}
     </div>
   );
+}
+
+function AllocationSummary({
+  team,
+  className,
+}: {
+  team: LocationAllocationScenarioTeam;
+  className?: string;
+}) {
+  const items = [
+    ...ALLOCATION_SCENARIO_AREA_ORDER.map((region) => {
+      const percent = getRegion(team, region)?.percent ?? 0;
+      return {
+        key: region,
+        kind: region as AllocationKind,
+        amountRub: allocationAmount(team, percent),
+        percent,
+      };
+    }),
+    {
+      key: 'run',
+      kind: 'RUN' as AllocationKind,
+      amountRub: allocationAmount(team, team.runPercent),
+      percent: team.runPercent,
+    },
+  ];
+
+  return <AllocationSummaryItems items={items} className={className} />;
 }
 
 function AllocationBlock({
@@ -1159,6 +1186,7 @@ export function LocationAllocationTeamView({
   onSelectedUnitChange,
   focusedComment = null,
 }: Props) {
+  const { user } = useAuth();
   const metricByTeam = useMemo(() => {
     return new Map(
       teamMetrics.map((metric) => [
@@ -1373,7 +1401,7 @@ export function LocationAllocationTeamView({
     getTreemapUnitIcon(activeGroup?.unit ?? '') ?? Building2;
   const editMode = !readOnly && Boolean(activeGroup);
   const canManageActiveUnit =
-    !readOnly && canManageAllocationScenarioTeams();
+    !readOnly && canManageAllocationScenarioTeams(user?.email);
   const activeFot2025 =
     scenario.unitTotals.find((total) => total.unit === activeGroup?.unit)
       ?.fot2025Rub ??
@@ -1400,6 +1428,19 @@ export function LocationAllocationTeamView({
       0
     ) ??
     null;
+  const activeUnitAllocation = useMemo(
+    () =>
+      calculateUnitAllocationSummary({
+        teams: activeGroup?.teams ?? [],
+        officialCostRub: activeFot2026,
+      }).map((item) => ({
+        key: item.kind,
+        kind: item.kind as AllocationKind,
+        amountRub: item.amountRub,
+        percent: item.percent,
+      })),
+    [activeFot2026, activeGroup?.teams]
+  );
   useEffect(() => {
     if (!editMode) {
       setDraggedTeamId(null);
@@ -1617,6 +1658,17 @@ export function LocationAllocationTeamView({
               ) : null}
             </div>
           </div>
+          {activeFot2026 > 0 ? (
+            <div className="mt-4 border-t border-border/70 pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Распределение стоимости 2026 по юниту
+              </p>
+              <AllocationSummaryItems
+                items={activeUnitAllocation}
+                className="mt-1.5"
+              />
+            </div>
+          ) : null}
         </div>
 
         {activeGroup ? (
