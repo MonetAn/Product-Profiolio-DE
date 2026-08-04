@@ -36,11 +36,25 @@ export type LocationAllocationScenarioTeam = {
   description: string;
   fot2025Rub: number;
   fot2026Rub: number;
+  peopleCount2025: number | null;
+  peopleCount2026: number;
+  fotChangeRub: number | null;
+  fotGrowthPercent: number | null;
   runPercent: number;
   runDescription: string;
   sortOrder: number;
   isArchived: boolean;
   regions: LocationAllocationScenarioRegion[];
+};
+
+export type LocationAllocationScenarioUnitTotal = {
+  unit: string;
+  fot2025Rub: number;
+  fot2026Rub: number;
+  fotChangeRub: number;
+  fotGrowthPercent: number;
+  peopleCount2025: number | null;
+  peopleCount2026: number | null;
 };
 
 export type LocationAllocationScenarioTeamCardInput = {
@@ -84,10 +98,23 @@ const SCENARIO_TEAM_SELECT = [
   'description',
   'fot_2025_rub',
   'fot_2026_rub',
+  'people_count',
+  'people_count_2025',
+  'fot_change_rub',
+  'fot_growth_percent',
   'run_percent',
   'run_description',
   'sort_order',
   'is_archived',
+].join(',');
+const SCENARIO_UNIT_TOTAL_SELECT = [
+  'unit',
+  'fot_2025_rub',
+  'fot_2026_rub',
+  'fot_change_rub',
+  'fot_growth_percent',
+  'people_count_2025',
+  'people_count_2026',
 ].join(',');
 // Сценарные таблицы добавляются новой миграцией; типы Supabase обновим вместе
 // с общим следующим снимком схемы.
@@ -100,6 +127,12 @@ function normalizePercent(value: unknown): number {
 
 function normalizeMoney(value: unknown): number {
   return Math.max(0, Math.round(Number(value) || 0));
+}
+
+function normalizeNullableNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function mapRegion(row: Record<string, unknown>): LocationAllocationScenarioRegion {
@@ -126,6 +159,13 @@ function mapTeam(
     description: String(row.description ?? ''),
     fot2025Rub: normalizeMoney(row.fot_2025_rub),
     fot2026Rub: normalizeMoney(row.fot_2026_rub),
+    peopleCount2025: normalizeNullableNumber(row.people_count_2025),
+    peopleCount2026: Math.max(
+      0,
+      normalizeNullableNumber(row.people_count) ?? 0
+    ),
+    fotChangeRub: normalizeNullableNumber(row.fot_change_rub),
+    fotGrowthPercent: normalizeNullableNumber(row.fot_growth_percent),
     runPercent: normalizePercent(row.run_percent),
     runDescription: String(row.run_description ?? ''),
     sortOrder: Number(row.sort_order) || 0,
@@ -243,6 +283,31 @@ export function useLocationAllocationScenario({
           mapTeam(row, regionsByTeam.get(String(row.id)) ?? [])
         )
         .filter((team) => !team.isArchived);
+    },
+    staleTime: 15_000,
+  });
+
+  const unitTotalsQuery = useQuery({
+    queryKey: ['location-allocation-scenario-unit-totals'],
+    enabled,
+    queryFn: async (): Promise<LocationAllocationScenarioUnitTotal[]> => {
+      const { data, error } = await sb
+        .from('location_allocation_scenario_unit_totals')
+        .select(SCENARIO_UNIT_TOTAL_SELECT)
+        .order('unit');
+      if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205') return [];
+        throw error;
+      }
+      return (data ?? []).map((row: Record<string, unknown>) => ({
+        unit: String(row.unit),
+        fot2025Rub: normalizeMoney(row.fot_2025_rub),
+        fot2026Rub: normalizeMoney(row.fot_2026_rub),
+        fotChangeRub: Number(row.fot_change_rub) || 0,
+        fotGrowthPercent: Number(row.fot_growth_percent) || 0,
+        peopleCount2025: normalizeNullableNumber(row.people_count_2025),
+        peopleCount2026: normalizeNullableNumber(row.people_count_2026),
+      }));
     },
     staleTime: 15_000,
   });
@@ -511,7 +576,10 @@ export function useLocationAllocationScenario({
 
   return {
     ...query,
+    isLoading: query.isLoading || unitTotalsQuery.isLoading,
+    error: query.error ?? unitTotalsQuery.error,
     teams: query.data ?? [],
+    unitTotals: unitTotalsQuery.data ?? [],
     updateTeam: updateTeamMutation.mutateAsync,
     saveTeamCard: saveTeamCardMutation.mutateAsync,
     createTeam: createTeamMutation.mutateAsync,
