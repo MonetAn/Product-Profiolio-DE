@@ -18,7 +18,6 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 import { AdminBuildStamp } from './AdminBuildStamp';
 import { DevBackendStamp } from '@/components/DevBackendStamp';
-import { isAdminActivityEnabled } from '@/lib/supabaseBackend';
 import { AllocationNotificationsBell } from '@/components/AllocationNotificationsBell';
 
 export type ViewMode =
@@ -64,9 +63,8 @@ const AdminHeader = ({
   const [searchParams] = useSearchParams();
   const { isSuperAdmin, hasEarlyAccess } = useAccess();
   const showUnification = canManageCrossInitiatives({ hasEarlyAccess });
-  /** Люди, рынки, доступ — только super_admin. Активность — ещё и только локально. */
+  /** Инженерные разделы админки доступны только super_admin. */
   const showEngineeringNav = isSuperAdmin;
-  const showActivityNav = showEngineeringNav && isAdminActivityEnabled();
 
   // Build URLs preserving current filters
   const initiativesUrl = useMemo(() => {
@@ -178,7 +176,7 @@ const AdminHeader = ({
               </ToggleGroupItem>
             </Link>
           )}
-          {showActivityNav && (
+          {showEngineeringNav && (
             <Link to={activityUrl}>
               <ToggleGroupItem 
                 value="activity" 
