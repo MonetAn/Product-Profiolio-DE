@@ -30,3 +30,11 @@ export function formatLocationFullAmount(rub: number): string {
 export function formatLocationExactRub(rub: number): string {
   return `${formatLocationFullAmount(rub)} ₽`;
 }
+
+/** Сумма в миллионах для карточек команд: 20 млн ₽, 3,4 млн ₽. */
+export function formatLocationMillionsRub(rub: number): string {
+  const millions = Math.round((rub / 1_000_000) * 10) / 10;
+  return `${millions.toLocaleString('ru-RU', {
+    maximumFractionDigits: 1,
+  })} млн ₽`;
+}

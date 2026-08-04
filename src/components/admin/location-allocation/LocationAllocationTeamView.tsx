@@ -29,7 +29,7 @@ import {
   locationTeamKey,
   sumTeamCostForYear,
 } from '@/lib/locationAllocationPlanning';
-import { formatLocationExactRub } from '@/lib/locationDisplayFormat';
+import { formatLocationMillionsRub } from '@/lib/locationDisplayFormat';
 import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
 import type { LocationAllocationGeoEditScope } from '@/lib/locationAllocationGeoEdit';
 import {
@@ -268,9 +268,9 @@ function formatPeopleCount(value: number): string {
 }
 
 function formatSignedRub(value: number): string {
-  if (value === 0) return formatLocationExactRub(0);
+  if (value === 0) return formatLocationMillionsRub(0);
   const sign = value > 0 ? '+' : '−';
-  return `${sign}${formatLocationExactRub(Math.abs(value))}`;
+  return `${sign}${formatLocationMillionsRub(Math.abs(value))}`;
 }
 
 function formatSignedPercent(value: number): string {
@@ -464,7 +464,7 @@ function AllocationSummary({
             {allocationLabel(item.kind)}
           </span>
           <span className="font-semibold tabular-nums text-foreground">
-            {formatLocationExactRub(allocationAmount(team, item.percent))}
+            {formatLocationMillionsRub(allocationAmount(team, item.percent))}
           </span>
           <span className="tabular-nums text-muted-foreground">
             ({formatPercent(item.percent)}%)
@@ -520,7 +520,7 @@ function AllocationBlock({
             </p>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
               <span className="text-xl font-semibold tabular-nums">
-                {formatLocationExactRub(allocationAmount(team, percent))}
+                {formatLocationMillionsRub(allocationAmount(team, percent))}
               </span>
               {!editMode ? (
                 <span className="text-sm tabular-nums text-muted-foreground">
@@ -811,7 +811,7 @@ function TeamCard({
                 Стоимость 2026
               </p>
               <p className="mt-0.5 text-lg font-semibold tabular-nums">
-                {formatLocationExactRub(team.fot2026Rub)}
+                {formatLocationMillionsRub(team.fot2026Rub)}
               </p>
             </div>
             <div>
@@ -820,7 +820,7 @@ function TeamCard({
               </p>
               <p className="mt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
                 {team.fot2025Rub > 0
-                  ? formatLocationExactRub(team.fot2025Rub)
+                  ? formatLocationMillionsRub(team.fot2025Rub)
                   : '—'}
               </p>
             </div>
@@ -1550,7 +1550,7 @@ export function LocationAllocationTeamView({
                 </p>
                 <p className="text-sm font-medium tabular-nums text-muted-foreground">
                   {activeFot2025 > 0
-                    ? formatLocationExactRub(activeFot2025)
+                    ? formatLocationMillionsRub(activeFot2025)
                     : '—'}
                 </p>
               </div>
@@ -1559,7 +1559,7 @@ export function LocationAllocationTeamView({
                   Стоимость 2026
                 </p>
                 <p className="text-xl font-semibold tabular-nums">
-                  {formatLocationExactRub(activeFot2026)}
+                  {formatLocationMillionsRub(activeFot2026)}
                 </p>
               </div>
               <div className="text-right">
