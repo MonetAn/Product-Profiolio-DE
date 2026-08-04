@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Save,
   Trash2,
+  Users,
 } from 'lucide-react';
 import type { AdminDataRow } from '@/lib/adminDataManager';
 import {
@@ -258,6 +259,30 @@ function formatPercent(value: number): string {
   return new Intl.NumberFormat('ru-RU', {
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+function formatPeopleCount(value: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatSignedRub(value: number): string {
+  if (value === 0) return formatLocationExactRub(0);
+  const sign = value > 0 ? '+' : '−';
+  return `${sign}${formatLocationExactRub(Math.abs(value))}`;
+}
+
+function formatSignedPercent(value: number): string {
+  if (value === 0) return '0%';
+  const sign = value > 0 ? '+' : '−';
+  return `${sign}${formatPercent(Math.abs(value))}%`;
+}
+
+function changeTone(value: number): string {
+  if (value > 0) return 'text-emerald-700';
+  if (value < 0) return 'text-rose-700';
+  return 'text-muted-foreground';
 }
 
 function createTeamCardDraft(
@@ -609,6 +634,13 @@ function TeamCard({
   const showsInitiativeComment = commentsScope.type === 'initiative';
   const savedDraft = createTeamCardDraft(team);
   const hasUnsavedChanges = !teamCardDraftEquals(draft, savedDraft);
+  const displayedChangeRub =
+    team.fotChangeRub ?? team.fot2026Rub - team.fot2025Rub;
+  const displayedGrowthPercent =
+    team.fotGrowthPercent ??
+    (team.fot2025Rub > 0
+      ? (displayedChangeRub / team.fot2025Rub) * 100
+      : 0);
 
   useEffect(() => setRenameDraft(team.name), [team.name]);
 
@@ -776,7 +808,7 @@ function TeamCard({
           <div className="mt-2.5 flex flex-wrap items-end gap-x-5 gap-y-2">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                ФОТ 2026
+                Стоимость 2026
               </p>
               <p className="mt-0.5 text-lg font-semibold tabular-nums">
                 {formatLocationExactRub(team.fot2026Rub)}
@@ -784,7 +816,7 @@ function TeamCard({
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                ФОТ 2025
+                Стоимость 2025
               </p>
               <p className="mt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
                 {team.fot2025Rub > 0
@@ -792,12 +824,42 @@ function TeamCard({
                   : '—'}
               </p>
             </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Изменение
+              </p>
+              <p
+                className={cn(
+                  'mt-0.5 text-sm font-semibold tabular-nums',
+                  changeTone(displayedChangeRub)
+                )}
+              >
+                {formatSignedRub(displayedChangeRub)}{' '}
+                <span className="font-medium">
+                  ({formatSignedPercent(displayedGrowthPercent)})
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Люди 2026
+              </p>
+              <p className="mt-0.5 flex items-center gap-1 text-lg font-semibold tabular-nums">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                {formatPeopleCount(team.peopleCount2026)}
+              </p>
+              {team.peopleCount2025 != null ? (
+                <p className="text-[10px] tabular-nums text-muted-foreground">
+                  2025: {formatPeopleCount(team.peopleCount2025)}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
 
         <div className="min-w-0 xl:text-right">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Распределение ФОТ 2026
+            Распределение стоимости 2026
           </p>
           <AllocationSummary
             team={editMode ? previewTeam : team}
@@ -1313,9 +1375,31 @@ export function LocationAllocationTeamView({
   const canManageActiveUnit =
     !readOnly && canManageAllocationScenarioTeams();
   const activeFot2025 =
-    activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ?? 0;
+    scenario.unitTotals.find((total) => total.unit === activeGroup?.unit)
+      ?.fot2025Rub ??
+    activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ??
+    0;
   const activeFot2026 =
-    activeGroup?.teams.reduce((sum, team) => sum + team.fot2026Rub, 0) ?? 0;
+    scenario.unitTotals.find((total) => total.unit === activeGroup?.unit)
+      ?.fot2026Rub ??
+    activeGroup?.teams.reduce((sum, team) => sum + team.fot2026Rub, 0) ??
+    0;
+  const activeUnitTotal = scenario.unitTotals.find(
+    (total) => total.unit === activeGroup?.unit
+  );
+  const activeChangeRub =
+    activeUnitTotal?.fotChangeRub ?? activeFot2026 - activeFot2025;
+  const activeGrowthPercent =
+    activeUnitTotal?.fotGrowthPercent ??
+    (activeFot2025 > 0 ? (activeChangeRub / activeFot2025) * 100 : 0);
+  const activePeople2025 = activeUnitTotal?.peopleCount2025 ?? null;
+  const activePeople2026 =
+    activeUnitTotal?.peopleCount2026 ??
+    activeGroup?.teams.reduce(
+      (sum, team) => sum + team.peopleCount2026,
+      0
+    ) ??
+    null;
   useEffect(() => {
     if (!editMode) {
       setDraggedTeamId(null);
@@ -1462,7 +1546,7 @@ export function LocationAllocationTeamView({
             <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-3">
               <div className="text-right">
                 <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  ФОТ 2025
+                  Стоимость 2025
                 </p>
                 <p className="text-sm font-medium tabular-nums text-muted-foreground">
                   {activeFot2025 > 0
@@ -1472,12 +1556,47 @@ export function LocationAllocationTeamView({
               </div>
               <div className="text-right">
                 <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  ФОТ 2026
+                  Стоимость 2026
                 </p>
                 <p className="text-xl font-semibold tabular-nums">
                   {formatLocationExactRub(activeFot2026)}
                 </p>
               </div>
+              <div className="text-right">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Изменение
+                </p>
+                <p
+                  className={cn(
+                    'text-sm font-semibold tabular-nums',
+                    changeTone(activeChangeRub)
+                  )}
+                >
+                  {formatSignedRub(activeChangeRub)}
+                </p>
+                <p
+                  className={cn(
+                    'text-xs font-medium tabular-nums',
+                    changeTone(activeGrowthPercent)
+                  )}
+                >
+                  {formatSignedPercent(activeGrowthPercent)}
+                </p>
+              </div>
+              {activePeople2026 != null ? (
+                <div className="text-right">
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Люди 2025 → 2026
+                  </p>
+                  <p className="flex items-center justify-end gap-1 text-lg font-semibold tabular-nums">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    {activePeople2025 != null
+                      ? `${formatPeopleCount(activePeople2025)} → `
+                      : ''}
+                    {formatPeopleCount(activePeople2026)}
+                  </p>
+                </div>
+              ) : null}
               <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
                 {pluralTeams(activeGroup?.teams.length ?? 0)}
               </span>

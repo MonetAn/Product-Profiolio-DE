@@ -18,6 +18,9 @@ $$;
 ALTER TABLE public.location_allocation_scenario_teams
   DISABLE TRIGGER trg_guard_allocation_scenario_team_structure;
 
+DELETE FROM public.location_allocation_scenario_unit_totals
+WHERE unit IN ('Data Office', 'AI Hub');
+
 DELETE FROM public.location_allocation_scenario_teams
 WHERE unit IN ('Data Office', 'AI Hub');
 
