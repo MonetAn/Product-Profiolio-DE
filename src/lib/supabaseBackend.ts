@@ -13,11 +13,6 @@ export function isLocalSupabaseBackend(): boolean {
   return getSupabaseBackendKind() === 'local';
 }
 
-/** Вкладка «Активность» в админке — только при локальной БД; на проде скрыта. */
-export function isAdminActivityEnabled(): boolean {
-  return isLocalSupabaseBackend();
-}
-
 export function supabaseBackendLabel(): string {
   const kind = getSupabaseBackendKind();
   if (kind === 'local') return 'Локальная БД (Docker)';

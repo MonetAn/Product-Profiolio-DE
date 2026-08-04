@@ -22,7 +22,6 @@ import EmbedPortfolio from "./pages/EmbedPortfolio";
 import NotFound from "./pages/NotFound";
 import Unification from "./pages/Unification";
 import { EarlyAccessRoute } from "@/components/EarlyAccessRoute";
-import { isAdminActivityEnabled } from "@/lib/supabaseBackend";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -119,17 +118,13 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/admin/activity" element={
-              isAdminActivityEnabled() ? (
-                <ProtectedRoute>
-                  <AdminRoute>
-                    <AdminSuperAdminRoute>
-                      <AdminActivity />
-                    </AdminSuperAdminRoute>
-                  </AdminRoute>
-                </ProtectedRoute>
-              ) : (
-                <Navigate to="/admin" replace />
-              )
+              <ProtectedRoute>
+                <AdminRoute>
+                  <AdminSuperAdminRoute>
+                    <AdminActivity />
+                  </AdminSuperAdminRoute>
+                </AdminRoute>
+              </ProtectedRoute>
             } />
             <Route path="/admin/additional" element={
               <ProtectedRoute>
