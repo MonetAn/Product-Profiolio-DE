@@ -826,7 +826,7 @@ function TeamCard({
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Изменение
+                vs PY
               </p>
               <p
                 className={cn(
@@ -1564,7 +1564,7 @@ export function LocationAllocationTeamView({
               </div>
               <div className="text-right">
                 <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Изменение
+                  vs PY
                 </p>
                 <p
                   className={cn(
