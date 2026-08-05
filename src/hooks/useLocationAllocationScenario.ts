@@ -44,6 +44,8 @@ export type LocationAllocationScenarioTeam = {
   runDescription: string;
   sortOrder: number;
   isArchived: boolean;
+  updatedByName: string;
+  updatedAt: string | null;
   regions: LocationAllocationScenarioRegion[];
 };
 
@@ -106,6 +108,8 @@ const SCENARIO_TEAM_SELECT = [
   'run_description',
   'sort_order',
   'is_archived',
+  'updated_by_name',
+  'updated_at',
 ].join(',');
 const SCENARIO_UNIT_TOTAL_SELECT = [
   'unit',
@@ -170,6 +174,8 @@ function mapTeam(
     runDescription: String(row.run_description ?? ''),
     sortOrder: Number(row.sort_order) || 0,
     isArchived: Boolean(row.is_archived),
+    updatedByName: String(row.updated_by_name ?? ''),
+    updatedAt: row.updated_at == null ? null : String(row.updated_at),
     regions,
   };
 }
