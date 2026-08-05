@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Download,
   Globe2,
   GripVertical,
   Layers,
@@ -33,7 +34,9 @@ import { calculateUnitAllocationSummary } from '@/lib/locationAllocationUnitSumm
 import { formatLocationMillionsRub } from '@/lib/locationDisplayFormat';
 import type { LocationAllocationTeamMetric } from '@/hooks/useLocationAllocationTeamMetrics';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import type { LocationAllocationGeoEditScope } from '@/lib/locationAllocationGeoEdit';
+import { downloadAllocationScenarioUnitWorkbook } from '@/lib/allocationScenarioWorkbook';
 import {
   useLocationAllocationScenario,
   type LocationAllocationScenarioRegion,
@@ -1130,6 +1133,7 @@ export function LocationAllocationTeamView({
   focusedComment = null,
 }: Props) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const metricByTeam = useMemo(() => {
     return new Map(
       teamMetrics.map((metric) => [
@@ -1373,6 +1377,25 @@ export function LocationAllocationTeamView({
       })),
     [activeFot2026, activeGroup?.teams]
   );
+  const downloadUnitWorkbook = () => {
+    if (!activeGroup || activeGroup.teams.length === 0) return;
+    try {
+      downloadAllocationScenarioUnitWorkbook(
+        activeGroup.unit,
+        activeGroup.teams
+      );
+      toast({
+        title: 'Excel-файл скачан',
+        description: `${activeGroup.unit}: общая сводка и отдельная вкладка для каждой команды`,
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Не удалось сформировать файл',
+        description: 'Обновите страницу и попробуйте скачать ещё раз.',
+      });
+    }
+  };
   useEffect(() => {
     if (!editMode) {
       setDraggedTeamId(null);
@@ -1539,6 +1562,25 @@ export function LocationAllocationTeamView({
               <span className="rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
                 {pluralTeams(activeGroup?.teams.length ?? 0)}
               </span>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  !activeGroup ||
+                  activeGroup.teams.length === 0 ||
+                  scenario.isSaving ||
+                  dirtyTeamIds.size > 0
+                }
+                title={
+                  dirtyTeamIds.size > 0
+                    ? 'Сначала сохраните изменения в карточках'
+                    : 'Скачать сводку по юниту и отдельные вкладки команд'
+                }
+                onClick={downloadUnitWorkbook}
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                Скачать Excel
+              </Button>
               {editMode && canManageActiveUnit ? (
                 <Button
                   type="button"
