@@ -113,6 +113,7 @@ describe('allocation scenario workbook', () => {
     const entries = storedZipEntries(bytes);
     const workbook = entries.get('xl/workbook.xml') ?? '';
     const summary = entries.get('xl/worksheets/sheet1.xml') ?? '';
+    const styles = entries.get('xl/styles.xml') ?? '';
     const dataPlatformSheet = entries.get('xl/worksheets/sheet2.xml') ?? '';
     const analyticsSheet = entries.get('xl/worksheets/sheet3.xml') ?? '';
 
@@ -127,6 +128,12 @@ describe('allocation scenario workbook', () => {
     expect(summary).toContain('<f>C10*E10</f>');
     expect(summary).toContain('Martin Grinchevsky');
     expect(summary).toContain('Anton Monetov');
+    expect(summary.indexOf('<autoFilter')).toBeLessThan(
+      summary.indexOf('<mergeCells')
+    );
+    expect(styles).toContain(
+      '<font><b/><sz val="18"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>'
+    );
     expect(dataPlatformSheet).toContain(
       'Data Platform — аллокация стоимости 2026'
     );
