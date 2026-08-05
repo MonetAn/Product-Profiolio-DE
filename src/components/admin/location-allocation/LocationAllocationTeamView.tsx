@@ -270,24 +270,6 @@ function formatPeopleCount(value: number): string {
   }).format(value);
 }
 
-function formatSignedRub(value: number): string {
-  if (value === 0) return formatLocationMillionsRub(0);
-  const sign = value > 0 ? '+' : '−';
-  return `${sign}${formatLocationMillionsRub(Math.abs(value))}`;
-}
-
-function formatSignedPercent(value: number): string {
-  if (value === 0) return '0%';
-  const sign = value > 0 ? '+' : '−';
-  return `${sign}${formatPercent(Math.abs(value))}%`;
-}
-
-function changeTone(value: number): string {
-  if (value > 0) return 'text-emerald-700';
-  if (value < 0) return 'text-rose-700';
-  return 'text-muted-foreground';
-}
-
 function createTeamCardDraft(
   team: LocationAllocationScenarioTeam
 ): TeamCardDraft {
@@ -661,14 +643,6 @@ function TeamCard({
   const showsInitiativeComment = commentsScope.type === 'initiative';
   const savedDraft = createTeamCardDraft(team);
   const hasUnsavedChanges = !teamCardDraftEquals(draft, savedDraft);
-  const displayedChangeRub =
-    team.fotChangeRub ?? team.fot2026Rub - team.fot2025Rub;
-  const displayedGrowthPercent =
-    team.fotGrowthPercent ??
-    (team.fot2025Rub > 0
-      ? (displayedChangeRub / team.fot2025Rub) * 100
-      : 0);
-
   useEffect(() => setRenameDraft(team.name), [team.name]);
 
   useEffect(() => {
@@ -843,43 +817,12 @@ function TeamCard({
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Стоимость 2025
-              </p>
-              <p className="mt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
-                {team.fot2025Rub > 0
-                  ? formatLocationMillionsRub(team.fot2025Rub)
-                  : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                vs PY
-              </p>
-              <p
-                className={cn(
-                  'mt-0.5 text-sm font-semibold tabular-nums',
-                  changeTone(displayedChangeRub)
-                )}
-              >
-                {formatSignedRub(displayedChangeRub)}{' '}
-                <span className="font-medium">
-                  ({formatSignedPercent(displayedGrowthPercent)})
-                </span>
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Люди 2026
               </p>
               <p className="mt-0.5 flex items-center gap-1 text-lg font-semibold tabular-nums">
                 <Users className="h-3.5 w-3.5 text-muted-foreground" />
                 {formatPeopleCount(team.peopleCount2026)}
               </p>
-              {team.peopleCount2025 != null ? (
-                <p className="text-[10px] tabular-nums text-muted-foreground">
-                  2025: {formatPeopleCount(team.peopleCount2025)}
-                </p>
-              ) : null}
             </div>
           </div>
         </div>
@@ -1402,11 +1345,6 @@ export function LocationAllocationTeamView({
   const editMode = !readOnly && Boolean(activeGroup);
   const canManageActiveUnit =
     !readOnly && canManageAllocationScenarioTeams(user?.email);
-  const activeFot2025 =
-    scenario.unitTotals.find((total) => total.unit === activeGroup?.unit)
-      ?.fot2025Rub ??
-    activeGroup?.teams.reduce((sum, team) => sum + team.fot2025Rub, 0) ??
-    0;
   const activeFot2026 =
     scenario.unitTotals.find((total) => total.unit === activeGroup?.unit)
       ?.fot2026Rub ??
@@ -1415,12 +1353,6 @@ export function LocationAllocationTeamView({
   const activeUnitTotal = scenario.unitTotals.find(
     (total) => total.unit === activeGroup?.unit
   );
-  const activeChangeRub =
-    activeUnitTotal?.fotChangeRub ?? activeFot2026 - activeFot2025;
-  const activeGrowthPercent =
-    activeUnitTotal?.fotGrowthPercent ??
-    (activeFot2025 > 0 ? (activeChangeRub / activeFot2025) * 100 : 0);
-  const activePeople2025 = activeUnitTotal?.peopleCount2025 ?? null;
   const activePeople2026 =
     activeUnitTotal?.peopleCount2026 ??
     activeGroup?.teams.reduce(
@@ -1587,53 +1519,19 @@ export function LocationAllocationTeamView({
             <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-3">
               <div className="text-right">
                 <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Стоимость 2025
-                </p>
-                <p className="text-sm font-medium tabular-nums text-muted-foreground">
-                  {activeFot2025 > 0
-                    ? formatLocationMillionsRub(activeFot2025)
-                    : '—'}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Стоимость 2026
                 </p>
                 <p className="text-xl font-semibold tabular-nums">
                   {formatLocationMillionsRub(activeFot2026)}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  vs PY
-                </p>
-                <p
-                  className={cn(
-                    'text-sm font-semibold tabular-nums',
-                    changeTone(activeChangeRub)
-                  )}
-                >
-                  {formatSignedRub(activeChangeRub)}
-                </p>
-                <p
-                  className={cn(
-                    'text-xs font-medium tabular-nums',
-                    changeTone(activeGrowthPercent)
-                  )}
-                >
-                  {formatSignedPercent(activeGrowthPercent)}
-                </p>
-              </div>
               {activePeople2026 != null ? (
                 <div className="text-right">
                   <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Люди 2025 → 2026
+                    Люди 2026
                   </p>
                   <p className="flex items-center justify-end gap-1 text-lg font-semibold tabular-nums">
                     <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                    {activePeople2025 != null
-                      ? `${formatPeopleCount(activePeople2025)} → `
-                      : ''}
                     {formatPeopleCount(activePeople2026)}
                   </p>
                 </div>
