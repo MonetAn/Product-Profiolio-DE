@@ -310,13 +310,13 @@ function summarySheetXml(
     <col min="15" max="15" width="22" customWidth="1"/><col min="16" max="16" width="32" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows.join('')}</sheetData>
+  <autoFilter ref="A9:P${lastTeamRow}"/>
   <mergeCells count="9">
     <mergeCell ref="A1:P1"/><mergeCell ref="A2:P2"/>
     <mergeCell ref="A4:D4"/><mergeCell ref="E4:J4"/><mergeCell ref="K4:P4"/>
     <mergeCell ref="A5:D6"/><mergeCell ref="E5:J6"/><mergeCell ref="K5:P6"/>
     <mergeCell ref="A8:P8"/>
   </mergeCells>
-  <autoFilter ref="A9:P${lastTeamRow}"/>
   <pageMargins left="0.3" right="0.3" top="0.4" bottom="0.4" header="0.2" footer="0.2"/>
 </worksheet>`;
 }
@@ -449,11 +449,11 @@ function stylesXml(): string {
     bold?: boolean;
     italic?: boolean;
     color?: string;
-  }) => `<font><sz val="${options.size ?? 10}"/><name val="Arial"/>${
-    options.bold ? '<b/>' : ''
-  }${options.italic ? '<i/>' : ''}<color rgb="FF${
+  }) => `<font>${options.bold ? '<b/>' : ''}${
+    options.italic ? '<i/>' : ''
+  }<sz val="${options.size ?? 10}"/><color rgb="FF${
     options.color ?? '111827'
-  }"/></font>`;
+  }"/><name val="Arial"/></font>`;
   const fill = (color: string) =>
     `<fill><patternFill patternType="solid"><fgColor rgb="FF${color}"/><bgColor indexed="64"/></patternFill></fill>`;
   const xf = (
